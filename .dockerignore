@@ -1,4 +1,10 @@
 .git
+.local-coordination
+AGENTS.md
+IMPLEMENTATION_PLAN.md
+IMPLEMENTATION_REVIEW.md
+KRISH_AGENT_HANDOFF.md
+MIHIR_AGENT_HANDOFF.md
 .runtime
 artifacts
 **/node_modules

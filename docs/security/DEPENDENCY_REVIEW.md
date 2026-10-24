@@ -4,7 +4,7 @@ Selected protocol: RFC 9578 Type 2, library `@cloudflare/privacypass-ts@0.9.0`, 
 
 Initial npm audit reported three high entries through one advisory: `sjcl@1.0.8`, its dependent blindrsa package and the parent Privacy Pass package. [GHSA-2w8x-224x-785m](https://github.com/advisories/GHSA-2w8x-224x-785m) concerns ECC public-key point validation; published patch is 1.0.9.
 
-Decision, reviewed with Astra: retain exact Privacy Pass/Blind RSA versions and apply the narrow package-local override:
+Decision: retain exact Privacy Pass/Blind RSA versions and apply the narrow package-local override:
 
 ```json
 "overrides": {
@@ -18,6 +18,6 @@ After the override: fresh lock/install and npm audit report zero known vulnerabi
 
 License metadata: Privacy Pass and Blind RSA Apache-2.0; TypeScript Apache-2.0; esbuild and Ajv MIT; Node types MIT. SJCL declares `BSD-2-Clause OR GPL-2.0-only`; use the BSD alternative and preserve distributed license notices. Verify all transitive notices for final distribution; this document does not replace them.
 
-Mihir must repeat the override, independent install and audit in his **own** consuming package/lockfile. A gateway override does not affect another package.
+Each consuming package must repeat the override, independent install and audit in its own lockfile. A gateway override does not affect another package.
 
 Library integration constraint: some pinned parsers/serializers use an input's `.buffer` without respecting its offset/length. `libraryBytes()` allocates exact standalone buffers; call it before library parsing and when handing network/Buffer views into protocol objects. Test coverage includes pooled Buffer subviews. Never pass a sliced pooled Buffer directly to the library. Do not reject valid RFC SPKI merely because OpenSSL normalizes its AlgorithmIdentifier when re-exporting it: validate DER framing/key parameters and hash the original RFC encoding.

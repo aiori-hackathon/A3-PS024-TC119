@@ -16,3 +16,11 @@ artifacts/
 *.core
 .DS_Store
 Thumbs.db
+
+# Local-only tooling and workspace notes.
+/.local-coordination/
+/AGENTS.md
+/IMPLEMENTATION_PLAN.md
+/IMPLEMENTATION_REVIEW.md
+/KRISH_AGENT_HANDOFF.md
+/MIHIR_AGENT_HANDOFF.md

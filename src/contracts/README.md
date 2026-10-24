@@ -1,6 +1,6 @@
 # Shared contract candidate TF-PS024-1.0.0
 
-Sole writer: Krish. Both agents consume these files; no copied constants/private service imports. This is G0's candidate, not yet jointly frozen. Read the root implementation plan and change log.
+The gateway and lab consume these shared definitions rather than copying constants or importing each other's private implementation. This is G0's candidate, pending validation by both consuming packages. Read the technical design and change log.
 
 - `protocol-v1.json`: exact names, limits, profiles, labels, scenarios and histogram bounds.
 - `schemas/`: generated strict JSON Schema draft-07. Update the owned generator and regenerate; CI rejects drift.
@@ -10,7 +10,7 @@ Sole writer: Krish. Both agents consume these files; no copied constants/private
 
 Run `node scripts/generate-contract-schemas.mjs --check` and `python scripts/derive-golden-fixture.py --check` from root. Tests run through the gateway package's pinned tools. Do not install dependencies or create a lockfile in this directory/root.
 
-Key points for Mihir's consumer:
+Consumer requirements:
 
 1. Initial PREPARE envelope uses `config_digest:null`; payload carries manifest, proposed digest, role and role_config. Helper validates the manifest's actual RSA-PSS parameters/key ID and matching run/digest. Receiver still enforces role-specific mounts/state/incarnation.
 2. Provision at most 128 items/frame and 65536 UTF-8 bytes; chunks carry batch ID/index/expected total/final seal. Schema validation is not receiver-state/duplicate validation; implement both, bound totals by manifest/profile, and reject live refill.

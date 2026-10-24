@@ -9,9 +9,9 @@ Team **A3-PS024-TC119**, Pandit Deendayal Energy University. Krish Sonpal: gatew
 
 The organizer-owned repository and submitted assets above are preserved. All implementation source lives under `src/` as requested by the existing `src/README.md`.
 
-**Current stage: G0 contract/bootstrap candidate.** No serving gateway/issuer/Compose demo exists yet. Krish's candidate checks are implemented; Mihir's independent consumer/review is required before G0 closes and parallel service implementation starts. See [G0 status](docs/implementation/G0_STATUS.md).
+**Current stage: G0 contract/bootstrap candidate.** Contract and cryptographic compatibility checks are implemented. The lab package and integrated issuer/gateway demo are the next implementation stage. See [G0 status](docs/implementation/G0_STATUS.md).
 
-Read the [implementation plan](IMPLEMENTATION_PLAN.md), [review record](IMPLEMENTATION_REVIEW.md), [Krish handoff](KRISH_AGENT_HANDOFF.md) and [Mihir handoff](MIHIR_AGENT_HANDOFF.md). Follow [AGENTS.md](AGENTS.md) for exclusive write paths. The executable contract candidate is [src/contracts](src/contracts/README.md); do not copy old prompt ABI/status mappings into a separate implementation.
+Read the [technical design](docs/implementation/TECHNICAL_DESIGN.md), [shared contract reference](src/contracts/README.md), and [dependency review](docs/security/DEPENDENCY_REVIEW.md). Executable contract schemas and fixtures define the interfaces shared by the gateway and lab components.
 
 ### Local bootstrap checks
 
@@ -34,4 +34,4 @@ docker run --rm --network none --read-only --cap-drop ALL --security-opt no-new-
 
 The image prints public bootstrap metadata and exits; it does not open ports. Do not run `docker compose up` until Mihir's authoritative configuration exists and has passed its integration checks.
 
-Next counterpart action: [G0-001 Mihir consumer request](docs/implementation/lab-requests/G0-001-mihir-consumer.md). The user will fill Mihir's verified CODEOWNERS login as described there. Repository commit identity for Krish is configured locally as requested; do not override another member's identity.
+Before integrating services, verify that the lab package independently consumes the same contract version and fixtures. Each package maintains its own dependency lockfile and build checks.

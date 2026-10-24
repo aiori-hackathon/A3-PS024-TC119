@@ -4,7 +4,6 @@
   "type": "module",
   "engines": { "node": ">=24 <25" },
   "scripts": {
-    "check:g0": "node scripts/check-g0.mjs",
-    "check:ownership": "node scripts/check-ownership.mjs"
+    "check:g0": "node scripts/check-g0.mjs"
   }
 }
