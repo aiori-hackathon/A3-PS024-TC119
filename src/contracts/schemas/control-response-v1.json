@@ -1,0 +1,1368 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://tokenforge.invalid/contracts/control-response-v1.json",
+  "oneOf": [
+    {
+      "type": "object",
+      "properties": {
+        "version": {
+          "const": 1
+        },
+        "request_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 32,
+          "pattern": "^[0-9a-f]{32}$"
+        },
+        "state": {
+          "enum": [
+            "FENCED",
+            "PREPARED",
+            "READY",
+            "ENABLED",
+            "CLOSING",
+            "FAULTED"
+          ]
+        },
+        "run_id": {
+          "oneOf": [
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 32,
+              "pattern": "^[0-9a-f]{32}$"
+            },
+            {
+              "const": null
+            }
+          ]
+        },
+        "config_digest": {
+          "oneOf": [
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64,
+              "pattern": "^[0-9a-f]{64}$"
+            },
+            {
+              "const": null
+            }
+          ]
+        },
+        "incarnation": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 32,
+          "pattern": "^[0-9a-f]{32}$"
+        },
+        "ok": {
+          "const": true
+        },
+        "result": {
+          "const": "KEY_CREATED"
+        },
+        "data": {
+          "type": "object",
+          "properties": {
+            "token_key_spki_b64url": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 1024,
+              "pattern": "^[A-Za-z0-9_-]+={0,2}$"
+            },
+            "token_key_id": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64,
+              "pattern": "^[0-9a-f]{64}$"
+            }
+          },
+          "required": [
+            "token_key_spki_b64url",
+            "token_key_id"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "version",
+        "request_id",
+        "state",
+        "run_id",
+        "config_digest",
+        "incarnation",
+        "ok",
+        "result",
+        "data"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "version": {
+          "const": 1
+        },
+        "request_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 32,
+          "pattern": "^[0-9a-f]{32}$"
+        },
+        "state": {
+          "enum": [
+            "FENCED",
+            "PREPARED",
+            "READY",
+            "ENABLED",
+            "CLOSING",
+            "FAULTED"
+          ]
+        },
+        "run_id": {
+          "oneOf": [
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 32,
+              "pattern": "^[0-9a-f]{32}$"
+            },
+            {
+              "const": null
+            }
+          ]
+        },
+        "config_digest": {
+          "oneOf": [
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64,
+              "pattern": "^[0-9a-f]{64}$"
+            },
+            {
+              "const": null
+            }
+          ]
+        },
+        "incarnation": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 32,
+          "pattern": "^[0-9a-f]{32}$"
+        },
+        "ok": {
+          "const": true
+        },
+        "result": {
+          "const": "PREPARED"
+        },
+        "data": {
+          "type": "object",
+          "properties": {},
+          "required": [],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "version",
+        "request_id",
+        "state",
+        "run_id",
+        "config_digest",
+        "incarnation",
+        "ok",
+        "result",
+        "data"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "version": {
+          "const": 1
+        },
+        "request_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 32,
+          "pattern": "^[0-9a-f]{32}$"
+        },
+        "state": {
+          "enum": [
+            "FENCED",
+            "PREPARED",
+            "READY",
+            "ENABLED",
+            "CLOSING",
+            "FAULTED"
+          ]
+        },
+        "run_id": {
+          "oneOf": [
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 32,
+              "pattern": "^[0-9a-f]{32}$"
+            },
+            {
+              "const": null
+            }
+          ]
+        },
+        "config_digest": {
+          "oneOf": [
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64,
+              "pattern": "^[0-9a-f]{64}$"
+            },
+            {
+              "const": null
+            }
+          ]
+        },
+        "incarnation": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 32,
+          "pattern": "^[0-9a-f]{32}$"
+        },
+        "ok": {
+          "const": true
+        },
+        "result": {
+          "const": "PROVISIONED"
+        },
+        "data": {
+          "type": "object",
+          "properties": {
+            "received_total": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 16384
+            },
+            "sealed": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "received_total",
+            "sealed"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "version",
+        "request_id",
+        "state",
+        "run_id",
+        "config_digest",
+        "incarnation",
+        "ok",
+        "result",
+        "data"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "version": {
+          "const": 1
+        },
+        "request_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 32,
+          "pattern": "^[0-9a-f]{32}$"
+        },
+        "state": {
+          "enum": [
+            "FENCED",
+            "PREPARED",
+            "READY",
+            "ENABLED",
+            "CLOSING",
+            "FAULTED"
+          ]
+        },
+        "run_id": {
+          "oneOf": [
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 32,
+              "pattern": "^[0-9a-f]{32}$"
+            },
+            {
+              "const": null
+            }
+          ]
+        },
+        "config_digest": {
+          "oneOf": [
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64,
+              "pattern": "^[0-9a-f]{64}$"
+            },
+            {
+              "const": null
+            }
+          ]
+        },
+        "incarnation": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 32,
+          "pattern": "^[0-9a-f]{32}$"
+        },
+        "ok": {
+          "const": true
+        },
+        "result": {
+          "const": "READY"
+        },
+        "data": {
+          "type": "object",
+          "properties": {
+            "workers_ready": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 2
+            }
+          },
+          "required": [
+            "workers_ready"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "version",
+        "request_id",
+        "state",
+        "run_id",
+        "config_digest",
+        "incarnation",
+        "ok",
+        "result",
+        "data"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "version": {
+          "const": 1
+        },
+        "request_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 32,
+          "pattern": "^[0-9a-f]{32}$"
+        },
+        "state": {
+          "enum": [
+            "FENCED",
+            "PREPARED",
+            "READY",
+            "ENABLED",
+            "CLOSING",
+            "FAULTED"
+          ]
+        },
+        "run_id": {
+          "oneOf": [
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 32,
+              "pattern": "^[0-9a-f]{32}$"
+            },
+            {
+              "const": null
+            }
+          ]
+        },
+        "config_digest": {
+          "oneOf": [
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64,
+              "pattern": "^[0-9a-f]{64}$"
+            },
+            {
+              "const": null
+            }
+          ]
+        },
+        "incarnation": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 32,
+          "pattern": "^[0-9a-f]{32}$"
+        },
+        "ok": {
+          "const": true
+        },
+        "result": {
+          "const": "ENABLED"
+        },
+        "data": {
+          "type": "object",
+          "properties": {
+            "workers_enabled": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 2
+            }
+          },
+          "required": [
+            "workers_enabled"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "version",
+        "request_id",
+        "state",
+        "run_id",
+        "config_digest",
+        "incarnation",
+        "ok",
+        "result",
+        "data"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "version": {
+          "const": 1
+        },
+        "request_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 32,
+          "pattern": "^[0-9a-f]{32}$"
+        },
+        "state": {
+          "enum": [
+            "FENCED",
+            "PREPARED",
+            "READY",
+            "ENABLED",
+            "CLOSING",
+            "FAULTED"
+          ]
+        },
+        "run_id": {
+          "oneOf": [
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 32,
+              "pattern": "^[0-9a-f]{32}$"
+            },
+            {
+              "const": null
+            }
+          ]
+        },
+        "config_digest": {
+          "oneOf": [
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64,
+              "pattern": "^[0-9a-f]{64}$"
+            },
+            {
+              "const": null
+            }
+          ]
+        },
+        "incarnation": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 32,
+          "pattern": "^[0-9a-f]{32}$"
+        },
+        "ok": {
+          "const": true
+        },
+        "result": {
+          "const": "HEARTBEAT_ACK"
+        },
+        "data": {
+          "type": "object",
+          "properties": {
+            "seq": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 9007199254740991
+            }
+          },
+          "required": [
+            "seq"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "version",
+        "request_id",
+        "state",
+        "run_id",
+        "config_digest",
+        "incarnation",
+        "ok",
+        "result",
+        "data"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "version": {
+          "const": 1
+        },
+        "request_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 32,
+          "pattern": "^[0-9a-f]{32}$"
+        },
+        "state": {
+          "enum": [
+            "FENCED",
+            "PREPARED",
+            "READY",
+            "ENABLED",
+            "CLOSING",
+            "FAULTED"
+          ]
+        },
+        "run_id": {
+          "oneOf": [
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 32,
+              "pattern": "^[0-9a-f]{32}$"
+            },
+            {
+              "const": null
+            }
+          ]
+        },
+        "config_digest": {
+          "oneOf": [
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64,
+              "pattern": "^[0-9a-f]{64}$"
+            },
+            {
+              "const": null
+            }
+          ]
+        },
+        "incarnation": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 32,
+          "pattern": "^[0-9a-f]{32}$"
+        },
+        "ok": {
+          "const": true
+        },
+        "result": {
+          "const": "FENCED"
+        },
+        "data": {
+          "type": "object",
+          "properties": {},
+          "required": [],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "version",
+        "request_id",
+        "state",
+        "run_id",
+        "config_digest",
+        "incarnation",
+        "ok",
+        "result",
+        "data"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "version": {
+          "const": 1
+        },
+        "request_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 32,
+          "pattern": "^[0-9a-f]{32}$"
+        },
+        "state": {
+          "enum": [
+            "FENCED",
+            "PREPARED",
+            "READY",
+            "ENABLED",
+            "CLOSING",
+            "FAULTED"
+          ]
+        },
+        "run_id": {
+          "oneOf": [
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 32,
+              "pattern": "^[0-9a-f]{32}$"
+            },
+            {
+              "const": null
+            }
+          ]
+        },
+        "config_digest": {
+          "oneOf": [
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64,
+              "pattern": "^[0-9a-f]{64}$"
+            },
+            {
+              "const": null
+            }
+          ]
+        },
+        "incarnation": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 32,
+          "pattern": "^[0-9a-f]{32}$"
+        },
+        "ok": {
+          "const": true
+        },
+        "result": {
+          "const": "STATUS"
+        },
+        "data": {
+          "type": "object",
+          "properties": {
+            "ready": {
+              "type": "boolean"
+            },
+            "run_closed": {
+              "type": "boolean"
+            },
+            "fault": {
+              "oneOf": [
+                {
+                  "enum": [
+                    "operator-stop",
+                    "test-cleanup",
+                    "unsafe-state",
+                    "lease-expired",
+                    "dependency-lost",
+                    "clock-unsafe",
+                    "process-exited",
+                    "control-lost",
+                    "configuration-mismatch"
+                  ]
+                },
+                {
+                  "const": null
+                }
+              ]
+            }
+          },
+          "required": [
+            "ready",
+            "run_closed",
+            "fault"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "version",
+        "request_id",
+        "state",
+        "run_id",
+        "config_digest",
+        "incarnation",
+        "ok",
+        "result",
+        "data"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "version": {
+          "const": 1
+        },
+        "request_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 32,
+          "pattern": "^[0-9a-f]{32}$"
+        },
+        "state": {
+          "enum": [
+            "FENCED",
+            "PREPARED",
+            "READY",
+            "ENABLED",
+            "CLOSING",
+            "FAULTED"
+          ]
+        },
+        "run_id": {
+          "oneOf": [
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 32,
+              "pattern": "^[0-9a-f]{32}$"
+            },
+            {
+              "const": null
+            }
+          ]
+        },
+        "config_digest": {
+          "oneOf": [
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64,
+              "pattern": "^[0-9a-f]{64}$"
+            },
+            {
+              "const": null
+            }
+          ]
+        },
+        "incarnation": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 32,
+          "pattern": "^[0-9a-f]{32}$"
+        },
+        "ok": {
+          "const": true
+        },
+        "result": {
+          "const": "REPORT"
+        },
+        "data": {
+          "type": "object",
+          "properties": {
+            "counters": {
+              "type": "object",
+              "properties": {
+                "verification_attempts": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "claims_successful": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "replays_rejected": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "requests_rejected": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "queue_rejected": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "transport_failures": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "protected_requests_received": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "generation_mismatches": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "resources_served": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "issuance_successes": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "issuance_failures": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "observations": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                }
+              },
+              "required": [],
+              "additionalProperties": false
+            },
+            "measurements": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "metric": {
+                    "enum": [
+                      "issuance_http_ms",
+                      "token_acquisition_ms",
+                      "verification_ms",
+                      "snapshot_rpc_ms",
+                      "claim_rpc_ms",
+                      "queue_wait_ms",
+                      "authorization_ms",
+                      "protected_response_ms"
+                    ]
+                  },
+                  "count": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "failures": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "elapsed_ms": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "p50_ms": {
+                    "oneOf": [
+                      {
+                        "type": "number",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      {
+                        "const": null
+                      }
+                    ]
+                  },
+                  "p95_ms": {
+                    "oneOf": [
+                      {
+                        "type": "number",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      {
+                        "const": null
+                      }
+                    ]
+                  },
+                  "p99_ms": {
+                    "oneOf": [
+                      {
+                        "type": "number",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      {
+                        "const": null
+                      }
+                    ]
+                  },
+                  "histogram_counts": {
+                    "type": "array",
+                    "items": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    },
+                    "minItems": 15,
+                    "maxItems": 15
+                  }
+                },
+                "required": [
+                  "metric",
+                  "count",
+                  "failures",
+                  "elapsed_ms",
+                  "p50_ms",
+                  "p95_ms",
+                  "p99_ms",
+                  "histogram_counts"
+                ],
+                "additionalProperties": false
+              },
+              "minItems": 0,
+              "maxItems": 16
+            },
+            "same_source_observed": {
+              "oneOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "const": null
+                }
+              ]
+            },
+            "origin_counts_available": {
+              "type": "boolean"
+            },
+            "worker_verification_attempts": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "worker_index": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 1
+                  },
+                  "attempts": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  }
+                },
+                "required": [
+                  "worker_index",
+                  "attempts"
+                ],
+                "additionalProperties": false
+              },
+              "minItems": 0,
+              "maxItems": 2
+            }
+          },
+          "required": [
+            "counters",
+            "measurements",
+            "same_source_observed",
+            "origin_counts_available",
+            "worker_verification_attempts"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "version",
+        "request_id",
+        "state",
+        "run_id",
+        "config_digest",
+        "incarnation",
+        "ok",
+        "result",
+        "data"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "version": {
+          "const": 1
+        },
+        "request_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 32,
+          "pattern": "^[0-9a-f]{32}$"
+        },
+        "state": {
+          "enum": [
+            "FENCED",
+            "PREPARED",
+            "READY",
+            "ENABLED",
+            "CLOSING",
+            "FAULTED"
+          ]
+        },
+        "run_id": {
+          "oneOf": [
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 32,
+              "pattern": "^[0-9a-f]{32}$"
+            },
+            {
+              "const": null
+            }
+          ]
+        },
+        "config_digest": {
+          "oneOf": [
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64,
+              "pattern": "^[0-9a-f]{64}$"
+            },
+            {
+              "const": null
+            }
+          ]
+        },
+        "incarnation": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 32,
+          "pattern": "^[0-9a-f]{32}$"
+        },
+        "ok": {
+          "const": true
+        },
+        "result": {
+          "const": "SCENARIO_COMPLETE"
+        },
+        "data": {
+          "type": "object",
+          "properties": {
+            "scenario_id": {
+              "enum": [
+                "healthy-flow",
+                "shared-egress",
+                "voucher-policy",
+                "malformed-token",
+                "signature-and-key",
+                "wrong-context",
+                "sequential-replay",
+                "concurrent-replay",
+                "epoch-boundary",
+                "admission-limits",
+                "upstream-failure",
+                "redis-failure",
+                "restart-and-reset",
+                "network-boundaries",
+                "retention-audit",
+                "stolen-unused-token",
+                "clock-rollback",
+                "performance"
+              ]
+            },
+            "status": {
+              "enum": [
+                "PASS",
+                "FAIL",
+                "INCONCLUSIVE"
+              ]
+            },
+            "expected": {
+              "enum": [
+                "accepted",
+                "rejected",
+                "single-spend",
+                "fail-closed",
+                "recovered",
+                "bearer-limit",
+                "bounded",
+                "measured",
+                "isolated",
+                "retention",
+                "observed-clock-regression"
+              ]
+            },
+            "counters": {
+              "type": "object",
+              "properties": {
+                "verification_attempts": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "claims_successful": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "replays_rejected": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "requests_rejected": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "queue_rejected": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "transport_failures": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "protected_requests_received": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "generation_mismatches": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "resources_served": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "issuance_successes": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "issuance_failures": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "observations": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                }
+              },
+              "required": [],
+              "additionalProperties": false
+            },
+            "origin_counts_available": {
+              "type": "boolean"
+            },
+            "worker_verification_attempts": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "worker_index": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 1
+                  },
+                  "attempts": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  }
+                },
+                "required": [
+                  "worker_index",
+                  "attempts"
+                ],
+                "additionalProperties": false
+              },
+              "minItems": 0,
+              "maxItems": 2
+            },
+            "failure_labels": {
+              "type": "array",
+              "items": {
+                "enum": [
+                  "token-required",
+                  "token-malformed",
+                  "token-type-unsupported",
+                  "token-key-unknown",
+                  "token-invalid",
+                  "token-context-mismatch",
+                  "token-expired",
+                  "token-already-redeemed",
+                  "gateway-busy",
+                  "authorization-unavailable",
+                  "authority-not-allowed",
+                  "resource-not-found",
+                  "method-not-allowed",
+                  "request-malformed",
+                  "operator-stop",
+                  "test-cleanup",
+                  "unsafe-state",
+                  "lease-expired",
+                  "dependency-lost",
+                  "clock-unsafe",
+                  "process-exited",
+                  "control-lost",
+                  "configuration-mismatch",
+                  "missing-evidence",
+                  "assertion-failed",
+                  "overload",
+                  "transport-failure"
+                ]
+              },
+              "minItems": 0,
+              "maxItems": 32
+            }
+          },
+          "required": [
+            "scenario_id",
+            "status",
+            "expected",
+            "counters",
+            "origin_counts_available",
+            "worker_verification_attempts",
+            "failure_labels"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "version",
+        "request_id",
+        "state",
+        "run_id",
+        "config_digest",
+        "incarnation",
+        "ok",
+        "result",
+        "data"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "version": {
+          "const": 1
+        },
+        "request_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 32,
+          "pattern": "^[0-9a-f]{32}$"
+        },
+        "state": {
+          "enum": [
+            "FENCED",
+            "PREPARED",
+            "READY",
+            "ENABLED",
+            "CLOSING",
+            "FAULTED"
+          ]
+        },
+        "run_id": {
+          "oneOf": [
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 32,
+              "pattern": "^[0-9a-f]{32}$"
+            },
+            {
+              "const": null
+            }
+          ]
+        },
+        "config_digest": {
+          "oneOf": [
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64,
+              "pattern": "^[0-9a-f]{64}$"
+            },
+            {
+              "const": null
+            }
+          ]
+        },
+        "incarnation": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 32,
+          "pattern": "^[0-9a-f]{32}$"
+        },
+        "ok": {
+          "const": false
+        },
+        "result": {
+          "enum": [
+            "BAD_VERSION",
+            "BAD_MESSAGE",
+            "WRONG_RUN",
+            "WRONG_CONFIG",
+            "WRONG_INCARNATION",
+            "ILLEGAL_STATE",
+            "DEPENDENCY_UNAVAILABLE",
+            "FAULTED"
+          ]
+        },
+        "data": {
+          "type": "object",
+          "properties": {},
+          "required": [],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "version",
+        "request_id",
+        "state",
+        "run_id",
+        "config_digest",
+        "incarnation",
+        "ok",
+        "result",
+        "data"
+      ],
+      "additionalProperties": false
+    }
+  ]
+}

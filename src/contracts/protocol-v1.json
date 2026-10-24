@@ -1,0 +1,75 @@
+{
+  "contract_version": "TF-PS024-1.0.0",
+  "schema_version": 1,
+  "token_type": 2,
+  "request_bytes": 259,
+  "response_bytes": 256,
+  "auth_input_bytes": 98,
+  "token_bytes": 354,
+  "epoch_ms": 600000,
+  "guard_ms": 30000,
+  "issuer_name": "issuer.lab.test",
+  "origin_name": "origin.lab.test",
+  "resource_scope": "GET /resource",
+  "issuer_request_uri": "https://issuer.lab.test/issue",
+  "control_socket": "/run/ps024/control.sock",
+  "control_message_max_bytes": 65536,
+  "provision_batch_max": 128,
+  "domains": { "context": "PS024-context-v1", "spend": "PS024-spend-v1", "voucher": "PS024-voucher-v1" },
+  "endpoints": {
+    "issuer_https": "https://issuer.lab.test:443",
+    "gateway_https": "https://origin.lab.test:443",
+    "origin_http": "http://protected-origin:8080/resource",
+    "redis_host": "redis",
+    "redis_port": 6379,
+    "proxy_http": "http://proxy:8888"
+  },
+  "gateway_common": {
+    "queue_depth_per_worker": 16,
+    "queue_wait_ms": 100,
+    "sockets_per_worker": 64,
+    "headers_max_bytes": 8192,
+    "headers_max_count": 32,
+    "tls_header_timeout_ms": 2000,
+    "request_timeout_ms": 5000,
+    "redis_connect_timeout_ms": 1000,
+    "redis_command_timeout_ms": 250,
+    "origin_timeout_ms": 2000,
+    "origin_free_idle_ms": 15000,
+    "origin_keepalive_ms": 20000,
+    "origin_body_max_bytes": 16384,
+    "controller_heartbeat_ms": 1000,
+    "controller_lease_ms": 3000
+  },
+  "gateway_profiles": {
+    "B0": { "workers": 1, "active_flows_per_worker": 1, "redis_connections_per_worker": 1, "origin_sockets_per_worker": 1 },
+    "B1": { "workers": 2, "active_flows_per_worker": 2, "redis_connections_per_worker": 2, "origin_sockets_per_worker": 2 }
+  },
+  "issuer_limits": {
+    "active_signings": 2, "queue_depth": 16, "queue_wait_ms": 100, "sockets": 32,
+    "headers_max_bytes": 8192, "headers_max_count": 32, "body_max_bytes": 4096,
+    "valid_request_bytes": 259, "tls_header_timeout_ms": 2000, "request_timeout_ms": 5000
+  },
+  "client_profiles": {
+    "demo": { "gateway_sockets": 2, "issuer_sockets": 2, "inventory_max": 10 },
+    "security": { "gateway_sockets": 24, "issuer_sockets": 2, "inventory_max": 128 },
+    "benchmark": { "gateway_sockets": 100, "issuer_sockets": 4, "inventory_max": 16384 }
+  },
+  "states": ["FENCED", "PREPARED", "READY", "ENABLED", "CLOSING", "FAULTED"],
+  "faults": ["operator-stop", "test-cleanup", "unsafe-state", "lease-expired", "dependency-lost", "clock-unsafe", "process-exited", "control-lost", "configuration-mismatch"],
+  "scenario_ids": ["healthy-flow", "shared-egress", "voucher-policy", "malformed-token", "signature-and-key", "wrong-context", "sequential-replay", "concurrent-replay", "epoch-boundary", "admission-limits", "upstream-failure", "redis-failure", "restart-and-reset", "network-boundaries", "retention-audit", "stolen-unused-token", "clock-rollback", "performance"],
+  "suite_required_scenarios": {
+    "demo": ["healthy-flow", "shared-egress", "wrong-context", "sequential-replay", "concurrent-replay", "redis-failure", "restart-and-reset", "stolen-unused-token"],
+    "security": ["healthy-flow", "shared-egress", "voucher-policy", "malformed-token", "signature-and-key", "wrong-context", "sequential-replay", "concurrent-replay", "epoch-boundary", "admission-limits", "upstream-failure", "redis-failure", "restart-and-reset", "network-boundaries", "retention-audit", "stolen-unused-token", "clock-rollback"],
+    "benchmark": ["performance"]
+  },
+  "metrics": ["issuance_http_ms", "token_acquisition_ms", "verification_ms", "snapshot_rpc_ms", "claim_rpc_ms", "queue_wait_ms", "authorization_ms", "protected_response_ms"],
+  "histogram_bounds_ms": [0.1, 0.5, 1, 2, 5, 10, 25, 50, 100, 250, 500, 1000, 2000, 5000],
+  "gateway_results": {
+    "token-required": 401, "token-malformed": 400, "token-type-unsupported": 401,
+    "token-key-unknown": 401, "token-invalid": 401, "token-context-mismatch": 401,
+    "token-expired": 401, "token-already-redeemed": 401, "gateway-busy": 503,
+    "authorization-unavailable": 503, "authority-not-allowed": 421,
+    "resource-not-found": 404, "method-not-allowed": 405, "request-malformed": 400
+  }
+}

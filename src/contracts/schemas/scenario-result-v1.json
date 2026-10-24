@@ -1,0 +1,192 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://tokenforge.invalid/contracts/scenario-result-v1.json",
+  "type": "object",
+  "properties": {
+    "scenario_id": {
+      "enum": [
+        "healthy-flow",
+        "shared-egress",
+        "voucher-policy",
+        "malformed-token",
+        "signature-and-key",
+        "wrong-context",
+        "sequential-replay",
+        "concurrent-replay",
+        "epoch-boundary",
+        "admission-limits",
+        "upstream-failure",
+        "redis-failure",
+        "restart-and-reset",
+        "network-boundaries",
+        "retention-audit",
+        "stolen-unused-token",
+        "clock-rollback",
+        "performance"
+      ]
+    },
+    "status": {
+      "enum": [
+        "PASS",
+        "FAIL",
+        "INCONCLUSIVE"
+      ]
+    },
+    "expected": {
+      "enum": [
+        "accepted",
+        "rejected",
+        "single-spend",
+        "fail-closed",
+        "recovered",
+        "bearer-limit",
+        "bounded",
+        "measured",
+        "isolated",
+        "retention",
+        "observed-clock-regression"
+      ]
+    },
+    "counters": {
+      "type": "object",
+      "properties": {
+        "verification_attempts": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "claims_successful": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "replays_rejected": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "requests_rejected": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "queue_rejected": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "transport_failures": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "protected_requests_received": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "generation_mismatches": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "resources_served": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "issuance_successes": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "issuance_failures": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "observations": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        }
+      },
+      "required": [],
+      "additionalProperties": false
+    },
+    "origin_counts_available": {
+      "type": "boolean"
+    },
+    "worker_verification_attempts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "worker_index": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "attempts": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": [
+          "worker_index",
+          "attempts"
+        ],
+        "additionalProperties": false
+      },
+      "minItems": 0,
+      "maxItems": 2
+    },
+    "failure_labels": {
+      "type": "array",
+      "items": {
+        "enum": [
+          "token-required",
+          "token-malformed",
+          "token-type-unsupported",
+          "token-key-unknown",
+          "token-invalid",
+          "token-context-mismatch",
+          "token-expired",
+          "token-already-redeemed",
+          "gateway-busy",
+          "authorization-unavailable",
+          "authority-not-allowed",
+          "resource-not-found",
+          "method-not-allowed",
+          "request-malformed",
+          "operator-stop",
+          "test-cleanup",
+          "unsafe-state",
+          "lease-expired",
+          "dependency-lost",
+          "clock-unsafe",
+          "process-exited",
+          "control-lost",
+          "configuration-mismatch",
+          "missing-evidence",
+          "assertion-failed",
+          "overload",
+          "transport-failure"
+        ]
+      },
+      "minItems": 0,
+      "maxItems": 32
+    }
+  },
+  "required": [
+    "scenario_id",
+    "status",
+    "expected",
+    "counters",
+    "origin_counts_available",
+    "worker_verification_attempts",
+    "failure_labels"
+  ],
+  "additionalProperties": false
+}

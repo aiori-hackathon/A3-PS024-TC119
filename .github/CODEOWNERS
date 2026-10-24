@@ -1,0 +1,30 @@
+# G0 candidate. User will fill Mihir's verified login; no account is guessed.
+# Do not uncomment the M paths until replacing MIHIR_LOGIN below.
+# No catch-all rule: missing M entries must not silently assign his paths to K.
+/AGENTS.md @krishsonpal
+/README.md @krishsonpal
+/IMPLEMENTATION_PLAN.md @krishsonpal
+/IMPLEMENTATION_REVIEW.md @krishsonpal
+/KRISH_AGENT_HANDOFF.md @krishsonpal
+/MIHIR_AGENT_HANDOFF.md @krishsonpal
+/package.json @krishsonpal
+/.gitignore @krishsonpal
+/.dockerignore @krishsonpal
+/.editorconfig @krishsonpal
+/.gitattributes @krishsonpal
+/.node-version @krishsonpal
+/.npmrc @krishsonpal
+/PS-024.pdf @krishsonpal
+/.github/ @krishsonpal
+/config/ @krishsonpal
+/scripts/ @krishsonpal
+/src/contracts/ @krishsonpal
+/src/services/gateway/ @krishsonpal
+/src/security/ @krishsonpal
+/docs/implementation/ @krishsonpal
+/docs/security/ @krishsonpal
+# /src/services/lab/ @MIHIR_LOGIN
+# /infra/ @MIHIR_LOGIN
+# /docs/lab/ @MIHIR_LOGIN
+# /docs/demo/ @MIHIR_LOGIN
+# /docs/submission/ @MIHIR_LOGIN

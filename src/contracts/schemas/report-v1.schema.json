@@ -1,0 +1,590 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://tokenforge.invalid/contracts/report-v1.schema.json",
+  "type": "object",
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "contract_version": {
+      "const": "TF-PS024-1.0.0"
+    },
+    "suite_kind": {
+      "enum": [
+        "demo",
+        "security",
+        "benchmark"
+      ]
+    },
+    "suite_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 32,
+      "pattern": "^[0-9a-f]{32}$"
+    },
+    "created_at_utc": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 20,
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}Z$"
+    },
+    "software": {
+      "type": "object",
+      "properties": {
+        "git_commit": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 40,
+          "pattern": "^[0-9a-f]{40}$"
+        },
+        "dirty": {
+          "type": "boolean"
+        },
+        "node_version": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 40
+        },
+        "dependencies": {
+          "type": "object",
+          "properties": {
+            "privacypass": {
+              "const": "0.9.0"
+            },
+            "blindrsa": {
+              "const": "0.4.5"
+            }
+          },
+          "required": [
+            "privacypass",
+            "blindrsa"
+          ],
+          "additionalProperties": false
+        },
+        "image_digests": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^sha256:[0-9a-f]{64}$"
+          },
+          "minItems": 0,
+          "maxItems": 16
+        }
+      },
+      "required": [
+        "git_commit",
+        "dirty",
+        "node_version",
+        "dependencies",
+        "image_digests"
+      ],
+      "additionalProperties": false
+    },
+    "environment": {
+      "type": "object",
+      "properties": {
+        "os": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "cpu_model": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "cpu_count": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1024
+        },
+        "memory_limit_bytes": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "docker_version": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "topology": {
+          "const": "single-host-private"
+        }
+      },
+      "required": [
+        "os",
+        "cpu_model",
+        "cpu_count",
+        "memory_limit_bytes",
+        "docker_version",
+        "topology"
+      ],
+      "additionalProperties": false
+    },
+    "runs": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "run_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 32,
+            "pattern": "^[0-9a-f]{32}$"
+          },
+          "config_digest": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64,
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "token_key_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64,
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "gateway_profile": {
+            "enum": [
+              "B0",
+              "B1"
+            ]
+          },
+          "client_profile": {
+            "enum": [
+              "demo",
+              "security",
+              "benchmark"
+            ]
+          },
+          "origin_incarnation": {
+            "oneOf": [
+              {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 32,
+                "pattern": "^[0-9a-f]{32}$"
+              },
+              {
+                "const": null
+              }
+            ]
+          },
+          "scenario_results": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "scenario_id": {
+                  "enum": [
+                    "healthy-flow",
+                    "shared-egress",
+                    "voucher-policy",
+                    "malformed-token",
+                    "signature-and-key",
+                    "wrong-context",
+                    "sequential-replay",
+                    "concurrent-replay",
+                    "epoch-boundary",
+                    "admission-limits",
+                    "upstream-failure",
+                    "redis-failure",
+                    "restart-and-reset",
+                    "network-boundaries",
+                    "retention-audit",
+                    "stolen-unused-token",
+                    "clock-rollback",
+                    "performance"
+                  ]
+                },
+                "status": {
+                  "enum": [
+                    "PASS",
+                    "FAIL",
+                    "INCONCLUSIVE"
+                  ]
+                },
+                "expected": {
+                  "enum": [
+                    "accepted",
+                    "rejected",
+                    "single-spend",
+                    "fail-closed",
+                    "recovered",
+                    "bearer-limit",
+                    "bounded",
+                    "measured",
+                    "isolated",
+                    "retention",
+                    "observed-clock-regression"
+                  ]
+                },
+                "counters": {
+                  "type": "object",
+                  "properties": {
+                    "verification_attempts": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    },
+                    "claims_successful": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    },
+                    "replays_rejected": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    },
+                    "requests_rejected": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    },
+                    "queue_rejected": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    },
+                    "transport_failures": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    },
+                    "protected_requests_received": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    },
+                    "generation_mismatches": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    },
+                    "resources_served": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    },
+                    "issuance_successes": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    },
+                    "issuance_failures": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    },
+                    "observations": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    }
+                  },
+                  "required": [],
+                  "additionalProperties": false
+                },
+                "origin_counts_available": {
+                  "type": "boolean"
+                },
+                "worker_verification_attempts": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "worker_index": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 1
+                      },
+                      "attempts": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      }
+                    },
+                    "required": [
+                      "worker_index",
+                      "attempts"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "minItems": 0,
+                  "maxItems": 2
+                },
+                "failure_labels": {
+                  "type": "array",
+                  "items": {
+                    "enum": [
+                      "token-required",
+                      "token-malformed",
+                      "token-type-unsupported",
+                      "token-key-unknown",
+                      "token-invalid",
+                      "token-context-mismatch",
+                      "token-expired",
+                      "token-already-redeemed",
+                      "gateway-busy",
+                      "authorization-unavailable",
+                      "authority-not-allowed",
+                      "resource-not-found",
+                      "method-not-allowed",
+                      "request-malformed",
+                      "operator-stop",
+                      "test-cleanup",
+                      "unsafe-state",
+                      "lease-expired",
+                      "dependency-lost",
+                      "clock-unsafe",
+                      "process-exited",
+                      "control-lost",
+                      "configuration-mismatch",
+                      "missing-evidence",
+                      "assertion-failed",
+                      "overload",
+                      "transport-failure"
+                    ]
+                  },
+                  "minItems": 0,
+                  "maxItems": 32
+                }
+              },
+              "required": [
+                "scenario_id",
+                "status",
+                "expected",
+                "counters",
+                "origin_counts_available",
+                "worker_verification_attempts",
+                "failure_labels"
+              ],
+              "additionalProperties": false
+            },
+            "minItems": 0,
+            "maxItems": 128
+          },
+          "measurements": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "metric": {
+                  "enum": [
+                    "issuance_http_ms",
+                    "token_acquisition_ms",
+                    "verification_ms",
+                    "snapshot_rpc_ms",
+                    "claim_rpc_ms",
+                    "queue_wait_ms",
+                    "authorization_ms",
+                    "protected_response_ms"
+                  ]
+                },
+                "count": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "failures": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "elapsed_ms": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "p50_ms": {
+                  "oneOf": [
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    },
+                    {
+                      "const": null
+                    }
+                  ]
+                },
+                "p95_ms": {
+                  "oneOf": [
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    },
+                    {
+                      "const": null
+                    }
+                  ]
+                },
+                "p99_ms": {
+                  "oneOf": [
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    },
+                    {
+                      "const": null
+                    }
+                  ]
+                },
+                "histogram_counts": {
+                  "type": "array",
+                  "items": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "minItems": 15,
+                  "maxItems": 15
+                }
+              },
+              "required": [
+                "metric",
+                "count",
+                "failures",
+                "elapsed_ms",
+                "p50_ms",
+                "p95_ms",
+                "p99_ms",
+                "histogram_counts"
+              ],
+              "additionalProperties": false
+            },
+            "minItems": 0,
+            "maxItems": 16
+          },
+          "state_transitions": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "state": {
+                  "enum": [
+                    "FENCED",
+                    "PREPARED",
+                    "READY",
+                    "ENABLED",
+                    "CLOSING",
+                    "FAULTED"
+                  ]
+                },
+                "reason": {
+                  "oneOf": [
+                    {
+                      "enum": [
+                        "operator-stop",
+                        "test-cleanup",
+                        "unsafe-state",
+                        "lease-expired",
+                        "dependency-lost",
+                        "clock-unsafe",
+                        "process-exited",
+                        "control-lost",
+                        "configuration-mismatch"
+                      ]
+                    },
+                    {
+                      "const": "startup"
+                    },
+                    {
+                      "const": "ready"
+                    },
+                    {
+                      "const": "enabled"
+                    },
+                    {
+                      "const": "completed"
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "state",
+                "reason"
+              ],
+              "additionalProperties": false
+            },
+            "minItems": 0,
+            "maxItems": 256
+          },
+          "retention_checks": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "check_id": {
+                  "enum": [
+                    "app-sinks",
+                    "proxy-sinks",
+                    "redis-diagnostics",
+                    "mounts",
+                    "runtime-files",
+                    "report-allowlist",
+                    "host-boundary"
+                  ]
+                },
+                "status": {
+                  "enum": [
+                    "PASS",
+                    "FAIL",
+                    "INCONCLUSIVE"
+                  ]
+                }
+              },
+              "required": [
+                "check_id",
+                "status"
+              ],
+              "additionalProperties": false
+            },
+            "minItems": 0,
+            "maxItems": 32
+          }
+        },
+        "required": [
+          "run_id",
+          "config_digest",
+          "token_key_id",
+          "gateway_profile",
+          "client_profile",
+          "origin_incarnation",
+          "scenario_results",
+          "measurements",
+          "state_transitions",
+          "retention_checks"
+        ],
+        "additionalProperties": false
+      },
+      "minItems": 0,
+      "maxItems": 128
+    },
+    "overall_status": {
+      "enum": [
+        "PASS",
+        "FAIL",
+        "INCONCLUSIVE"
+      ]
+    }
+  },
+  "required": [
+    "schema_version",
+    "contract_version",
+    "suite_kind",
+    "suite_id",
+    "created_at_utc",
+    "software",
+    "environment",
+    "runs",
+    "overall_status"
+  ],
+  "additionalProperties": false
+}

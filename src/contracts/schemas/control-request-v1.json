@@ -1,0 +1,2644 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://tokenforge.invalid/contracts/control-request-v1.json",
+  "oneOf": [
+    {
+      "type": "object",
+      "properties": {
+        "version": {
+          "const": 1
+        },
+        "request_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 32,
+          "pattern": "^[0-9a-f]{32}$"
+        },
+        "command": {
+          "const": "STATUS"
+        },
+        "run_id": {
+          "oneOf": [
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 32,
+              "pattern": "^[0-9a-f]{32}$"
+            },
+            {
+              "const": null
+            }
+          ]
+        },
+        "config_digest": {
+          "oneOf": [
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64,
+              "pattern": "^[0-9a-f]{64}$"
+            },
+            {
+              "const": null
+            }
+          ]
+        },
+        "target_incarnation": {
+          "oneOf": [
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 32,
+              "pattern": "^[0-9a-f]{32}$"
+            },
+            {
+              "const": null
+            }
+          ]
+        },
+        "payload": {
+          "type": "object",
+          "properties": {},
+          "required": [],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "version",
+        "request_id",
+        "command",
+        "run_id",
+        "config_digest",
+        "target_incarnation",
+        "payload"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "version": {
+          "const": 1
+        },
+        "request_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 32,
+          "pattern": "^[0-9a-f]{32}$"
+        },
+        "command": {
+          "const": "FENCE"
+        },
+        "run_id": {
+          "oneOf": [
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 32,
+              "pattern": "^[0-9a-f]{32}$"
+            },
+            {
+              "const": null
+            }
+          ]
+        },
+        "config_digest": {
+          "oneOf": [
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64,
+              "pattern": "^[0-9a-f]{64}$"
+            },
+            {
+              "const": null
+            }
+          ]
+        },
+        "target_incarnation": {
+          "oneOf": [
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 32,
+              "pattern": "^[0-9a-f]{32}$"
+            },
+            {
+              "const": null
+            }
+          ]
+        },
+        "payload": {
+          "type": "object",
+          "properties": {
+            "reason": {
+              "enum": [
+                "operator-stop",
+                "test-cleanup",
+                "unsafe-state",
+                "lease-expired",
+                "dependency-lost",
+                "clock-unsafe",
+                "process-exited",
+                "control-lost",
+                "configuration-mismatch"
+              ]
+            }
+          },
+          "required": [
+            "reason"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "version",
+        "request_id",
+        "command",
+        "run_id",
+        "config_digest",
+        "target_incarnation",
+        "payload"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "version": {
+          "const": 1
+        },
+        "request_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 32,
+          "pattern": "^[0-9a-f]{32}$"
+        },
+        "command": {
+          "const": "CREATE_ISSUER_KEY"
+        },
+        "run_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 32,
+          "pattern": "^[0-9a-f]{32}$"
+        },
+        "config_digest": {
+          "const": null
+        },
+        "target_incarnation": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 32,
+          "pattern": "^[0-9a-f]{32}$"
+        },
+        "payload": {
+          "type": "object",
+          "properties": {},
+          "required": [],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "version",
+        "request_id",
+        "command",
+        "run_id",
+        "config_digest",
+        "target_incarnation",
+        "payload"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "version": {
+          "const": 1
+        },
+        "request_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 32,
+          "pattern": "^[0-9a-f]{32}$"
+        },
+        "command": {
+          "const": "PREPARE_RUN"
+        },
+        "run_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 32,
+          "pattern": "^[0-9a-f]{32}$"
+        },
+        "config_digest": {
+          "const": null
+        },
+        "target_incarnation": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 32,
+          "pattern": "^[0-9a-f]{32}$"
+        },
+        "payload": {
+          "type": "object",
+          "properties": {
+            "manifest": {
+              "oneOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "schema_version": {
+                      "const": 1
+                    },
+                    "contract_version": {
+                      "const": "TF-PS024-1.0.0"
+                    },
+                    "policy_version": {
+                      "const": 1
+                    },
+                    "run_id": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 32,
+                      "pattern": "^[0-9a-f]{32}$"
+                    },
+                    "run_start_ms": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 9007199254110991
+                    },
+                    "epoch_ms": {
+                      "const": 600000
+                    },
+                    "guard_ms": {
+                      "const": 30000
+                    },
+                    "token_type": {
+                      "const": 2
+                    },
+                    "token_key_id": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 64,
+                      "pattern": "^[0-9a-f]{64}$"
+                    },
+                    "token_key_spki_b64url": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 1024,
+                      "pattern": "^[A-Za-z0-9_-]+={0,2}$"
+                    },
+                    "issuer_name": {
+                      "const": "issuer.lab.test"
+                    },
+                    "origin_name": {
+                      "const": "origin.lab.test"
+                    },
+                    "resource_scope": {
+                      "const": "GET /resource"
+                    },
+                    "issuer_request_uri": {
+                      "const": "https://issuer.lab.test/issue"
+                    },
+                    "snapshot_script_sha1": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 40,
+                      "pattern": "^[0-9a-f]{40}$"
+                    },
+                    "claim_script_sha1": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 40,
+                      "pattern": "^[0-9a-f]{40}$"
+                    },
+                    "gateway_profile": {
+                      "const": "B0"
+                    },
+                    "client_profile": {
+                      "const": "demo"
+                    },
+                    "inventory_total": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 10
+                    },
+                    "endpoints": {
+                      "type": "object",
+                      "properties": {
+                        "issuer_https": {
+                          "const": "https://issuer.lab.test:443"
+                        },
+                        "gateway_https": {
+                          "const": "https://origin.lab.test:443"
+                        },
+                        "origin_http": {
+                          "const": "http://protected-origin:8080/resource"
+                        },
+                        "redis_host": {
+                          "const": "redis"
+                        },
+                        "redis_port": {
+                          "const": 6379
+                        },
+                        "proxy_http": {
+                          "const": "http://proxy:8888"
+                        }
+                      },
+                      "required": [
+                        "issuer_https",
+                        "gateway_https",
+                        "origin_http",
+                        "redis_host",
+                        "redis_port",
+                        "proxy_http"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "limits": {
+                      "type": "object",
+                      "properties": {
+                        "gateway": {
+                          "type": "object",
+                          "properties": {
+                            "queue_depth_per_worker": {
+                              "const": 16
+                            },
+                            "queue_wait_ms": {
+                              "const": 100
+                            },
+                            "sockets_per_worker": {
+                              "const": 64
+                            },
+                            "headers_max_bytes": {
+                              "const": 8192
+                            },
+                            "headers_max_count": {
+                              "const": 32
+                            },
+                            "tls_header_timeout_ms": {
+                              "const": 2000
+                            },
+                            "request_timeout_ms": {
+                              "const": 5000
+                            },
+                            "redis_connect_timeout_ms": {
+                              "const": 1000
+                            },
+                            "redis_command_timeout_ms": {
+                              "const": 250
+                            },
+                            "origin_timeout_ms": {
+                              "const": 2000
+                            },
+                            "origin_free_idle_ms": {
+                              "const": 15000
+                            },
+                            "origin_keepalive_ms": {
+                              "const": 20000
+                            },
+                            "origin_body_max_bytes": {
+                              "const": 16384
+                            },
+                            "controller_heartbeat_ms": {
+                              "const": 1000
+                            },
+                            "controller_lease_ms": {
+                              "const": 3000
+                            },
+                            "workers": {
+                              "const": 1
+                            },
+                            "active_flows_per_worker": {
+                              "const": 1
+                            },
+                            "redis_connections_per_worker": {
+                              "const": 1
+                            },
+                            "origin_sockets_per_worker": {
+                              "const": 1
+                            }
+                          },
+                          "required": [
+                            "queue_depth_per_worker",
+                            "queue_wait_ms",
+                            "sockets_per_worker",
+                            "headers_max_bytes",
+                            "headers_max_count",
+                            "tls_header_timeout_ms",
+                            "request_timeout_ms",
+                            "redis_connect_timeout_ms",
+                            "redis_command_timeout_ms",
+                            "origin_timeout_ms",
+                            "origin_free_idle_ms",
+                            "origin_keepalive_ms",
+                            "origin_body_max_bytes",
+                            "controller_heartbeat_ms",
+                            "controller_lease_ms",
+                            "workers",
+                            "active_flows_per_worker",
+                            "redis_connections_per_worker",
+                            "origin_sockets_per_worker"
+                          ],
+                          "additionalProperties": false
+                        },
+                        "issuer": {
+                          "type": "object",
+                          "properties": {
+                            "active_signings": {
+                              "const": 2
+                            },
+                            "queue_depth": {
+                              "const": 16
+                            },
+                            "queue_wait_ms": {
+                              "const": 100
+                            },
+                            "sockets": {
+                              "const": 32
+                            },
+                            "headers_max_bytes": {
+                              "const": 8192
+                            },
+                            "headers_max_count": {
+                              "const": 32
+                            },
+                            "body_max_bytes": {
+                              "const": 4096
+                            },
+                            "valid_request_bytes": {
+                              "const": 259
+                            },
+                            "tls_header_timeout_ms": {
+                              "const": 2000
+                            },
+                            "request_timeout_ms": {
+                              "const": 5000
+                            }
+                          },
+                          "required": [
+                            "active_signings",
+                            "queue_depth",
+                            "queue_wait_ms",
+                            "sockets",
+                            "headers_max_bytes",
+                            "headers_max_count",
+                            "body_max_bytes",
+                            "valid_request_bytes",
+                            "tls_header_timeout_ms",
+                            "request_timeout_ms"
+                          ],
+                          "additionalProperties": false
+                        },
+                        "client": {
+                          "type": "object",
+                          "properties": {
+                            "gateway_sockets": {
+                              "const": 2
+                            },
+                            "issuer_sockets": {
+                              "const": 2
+                            },
+                            "inventory_max": {
+                              "const": 10
+                            }
+                          },
+                          "required": [
+                            "gateway_sockets",
+                            "issuer_sockets",
+                            "inventory_max"
+                          ],
+                          "additionalProperties": false
+                        },
+                        "control_message_max_bytes": {
+                          "const": 65536
+                        },
+                        "provision_batch_max": {
+                          "const": 128
+                        }
+                      },
+                      "required": [
+                        "gateway",
+                        "issuer",
+                        "client",
+                        "control_message_max_bytes",
+                        "provision_batch_max"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": [
+                    "schema_version",
+                    "contract_version",
+                    "policy_version",
+                    "run_id",
+                    "run_start_ms",
+                    "epoch_ms",
+                    "guard_ms",
+                    "token_type",
+                    "token_key_id",
+                    "token_key_spki_b64url",
+                    "issuer_name",
+                    "origin_name",
+                    "resource_scope",
+                    "issuer_request_uri",
+                    "snapshot_script_sha1",
+                    "claim_script_sha1",
+                    "gateway_profile",
+                    "client_profile",
+                    "inventory_total",
+                    "endpoints",
+                    "limits"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "schema_version": {
+                      "const": 1
+                    },
+                    "contract_version": {
+                      "const": "TF-PS024-1.0.0"
+                    },
+                    "policy_version": {
+                      "const": 1
+                    },
+                    "run_id": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 32,
+                      "pattern": "^[0-9a-f]{32}$"
+                    },
+                    "run_start_ms": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 9007199254110991
+                    },
+                    "epoch_ms": {
+                      "const": 600000
+                    },
+                    "guard_ms": {
+                      "const": 30000
+                    },
+                    "token_type": {
+                      "const": 2
+                    },
+                    "token_key_id": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 64,
+                      "pattern": "^[0-9a-f]{64}$"
+                    },
+                    "token_key_spki_b64url": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 1024,
+                      "pattern": "^[A-Za-z0-9_-]+={0,2}$"
+                    },
+                    "issuer_name": {
+                      "const": "issuer.lab.test"
+                    },
+                    "origin_name": {
+                      "const": "origin.lab.test"
+                    },
+                    "resource_scope": {
+                      "const": "GET /resource"
+                    },
+                    "issuer_request_uri": {
+                      "const": "https://issuer.lab.test/issue"
+                    },
+                    "snapshot_script_sha1": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 40,
+                      "pattern": "^[0-9a-f]{40}$"
+                    },
+                    "claim_script_sha1": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 40,
+                      "pattern": "^[0-9a-f]{40}$"
+                    },
+                    "gateway_profile": {
+                      "const": "B0"
+                    },
+                    "client_profile": {
+                      "const": "security"
+                    },
+                    "inventory_total": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 128
+                    },
+                    "endpoints": {
+                      "type": "object",
+                      "properties": {
+                        "issuer_https": {
+                          "const": "https://issuer.lab.test:443"
+                        },
+                        "gateway_https": {
+                          "const": "https://origin.lab.test:443"
+                        },
+                        "origin_http": {
+                          "const": "http://protected-origin:8080/resource"
+                        },
+                        "redis_host": {
+                          "const": "redis"
+                        },
+                        "redis_port": {
+                          "const": 6379
+                        },
+                        "proxy_http": {
+                          "const": "http://proxy:8888"
+                        }
+                      },
+                      "required": [
+                        "issuer_https",
+                        "gateway_https",
+                        "origin_http",
+                        "redis_host",
+                        "redis_port",
+                        "proxy_http"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "limits": {
+                      "type": "object",
+                      "properties": {
+                        "gateway": {
+                          "type": "object",
+                          "properties": {
+                            "queue_depth_per_worker": {
+                              "const": 16
+                            },
+                            "queue_wait_ms": {
+                              "const": 100
+                            },
+                            "sockets_per_worker": {
+                              "const": 64
+                            },
+                            "headers_max_bytes": {
+                              "const": 8192
+                            },
+                            "headers_max_count": {
+                              "const": 32
+                            },
+                            "tls_header_timeout_ms": {
+                              "const": 2000
+                            },
+                            "request_timeout_ms": {
+                              "const": 5000
+                            },
+                            "redis_connect_timeout_ms": {
+                              "const": 1000
+                            },
+                            "redis_command_timeout_ms": {
+                              "const": 250
+                            },
+                            "origin_timeout_ms": {
+                              "const": 2000
+                            },
+                            "origin_free_idle_ms": {
+                              "const": 15000
+                            },
+                            "origin_keepalive_ms": {
+                              "const": 20000
+                            },
+                            "origin_body_max_bytes": {
+                              "const": 16384
+                            },
+                            "controller_heartbeat_ms": {
+                              "const": 1000
+                            },
+                            "controller_lease_ms": {
+                              "const": 3000
+                            },
+                            "workers": {
+                              "const": 1
+                            },
+                            "active_flows_per_worker": {
+                              "const": 1
+                            },
+                            "redis_connections_per_worker": {
+                              "const": 1
+                            },
+                            "origin_sockets_per_worker": {
+                              "const": 1
+                            }
+                          },
+                          "required": [
+                            "queue_depth_per_worker",
+                            "queue_wait_ms",
+                            "sockets_per_worker",
+                            "headers_max_bytes",
+                            "headers_max_count",
+                            "tls_header_timeout_ms",
+                            "request_timeout_ms",
+                            "redis_connect_timeout_ms",
+                            "redis_command_timeout_ms",
+                            "origin_timeout_ms",
+                            "origin_free_idle_ms",
+                            "origin_keepalive_ms",
+                            "origin_body_max_bytes",
+                            "controller_heartbeat_ms",
+                            "controller_lease_ms",
+                            "workers",
+                            "active_flows_per_worker",
+                            "redis_connections_per_worker",
+                            "origin_sockets_per_worker"
+                          ],
+                          "additionalProperties": false
+                        },
+                        "issuer": {
+                          "type": "object",
+                          "properties": {
+                            "active_signings": {
+                              "const": 2
+                            },
+                            "queue_depth": {
+                              "const": 16
+                            },
+                            "queue_wait_ms": {
+                              "const": 100
+                            },
+                            "sockets": {
+                              "const": 32
+                            },
+                            "headers_max_bytes": {
+                              "const": 8192
+                            },
+                            "headers_max_count": {
+                              "const": 32
+                            },
+                            "body_max_bytes": {
+                              "const": 4096
+                            },
+                            "valid_request_bytes": {
+                              "const": 259
+                            },
+                            "tls_header_timeout_ms": {
+                              "const": 2000
+                            },
+                            "request_timeout_ms": {
+                              "const": 5000
+                            }
+                          },
+                          "required": [
+                            "active_signings",
+                            "queue_depth",
+                            "queue_wait_ms",
+                            "sockets",
+                            "headers_max_bytes",
+                            "headers_max_count",
+                            "body_max_bytes",
+                            "valid_request_bytes",
+                            "tls_header_timeout_ms",
+                            "request_timeout_ms"
+                          ],
+                          "additionalProperties": false
+                        },
+                        "client": {
+                          "type": "object",
+                          "properties": {
+                            "gateway_sockets": {
+                              "const": 24
+                            },
+                            "issuer_sockets": {
+                              "const": 2
+                            },
+                            "inventory_max": {
+                              "const": 128
+                            }
+                          },
+                          "required": [
+                            "gateway_sockets",
+                            "issuer_sockets",
+                            "inventory_max"
+                          ],
+                          "additionalProperties": false
+                        },
+                        "control_message_max_bytes": {
+                          "const": 65536
+                        },
+                        "provision_batch_max": {
+                          "const": 128
+                        }
+                      },
+                      "required": [
+                        "gateway",
+                        "issuer",
+                        "client",
+                        "control_message_max_bytes",
+                        "provision_batch_max"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": [
+                    "schema_version",
+                    "contract_version",
+                    "policy_version",
+                    "run_id",
+                    "run_start_ms",
+                    "epoch_ms",
+                    "guard_ms",
+                    "token_type",
+                    "token_key_id",
+                    "token_key_spki_b64url",
+                    "issuer_name",
+                    "origin_name",
+                    "resource_scope",
+                    "issuer_request_uri",
+                    "snapshot_script_sha1",
+                    "claim_script_sha1",
+                    "gateway_profile",
+                    "client_profile",
+                    "inventory_total",
+                    "endpoints",
+                    "limits"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "schema_version": {
+                      "const": 1
+                    },
+                    "contract_version": {
+                      "const": "TF-PS024-1.0.0"
+                    },
+                    "policy_version": {
+                      "const": 1
+                    },
+                    "run_id": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 32,
+                      "pattern": "^[0-9a-f]{32}$"
+                    },
+                    "run_start_ms": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 9007199254110991
+                    },
+                    "epoch_ms": {
+                      "const": 600000
+                    },
+                    "guard_ms": {
+                      "const": 30000
+                    },
+                    "token_type": {
+                      "const": 2
+                    },
+                    "token_key_id": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 64,
+                      "pattern": "^[0-9a-f]{64}$"
+                    },
+                    "token_key_spki_b64url": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 1024,
+                      "pattern": "^[A-Za-z0-9_-]+={0,2}$"
+                    },
+                    "issuer_name": {
+                      "const": "issuer.lab.test"
+                    },
+                    "origin_name": {
+                      "const": "origin.lab.test"
+                    },
+                    "resource_scope": {
+                      "const": "GET /resource"
+                    },
+                    "issuer_request_uri": {
+                      "const": "https://issuer.lab.test/issue"
+                    },
+                    "snapshot_script_sha1": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 40,
+                      "pattern": "^[0-9a-f]{40}$"
+                    },
+                    "claim_script_sha1": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 40,
+                      "pattern": "^[0-9a-f]{40}$"
+                    },
+                    "gateway_profile": {
+                      "const": "B0"
+                    },
+                    "client_profile": {
+                      "const": "benchmark"
+                    },
+                    "inventory_total": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 16384
+                    },
+                    "endpoints": {
+                      "type": "object",
+                      "properties": {
+                        "issuer_https": {
+                          "const": "https://issuer.lab.test:443"
+                        },
+                        "gateway_https": {
+                          "const": "https://origin.lab.test:443"
+                        },
+                        "origin_http": {
+                          "const": "http://protected-origin:8080/resource"
+                        },
+                        "redis_host": {
+                          "const": "redis"
+                        },
+                        "redis_port": {
+                          "const": 6379
+                        },
+                        "proxy_http": {
+                          "const": "http://proxy:8888"
+                        }
+                      },
+                      "required": [
+                        "issuer_https",
+                        "gateway_https",
+                        "origin_http",
+                        "redis_host",
+                        "redis_port",
+                        "proxy_http"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "limits": {
+                      "type": "object",
+                      "properties": {
+                        "gateway": {
+                          "type": "object",
+                          "properties": {
+                            "queue_depth_per_worker": {
+                              "const": 16
+                            },
+                            "queue_wait_ms": {
+                              "const": 100
+                            },
+                            "sockets_per_worker": {
+                              "const": 64
+                            },
+                            "headers_max_bytes": {
+                              "const": 8192
+                            },
+                            "headers_max_count": {
+                              "const": 32
+                            },
+                            "tls_header_timeout_ms": {
+                              "const": 2000
+                            },
+                            "request_timeout_ms": {
+                              "const": 5000
+                            },
+                            "redis_connect_timeout_ms": {
+                              "const": 1000
+                            },
+                            "redis_command_timeout_ms": {
+                              "const": 250
+                            },
+                            "origin_timeout_ms": {
+                              "const": 2000
+                            },
+                            "origin_free_idle_ms": {
+                              "const": 15000
+                            },
+                            "origin_keepalive_ms": {
+                              "const": 20000
+                            },
+                            "origin_body_max_bytes": {
+                              "const": 16384
+                            },
+                            "controller_heartbeat_ms": {
+                              "const": 1000
+                            },
+                            "controller_lease_ms": {
+                              "const": 3000
+                            },
+                            "workers": {
+                              "const": 1
+                            },
+                            "active_flows_per_worker": {
+                              "const": 1
+                            },
+                            "redis_connections_per_worker": {
+                              "const": 1
+                            },
+                            "origin_sockets_per_worker": {
+                              "const": 1
+                            }
+                          },
+                          "required": [
+                            "queue_depth_per_worker",
+                            "queue_wait_ms",
+                            "sockets_per_worker",
+                            "headers_max_bytes",
+                            "headers_max_count",
+                            "tls_header_timeout_ms",
+                            "request_timeout_ms",
+                            "redis_connect_timeout_ms",
+                            "redis_command_timeout_ms",
+                            "origin_timeout_ms",
+                            "origin_free_idle_ms",
+                            "origin_keepalive_ms",
+                            "origin_body_max_bytes",
+                            "controller_heartbeat_ms",
+                            "controller_lease_ms",
+                            "workers",
+                            "active_flows_per_worker",
+                            "redis_connections_per_worker",
+                            "origin_sockets_per_worker"
+                          ],
+                          "additionalProperties": false
+                        },
+                        "issuer": {
+                          "type": "object",
+                          "properties": {
+                            "active_signings": {
+                              "const": 2
+                            },
+                            "queue_depth": {
+                              "const": 16
+                            },
+                            "queue_wait_ms": {
+                              "const": 100
+                            },
+                            "sockets": {
+                              "const": 32
+                            },
+                            "headers_max_bytes": {
+                              "const": 8192
+                            },
+                            "headers_max_count": {
+                              "const": 32
+                            },
+                            "body_max_bytes": {
+                              "const": 4096
+                            },
+                            "valid_request_bytes": {
+                              "const": 259
+                            },
+                            "tls_header_timeout_ms": {
+                              "const": 2000
+                            },
+                            "request_timeout_ms": {
+                              "const": 5000
+                            }
+                          },
+                          "required": [
+                            "active_signings",
+                            "queue_depth",
+                            "queue_wait_ms",
+                            "sockets",
+                            "headers_max_bytes",
+                            "headers_max_count",
+                            "body_max_bytes",
+                            "valid_request_bytes",
+                            "tls_header_timeout_ms",
+                            "request_timeout_ms"
+                          ],
+                          "additionalProperties": false
+                        },
+                        "client": {
+                          "type": "object",
+                          "properties": {
+                            "gateway_sockets": {
+                              "const": 100
+                            },
+                            "issuer_sockets": {
+                              "const": 4
+                            },
+                            "inventory_max": {
+                              "const": 16384
+                            }
+                          },
+                          "required": [
+                            "gateway_sockets",
+                            "issuer_sockets",
+                            "inventory_max"
+                          ],
+                          "additionalProperties": false
+                        },
+                        "control_message_max_bytes": {
+                          "const": 65536
+                        },
+                        "provision_batch_max": {
+                          "const": 128
+                        }
+                      },
+                      "required": [
+                        "gateway",
+                        "issuer",
+                        "client",
+                        "control_message_max_bytes",
+                        "provision_batch_max"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": [
+                    "schema_version",
+                    "contract_version",
+                    "policy_version",
+                    "run_id",
+                    "run_start_ms",
+                    "epoch_ms",
+                    "guard_ms",
+                    "token_type",
+                    "token_key_id",
+                    "token_key_spki_b64url",
+                    "issuer_name",
+                    "origin_name",
+                    "resource_scope",
+                    "issuer_request_uri",
+                    "snapshot_script_sha1",
+                    "claim_script_sha1",
+                    "gateway_profile",
+                    "client_profile",
+                    "inventory_total",
+                    "endpoints",
+                    "limits"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "schema_version": {
+                      "const": 1
+                    },
+                    "contract_version": {
+                      "const": "TF-PS024-1.0.0"
+                    },
+                    "policy_version": {
+                      "const": 1
+                    },
+                    "run_id": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 32,
+                      "pattern": "^[0-9a-f]{32}$"
+                    },
+                    "run_start_ms": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 9007199254110991
+                    },
+                    "epoch_ms": {
+                      "const": 600000
+                    },
+                    "guard_ms": {
+                      "const": 30000
+                    },
+                    "token_type": {
+                      "const": 2
+                    },
+                    "token_key_id": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 64,
+                      "pattern": "^[0-9a-f]{64}$"
+                    },
+                    "token_key_spki_b64url": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 1024,
+                      "pattern": "^[A-Za-z0-9_-]+={0,2}$"
+                    },
+                    "issuer_name": {
+                      "const": "issuer.lab.test"
+                    },
+                    "origin_name": {
+                      "const": "origin.lab.test"
+                    },
+                    "resource_scope": {
+                      "const": "GET /resource"
+                    },
+                    "issuer_request_uri": {
+                      "const": "https://issuer.lab.test/issue"
+                    },
+                    "snapshot_script_sha1": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 40,
+                      "pattern": "^[0-9a-f]{40}$"
+                    },
+                    "claim_script_sha1": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 40,
+                      "pattern": "^[0-9a-f]{40}$"
+                    },
+                    "gateway_profile": {
+                      "const": "B1"
+                    },
+                    "client_profile": {
+                      "const": "demo"
+                    },
+                    "inventory_total": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 10
+                    },
+                    "endpoints": {
+                      "type": "object",
+                      "properties": {
+                        "issuer_https": {
+                          "const": "https://issuer.lab.test:443"
+                        },
+                        "gateway_https": {
+                          "const": "https://origin.lab.test:443"
+                        },
+                        "origin_http": {
+                          "const": "http://protected-origin:8080/resource"
+                        },
+                        "redis_host": {
+                          "const": "redis"
+                        },
+                        "redis_port": {
+                          "const": 6379
+                        },
+                        "proxy_http": {
+                          "const": "http://proxy:8888"
+                        }
+                      },
+                      "required": [
+                        "issuer_https",
+                        "gateway_https",
+                        "origin_http",
+                        "redis_host",
+                        "redis_port",
+                        "proxy_http"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "limits": {
+                      "type": "object",
+                      "properties": {
+                        "gateway": {
+                          "type": "object",
+                          "properties": {
+                            "queue_depth_per_worker": {
+                              "const": 16
+                            },
+                            "queue_wait_ms": {
+                              "const": 100
+                            },
+                            "sockets_per_worker": {
+                              "const": 64
+                            },
+                            "headers_max_bytes": {
+                              "const": 8192
+                            },
+                            "headers_max_count": {
+                              "const": 32
+                            },
+                            "tls_header_timeout_ms": {
+                              "const": 2000
+                            },
+                            "request_timeout_ms": {
+                              "const": 5000
+                            },
+                            "redis_connect_timeout_ms": {
+                              "const": 1000
+                            },
+                            "redis_command_timeout_ms": {
+                              "const": 250
+                            },
+                            "origin_timeout_ms": {
+                              "const": 2000
+                            },
+                            "origin_free_idle_ms": {
+                              "const": 15000
+                            },
+                            "origin_keepalive_ms": {
+                              "const": 20000
+                            },
+                            "origin_body_max_bytes": {
+                              "const": 16384
+                            },
+                            "controller_heartbeat_ms": {
+                              "const": 1000
+                            },
+                            "controller_lease_ms": {
+                              "const": 3000
+                            },
+                            "workers": {
+                              "const": 2
+                            },
+                            "active_flows_per_worker": {
+                              "const": 2
+                            },
+                            "redis_connections_per_worker": {
+                              "const": 2
+                            },
+                            "origin_sockets_per_worker": {
+                              "const": 2
+                            }
+                          },
+                          "required": [
+                            "queue_depth_per_worker",
+                            "queue_wait_ms",
+                            "sockets_per_worker",
+                            "headers_max_bytes",
+                            "headers_max_count",
+                            "tls_header_timeout_ms",
+                            "request_timeout_ms",
+                            "redis_connect_timeout_ms",
+                            "redis_command_timeout_ms",
+                            "origin_timeout_ms",
+                            "origin_free_idle_ms",
+                            "origin_keepalive_ms",
+                            "origin_body_max_bytes",
+                            "controller_heartbeat_ms",
+                            "controller_lease_ms",
+                            "workers",
+                            "active_flows_per_worker",
+                            "redis_connections_per_worker",
+                            "origin_sockets_per_worker"
+                          ],
+                          "additionalProperties": false
+                        },
+                        "issuer": {
+                          "type": "object",
+                          "properties": {
+                            "active_signings": {
+                              "const": 2
+                            },
+                            "queue_depth": {
+                              "const": 16
+                            },
+                            "queue_wait_ms": {
+                              "const": 100
+                            },
+                            "sockets": {
+                              "const": 32
+                            },
+                            "headers_max_bytes": {
+                              "const": 8192
+                            },
+                            "headers_max_count": {
+                              "const": 32
+                            },
+                            "body_max_bytes": {
+                              "const": 4096
+                            },
+                            "valid_request_bytes": {
+                              "const": 259
+                            },
+                            "tls_header_timeout_ms": {
+                              "const": 2000
+                            },
+                            "request_timeout_ms": {
+                              "const": 5000
+                            }
+                          },
+                          "required": [
+                            "active_signings",
+                            "queue_depth",
+                            "queue_wait_ms",
+                            "sockets",
+                            "headers_max_bytes",
+                            "headers_max_count",
+                            "body_max_bytes",
+                            "valid_request_bytes",
+                            "tls_header_timeout_ms",
+                            "request_timeout_ms"
+                          ],
+                          "additionalProperties": false
+                        },
+                        "client": {
+                          "type": "object",
+                          "properties": {
+                            "gateway_sockets": {
+                              "const": 2
+                            },
+                            "issuer_sockets": {
+                              "const": 2
+                            },
+                            "inventory_max": {
+                              "const": 10
+                            }
+                          },
+                          "required": [
+                            "gateway_sockets",
+                            "issuer_sockets",
+                            "inventory_max"
+                          ],
+                          "additionalProperties": false
+                        },
+                        "control_message_max_bytes": {
+                          "const": 65536
+                        },
+                        "provision_batch_max": {
+                          "const": 128
+                        }
+                      },
+                      "required": [
+                        "gateway",
+                        "issuer",
+                        "client",
+                        "control_message_max_bytes",
+                        "provision_batch_max"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": [
+                    "schema_version",
+                    "contract_version",
+                    "policy_version",
+                    "run_id",
+                    "run_start_ms",
+                    "epoch_ms",
+                    "guard_ms",
+                    "token_type",
+                    "token_key_id",
+                    "token_key_spki_b64url",
+                    "issuer_name",
+                    "origin_name",
+                    "resource_scope",
+                    "issuer_request_uri",
+                    "snapshot_script_sha1",
+                    "claim_script_sha1",
+                    "gateway_profile",
+                    "client_profile",
+                    "inventory_total",
+                    "endpoints",
+                    "limits"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "schema_version": {
+                      "const": 1
+                    },
+                    "contract_version": {
+                      "const": "TF-PS024-1.0.0"
+                    },
+                    "policy_version": {
+                      "const": 1
+                    },
+                    "run_id": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 32,
+                      "pattern": "^[0-9a-f]{32}$"
+                    },
+                    "run_start_ms": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 9007199254110991
+                    },
+                    "epoch_ms": {
+                      "const": 600000
+                    },
+                    "guard_ms": {
+                      "const": 30000
+                    },
+                    "token_type": {
+                      "const": 2
+                    },
+                    "token_key_id": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 64,
+                      "pattern": "^[0-9a-f]{64}$"
+                    },
+                    "token_key_spki_b64url": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 1024,
+                      "pattern": "^[A-Za-z0-9_-]+={0,2}$"
+                    },
+                    "issuer_name": {
+                      "const": "issuer.lab.test"
+                    },
+                    "origin_name": {
+                      "const": "origin.lab.test"
+                    },
+                    "resource_scope": {
+                      "const": "GET /resource"
+                    },
+                    "issuer_request_uri": {
+                      "const": "https://issuer.lab.test/issue"
+                    },
+                    "snapshot_script_sha1": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 40,
+                      "pattern": "^[0-9a-f]{40}$"
+                    },
+                    "claim_script_sha1": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 40,
+                      "pattern": "^[0-9a-f]{40}$"
+                    },
+                    "gateway_profile": {
+                      "const": "B1"
+                    },
+                    "client_profile": {
+                      "const": "security"
+                    },
+                    "inventory_total": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 128
+                    },
+                    "endpoints": {
+                      "type": "object",
+                      "properties": {
+                        "issuer_https": {
+                          "const": "https://issuer.lab.test:443"
+                        },
+                        "gateway_https": {
+                          "const": "https://origin.lab.test:443"
+                        },
+                        "origin_http": {
+                          "const": "http://protected-origin:8080/resource"
+                        },
+                        "redis_host": {
+                          "const": "redis"
+                        },
+                        "redis_port": {
+                          "const": 6379
+                        },
+                        "proxy_http": {
+                          "const": "http://proxy:8888"
+                        }
+                      },
+                      "required": [
+                        "issuer_https",
+                        "gateway_https",
+                        "origin_http",
+                        "redis_host",
+                        "redis_port",
+                        "proxy_http"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "limits": {
+                      "type": "object",
+                      "properties": {
+                        "gateway": {
+                          "type": "object",
+                          "properties": {
+                            "queue_depth_per_worker": {
+                              "const": 16
+                            },
+                            "queue_wait_ms": {
+                              "const": 100
+                            },
+                            "sockets_per_worker": {
+                              "const": 64
+                            },
+                            "headers_max_bytes": {
+                              "const": 8192
+                            },
+                            "headers_max_count": {
+                              "const": 32
+                            },
+                            "tls_header_timeout_ms": {
+                              "const": 2000
+                            },
+                            "request_timeout_ms": {
+                              "const": 5000
+                            },
+                            "redis_connect_timeout_ms": {
+                              "const": 1000
+                            },
+                            "redis_command_timeout_ms": {
+                              "const": 250
+                            },
+                            "origin_timeout_ms": {
+                              "const": 2000
+                            },
+                            "origin_free_idle_ms": {
+                              "const": 15000
+                            },
+                            "origin_keepalive_ms": {
+                              "const": 20000
+                            },
+                            "origin_body_max_bytes": {
+                              "const": 16384
+                            },
+                            "controller_heartbeat_ms": {
+                              "const": 1000
+                            },
+                            "controller_lease_ms": {
+                              "const": 3000
+                            },
+                            "workers": {
+                              "const": 2
+                            },
+                            "active_flows_per_worker": {
+                              "const": 2
+                            },
+                            "redis_connections_per_worker": {
+                              "const": 2
+                            },
+                            "origin_sockets_per_worker": {
+                              "const": 2
+                            }
+                          },
+                          "required": [
+                            "queue_depth_per_worker",
+                            "queue_wait_ms",
+                            "sockets_per_worker",
+                            "headers_max_bytes",
+                            "headers_max_count",
+                            "tls_header_timeout_ms",
+                            "request_timeout_ms",
+                            "redis_connect_timeout_ms",
+                            "redis_command_timeout_ms",
+                            "origin_timeout_ms",
+                            "origin_free_idle_ms",
+                            "origin_keepalive_ms",
+                            "origin_body_max_bytes",
+                            "controller_heartbeat_ms",
+                            "controller_lease_ms",
+                            "workers",
+                            "active_flows_per_worker",
+                            "redis_connections_per_worker",
+                            "origin_sockets_per_worker"
+                          ],
+                          "additionalProperties": false
+                        },
+                        "issuer": {
+                          "type": "object",
+                          "properties": {
+                            "active_signings": {
+                              "const": 2
+                            },
+                            "queue_depth": {
+                              "const": 16
+                            },
+                            "queue_wait_ms": {
+                              "const": 100
+                            },
+                            "sockets": {
+                              "const": 32
+                            },
+                            "headers_max_bytes": {
+                              "const": 8192
+                            },
+                            "headers_max_count": {
+                              "const": 32
+                            },
+                            "body_max_bytes": {
+                              "const": 4096
+                            },
+                            "valid_request_bytes": {
+                              "const": 259
+                            },
+                            "tls_header_timeout_ms": {
+                              "const": 2000
+                            },
+                            "request_timeout_ms": {
+                              "const": 5000
+                            }
+                          },
+                          "required": [
+                            "active_signings",
+                            "queue_depth",
+                            "queue_wait_ms",
+                            "sockets",
+                            "headers_max_bytes",
+                            "headers_max_count",
+                            "body_max_bytes",
+                            "valid_request_bytes",
+                            "tls_header_timeout_ms",
+                            "request_timeout_ms"
+                          ],
+                          "additionalProperties": false
+                        },
+                        "client": {
+                          "type": "object",
+                          "properties": {
+                            "gateway_sockets": {
+                              "const": 24
+                            },
+                            "issuer_sockets": {
+                              "const": 2
+                            },
+                            "inventory_max": {
+                              "const": 128
+                            }
+                          },
+                          "required": [
+                            "gateway_sockets",
+                            "issuer_sockets",
+                            "inventory_max"
+                          ],
+                          "additionalProperties": false
+                        },
+                        "control_message_max_bytes": {
+                          "const": 65536
+                        },
+                        "provision_batch_max": {
+                          "const": 128
+                        }
+                      },
+                      "required": [
+                        "gateway",
+                        "issuer",
+                        "client",
+                        "control_message_max_bytes",
+                        "provision_batch_max"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": [
+                    "schema_version",
+                    "contract_version",
+                    "policy_version",
+                    "run_id",
+                    "run_start_ms",
+                    "epoch_ms",
+                    "guard_ms",
+                    "token_type",
+                    "token_key_id",
+                    "token_key_spki_b64url",
+                    "issuer_name",
+                    "origin_name",
+                    "resource_scope",
+                    "issuer_request_uri",
+                    "snapshot_script_sha1",
+                    "claim_script_sha1",
+                    "gateway_profile",
+                    "client_profile",
+                    "inventory_total",
+                    "endpoints",
+                    "limits"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "schema_version": {
+                      "const": 1
+                    },
+                    "contract_version": {
+                      "const": "TF-PS024-1.0.0"
+                    },
+                    "policy_version": {
+                      "const": 1
+                    },
+                    "run_id": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 32,
+                      "pattern": "^[0-9a-f]{32}$"
+                    },
+                    "run_start_ms": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 9007199254110991
+                    },
+                    "epoch_ms": {
+                      "const": 600000
+                    },
+                    "guard_ms": {
+                      "const": 30000
+                    },
+                    "token_type": {
+                      "const": 2
+                    },
+                    "token_key_id": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 64,
+                      "pattern": "^[0-9a-f]{64}$"
+                    },
+                    "token_key_spki_b64url": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 1024,
+                      "pattern": "^[A-Za-z0-9_-]+={0,2}$"
+                    },
+                    "issuer_name": {
+                      "const": "issuer.lab.test"
+                    },
+                    "origin_name": {
+                      "const": "origin.lab.test"
+                    },
+                    "resource_scope": {
+                      "const": "GET /resource"
+                    },
+                    "issuer_request_uri": {
+                      "const": "https://issuer.lab.test/issue"
+                    },
+                    "snapshot_script_sha1": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 40,
+                      "pattern": "^[0-9a-f]{40}$"
+                    },
+                    "claim_script_sha1": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 40,
+                      "pattern": "^[0-9a-f]{40}$"
+                    },
+                    "gateway_profile": {
+                      "const": "B1"
+                    },
+                    "client_profile": {
+                      "const": "benchmark"
+                    },
+                    "inventory_total": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 16384
+                    },
+                    "endpoints": {
+                      "type": "object",
+                      "properties": {
+                        "issuer_https": {
+                          "const": "https://issuer.lab.test:443"
+                        },
+                        "gateway_https": {
+                          "const": "https://origin.lab.test:443"
+                        },
+                        "origin_http": {
+                          "const": "http://protected-origin:8080/resource"
+                        },
+                        "redis_host": {
+                          "const": "redis"
+                        },
+                        "redis_port": {
+                          "const": 6379
+                        },
+                        "proxy_http": {
+                          "const": "http://proxy:8888"
+                        }
+                      },
+                      "required": [
+                        "issuer_https",
+                        "gateway_https",
+                        "origin_http",
+                        "redis_host",
+                        "redis_port",
+                        "proxy_http"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "limits": {
+                      "type": "object",
+                      "properties": {
+                        "gateway": {
+                          "type": "object",
+                          "properties": {
+                            "queue_depth_per_worker": {
+                              "const": 16
+                            },
+                            "queue_wait_ms": {
+                              "const": 100
+                            },
+                            "sockets_per_worker": {
+                              "const": 64
+                            },
+                            "headers_max_bytes": {
+                              "const": 8192
+                            },
+                            "headers_max_count": {
+                              "const": 32
+                            },
+                            "tls_header_timeout_ms": {
+                              "const": 2000
+                            },
+                            "request_timeout_ms": {
+                              "const": 5000
+                            },
+                            "redis_connect_timeout_ms": {
+                              "const": 1000
+                            },
+                            "redis_command_timeout_ms": {
+                              "const": 250
+                            },
+                            "origin_timeout_ms": {
+                              "const": 2000
+                            },
+                            "origin_free_idle_ms": {
+                              "const": 15000
+                            },
+                            "origin_keepalive_ms": {
+                              "const": 20000
+                            },
+                            "origin_body_max_bytes": {
+                              "const": 16384
+                            },
+                            "controller_heartbeat_ms": {
+                              "const": 1000
+                            },
+                            "controller_lease_ms": {
+                              "const": 3000
+                            },
+                            "workers": {
+                              "const": 2
+                            },
+                            "active_flows_per_worker": {
+                              "const": 2
+                            },
+                            "redis_connections_per_worker": {
+                              "const": 2
+                            },
+                            "origin_sockets_per_worker": {
+                              "const": 2
+                            }
+                          },
+                          "required": [
+                            "queue_depth_per_worker",
+                            "queue_wait_ms",
+                            "sockets_per_worker",
+                            "headers_max_bytes",
+                            "headers_max_count",
+                            "tls_header_timeout_ms",
+                            "request_timeout_ms",
+                            "redis_connect_timeout_ms",
+                            "redis_command_timeout_ms",
+                            "origin_timeout_ms",
+                            "origin_free_idle_ms",
+                            "origin_keepalive_ms",
+                            "origin_body_max_bytes",
+                            "controller_heartbeat_ms",
+                            "controller_lease_ms",
+                            "workers",
+                            "active_flows_per_worker",
+                            "redis_connections_per_worker",
+                            "origin_sockets_per_worker"
+                          ],
+                          "additionalProperties": false
+                        },
+                        "issuer": {
+                          "type": "object",
+                          "properties": {
+                            "active_signings": {
+                              "const": 2
+                            },
+                            "queue_depth": {
+                              "const": 16
+                            },
+                            "queue_wait_ms": {
+                              "const": 100
+                            },
+                            "sockets": {
+                              "const": 32
+                            },
+                            "headers_max_bytes": {
+                              "const": 8192
+                            },
+                            "headers_max_count": {
+                              "const": 32
+                            },
+                            "body_max_bytes": {
+                              "const": 4096
+                            },
+                            "valid_request_bytes": {
+                              "const": 259
+                            },
+                            "tls_header_timeout_ms": {
+                              "const": 2000
+                            },
+                            "request_timeout_ms": {
+                              "const": 5000
+                            }
+                          },
+                          "required": [
+                            "active_signings",
+                            "queue_depth",
+                            "queue_wait_ms",
+                            "sockets",
+                            "headers_max_bytes",
+                            "headers_max_count",
+                            "body_max_bytes",
+                            "valid_request_bytes",
+                            "tls_header_timeout_ms",
+                            "request_timeout_ms"
+                          ],
+                          "additionalProperties": false
+                        },
+                        "client": {
+                          "type": "object",
+                          "properties": {
+                            "gateway_sockets": {
+                              "const": 100
+                            },
+                            "issuer_sockets": {
+                              "const": 4
+                            },
+                            "inventory_max": {
+                              "const": 16384
+                            }
+                          },
+                          "required": [
+                            "gateway_sockets",
+                            "issuer_sockets",
+                            "inventory_max"
+                          ],
+                          "additionalProperties": false
+                        },
+                        "control_message_max_bytes": {
+                          "const": 65536
+                        },
+                        "provision_batch_max": {
+                          "const": 128
+                        }
+                      },
+                      "required": [
+                        "gateway",
+                        "issuer",
+                        "client",
+                        "control_message_max_bytes",
+                        "provision_batch_max"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": [
+                    "schema_version",
+                    "contract_version",
+                    "policy_version",
+                    "run_id",
+                    "run_start_ms",
+                    "epoch_ms",
+                    "guard_ms",
+                    "token_type",
+                    "token_key_id",
+                    "token_key_spki_b64url",
+                    "issuer_name",
+                    "origin_name",
+                    "resource_scope",
+                    "issuer_request_uri",
+                    "snapshot_script_sha1",
+                    "claim_script_sha1",
+                    "gateway_profile",
+                    "client_profile",
+                    "inventory_total",
+                    "endpoints",
+                    "limits"
+                  ],
+                  "additionalProperties": false
+                }
+              ]
+            },
+            "proposed_config_digest": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64,
+              "pattern": "^[0-9a-f]{64}$"
+            },
+            "role": {
+              "enum": [
+                "issuer",
+                "gateway",
+                "origin",
+                "client"
+              ]
+            },
+            "role_config": {
+              "type": "object",
+              "properties": {
+                "client_id": {
+                  "enum": [
+                    "A",
+                    "B",
+                    "C",
+                    "D",
+                    "E"
+                  ]
+                },
+                "tls_cert_path": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 128,
+                  "pattern": "^/run/secrets/[A-Za-z0-9_.-]+$"
+                },
+                "tls_key_path": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 128,
+                  "pattern": "^/run/secrets/[A-Za-z0-9_.-]+$"
+                },
+                "ca_cert_path": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 128,
+                  "pattern": "^/run/secrets/[A-Za-z0-9_.-]+$"
+                },
+                "redis_credential_path": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 128,
+                  "pattern": "^/run/secrets/[A-Za-z0-9_.-]+$"
+                }
+              },
+              "required": [],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "manifest",
+            "proposed_config_digest",
+            "role",
+            "role_config"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "version",
+        "request_id",
+        "command",
+        "run_id",
+        "config_digest",
+        "target_incarnation",
+        "payload"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "version": {
+          "const": 1
+        },
+        "request_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 32,
+          "pattern": "^[0-9a-f]{32}$"
+        },
+        "command": {
+          "const": "PROVISION_VOUCHERS"
+        },
+        "run_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 32,
+          "pattern": "^[0-9a-f]{32}$"
+        },
+        "config_digest": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64,
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "target_incarnation": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 32,
+          "pattern": "^[0-9a-f]{32}$"
+        },
+        "payload": {
+          "type": "object",
+          "properties": {
+            "batch_id": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 32,
+              "pattern": "^[0-9a-f]{32}$"
+            },
+            "batch_index": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 65535
+            },
+            "expected_total": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 16384
+            },
+            "final_batch": {
+              "type": "boolean"
+            },
+            "items": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 64,
+                "pattern": "^[0-9a-f]{64}$"
+              },
+              "minItems": 0,
+              "maxItems": 128
+            }
+          },
+          "required": [
+            "batch_id",
+            "batch_index",
+            "expected_total",
+            "final_batch",
+            "items"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "version",
+        "request_id",
+        "command",
+        "run_id",
+        "config_digest",
+        "target_incarnation",
+        "payload"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "version": {
+          "const": 1
+        },
+        "request_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 32,
+          "pattern": "^[0-9a-f]{32}$"
+        },
+        "command": {
+          "const": "PROVISION_CLIENT"
+        },
+        "run_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 32,
+          "pattern": "^[0-9a-f]{32}$"
+        },
+        "config_digest": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64,
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "target_incarnation": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 32,
+          "pattern": "^[0-9a-f]{32}$"
+        },
+        "payload": {
+          "type": "object",
+          "properties": {
+            "batch_id": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 32,
+              "pattern": "^[0-9a-f]{32}$"
+            },
+            "batch_index": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 65535
+            },
+            "expected_total": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 16384
+            },
+            "final_batch": {
+              "type": "boolean"
+            },
+            "items": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 43,
+                "pattern": "^[A-Za-z0-9_-]{43}$"
+              },
+              "minItems": 0,
+              "maxItems": 128
+            }
+          },
+          "required": [
+            "batch_id",
+            "batch_index",
+            "expected_total",
+            "final_batch",
+            "items"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "version",
+        "request_id",
+        "command",
+        "run_id",
+        "config_digest",
+        "target_incarnation",
+        "payload"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "version": {
+          "const": 1
+        },
+        "request_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 32,
+          "pattern": "^[0-9a-f]{32}$"
+        },
+        "command": {
+          "const": "CHECK_READY"
+        },
+        "run_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 32,
+          "pattern": "^[0-9a-f]{32}$"
+        },
+        "config_digest": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64,
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "target_incarnation": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 32,
+          "pattern": "^[0-9a-f]{32}$"
+        },
+        "payload": {
+          "type": "object",
+          "properties": {},
+          "required": [],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "version",
+        "request_id",
+        "command",
+        "run_id",
+        "config_digest",
+        "target_incarnation",
+        "payload"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "version": {
+          "const": 1
+        },
+        "request_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 32,
+          "pattern": "^[0-9a-f]{32}$"
+        },
+        "command": {
+          "const": "ENABLE"
+        },
+        "run_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 32,
+          "pattern": "^[0-9a-f]{32}$"
+        },
+        "config_digest": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64,
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "target_incarnation": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 32,
+          "pattern": "^[0-9a-f]{32}$"
+        },
+        "payload": {
+          "type": "object",
+          "properties": {},
+          "required": [],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "version",
+        "request_id",
+        "command",
+        "run_id",
+        "config_digest",
+        "target_incarnation",
+        "payload"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "version": {
+          "const": 1
+        },
+        "request_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 32,
+          "pattern": "^[0-9a-f]{32}$"
+        },
+        "command": {
+          "const": "REPORT"
+        },
+        "run_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 32,
+          "pattern": "^[0-9a-f]{32}$"
+        },
+        "config_digest": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64,
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "target_incarnation": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 32,
+          "pattern": "^[0-9a-f]{32}$"
+        },
+        "payload": {
+          "type": "object",
+          "properties": {},
+          "required": [],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "version",
+        "request_id",
+        "command",
+        "run_id",
+        "config_digest",
+        "target_incarnation",
+        "payload"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "version": {
+          "const": 1
+        },
+        "request_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 32,
+          "pattern": "^[0-9a-f]{32}$"
+        },
+        "command": {
+          "const": "HEARTBEAT"
+        },
+        "run_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 32,
+          "pattern": "^[0-9a-f]{32}$"
+        },
+        "config_digest": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64,
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "target_incarnation": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 32,
+          "pattern": "^[0-9a-f]{32}$"
+        },
+        "payload": {
+          "type": "object",
+          "properties": {
+            "seq": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 9007199254740991
+            }
+          },
+          "required": [
+            "seq"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "version",
+        "request_id",
+        "command",
+        "run_id",
+        "config_digest",
+        "target_incarnation",
+        "payload"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "version": {
+          "const": 1
+        },
+        "request_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 32,
+          "pattern": "^[0-9a-f]{32}$"
+        },
+        "command": {
+          "const": "RUN_SCENARIO"
+        },
+        "run_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 32,
+          "pattern": "^[0-9a-f]{32}$"
+        },
+        "config_digest": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64,
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "target_incarnation": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 32,
+          "pattern": "^[0-9a-f]{32}$"
+        },
+        "payload": {
+          "type": "object",
+          "properties": {
+            "scenario_id": {
+              "enum": [
+                "healthy-flow",
+                "shared-egress",
+                "voucher-policy",
+                "malformed-token",
+                "signature-and-key",
+                "wrong-context",
+                "sequential-replay",
+                "concurrent-replay",
+                "epoch-boundary",
+                "admission-limits",
+                "upstream-failure",
+                "redis-failure",
+                "restart-and-reset",
+                "network-boundaries",
+                "retention-audit",
+                "stolen-unused-token",
+                "clock-rollback",
+                "performance"
+              ]
+            },
+            "schedule_seed": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 4294967295
+            }
+          },
+          "required": [
+            "scenario_id",
+            "schedule_seed"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "version",
+        "request_id",
+        "command",
+        "run_id",
+        "config_digest",
+        "target_incarnation",
+        "payload"
+      ],
+      "additionalProperties": false
+    }
+  ]
+}

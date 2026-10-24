@@ -1,0 +1,23 @@
+name: G0 candidate checks
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  contracts-and-crypto:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6 resolved 2026-10-24
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6 resolved 2026-10-24
+        with:
+          node-version-file: .node-version
+      - run: npm ci --ignore-scripts --prefix src/services/gateway
+      - run: npm run check:g0
+      - run: node scripts/check-secrets.mjs
+      - run: python3 scripts/derive-golden-fixture.py --check
+      - run: npm audit --prefix src/services/gateway
+      - run: docker build -f src/services/gateway/Dockerfile -t tokenforge-g0:ci .
+      - run: node scripts/check-g0-image.mjs tokenforge-g0:ci
