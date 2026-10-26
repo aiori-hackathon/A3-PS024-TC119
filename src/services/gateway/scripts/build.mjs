@@ -1,7 +1,8 @@
 import { build } from 'esbuild';
 await build({
-  entryPoints: ['src/bootstrap.ts'],
-  outfile: 'dist/bootstrap.mjs',
+  entryPoints: { bootstrap: 'src/bootstrap.ts', 'token-verifier': 'src/token-verifier.ts' },
+  outdir: 'dist',
+  outExtension: { '.js': '.mjs' },
   bundle: true,
   platform: 'node',
   format: 'esm',
