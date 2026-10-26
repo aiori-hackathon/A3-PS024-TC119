@@ -15,6 +15,11 @@ COPY src/services/gateway/src ./src
 COPY src/services/gateway/tsconfig.json ./tsconfig.json
 RUN npm run typecheck && npm run build
 
+FROM build AS redis-adapter-tests
+COPY src/contracts/fixtures/policy-golden.json /build/src/contracts/fixtures/policy-golden.json
+COPY src/services/gateway/test/redis-adapter-redis.test.ts ./test/redis-adapter-redis.test.ts
+CMD ["node", "--test", "test/redis-adapter-redis.test.ts"]
+
 FROM build AS production-dependencies
 RUN npm ci --omit=dev --ignore-scripts --no-audit --no-fund
 

@@ -18,6 +18,7 @@ jobs:
       - run: npm ci --ignore-scripts --prefix src/services/lab
       - run: npm run check:g0
       - run: npm run test:replay --prefix src/services/gateway
+      - run: npm run test:redis-adapter --prefix src/services/gateway
       - run: node scripts/check-secrets.mjs
       - run: python3 scripts/derive-golden-fixture.py --check
       - run: npm audit --prefix src/services/gateway
