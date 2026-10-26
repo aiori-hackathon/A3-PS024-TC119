@@ -16,7 +16,9 @@ import {publicVerif,TokenChallenge} from '@cloudflare/privacypass-ts';
 import {spawn} from 'node:child_process';
 import {once} from 'node:events';
 if(readdirSync('/app').some(p=>!['dist','node_modules'].includes(p)))throw Error('Unexpected app payload');
-if(JSON.stringify(readdirSync('/app/dist').sort())!==JSON.stringify(['bootstrap.mjs','http-auth.mjs','redis-adapter.mjs','replay-scripts.mjs','token-verifier.mjs','worker-lease.mjs']))throw Error('Unexpected build payload');
+if(JSON.stringify(readdirSync('/app/dist').sort())!==JSON.stringify(['bootstrap.mjs','flow-admission.mjs','http-auth.mjs','redis-adapter.mjs','replay-scripts.mjs','token-verifier.mjs','worker-lease.mjs']))throw Error('Unexpected build payload');
+const {FlowAdmission}=await import('/app/dist/flow-admission.mjs');
+if(typeof FlowAdmission.prepare!=='function')throw Error('Flow admission missing');
 const {WorkerLease}=await import('/app/dist/worker-lease.mjs');
 if(typeof WorkerLease.prepare!=='function')throw Error('Worker lease missing');
 for(let worker=0;worker<2;worker++) {
