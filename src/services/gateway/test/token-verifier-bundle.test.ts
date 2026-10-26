@@ -3,10 +3,13 @@ import assert from 'node:assert/strict';
 import { readFileSync, readdirSync } from 'node:fs';
 import { publicVerif, TokenChallenge } from '@cloudflare/privacypass-ts';
 import { configurationDigest, encodeBase64Url, hex, makeManifest, redemptionContext } from '../../../contracts/lib/index.ts';
+import { REPLAY_SCRIPTS } from '../src/replay-scripts.ts';
 
 test('built verifier is a standalone project bundle and validates a fresh token', async () => {
   const directory = new URL('../dist/', import.meta.url);
-  assert.deepEqual(readdirSync(directory).sort(), ['bootstrap.mjs', 'http-auth.mjs', 'token-verifier.mjs']);
+  assert.deepEqual(readdirSync(directory).sort(), ['bootstrap.mjs', 'http-auth.mjs', 'replay-scripts.mjs', 'token-verifier.mjs']);
+  const builtScripts = (await import(new URL('replay-scripts.mjs', directory).href)).REPLAY_SCRIPTS;
+  assert.deepEqual(builtScripts, REPLAY_SCRIPTS);
   const source = readFileSync(new URL('token-verifier.mjs', directory), 'utf8');
   assert.doesNotMatch(source, /policy-golden|rfc9578-public|services[\\/]lab/);
   const { TokenVerifier } = await import(new URL('token-verifier.mjs', directory).href);

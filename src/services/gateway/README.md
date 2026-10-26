@@ -1,6 +1,6 @@
 # Gateway
 
-G0 establishes the contract/library/build path. Gateway components now cover binary-token verification, bounded Authorization parsing and fixed challenge/error response construction. **No HTTP listener, Redis claim script or protected forwarding exists yet.**
+G0 establishes the contract/library/build path. Gateway components now cover binary-token verification, bounded Authorization parsing, fixed challenge/error responses and tested Redis snapshot/claim scripts. **No HTTP listener, runtime Redis adapter or protected forwarding exists yet.**
 
 `TokenVerifier.prepare(manifest)` copies and validates trusted configuration and imports only the issuer public key. `verify(wire, expectedEpoch)` checks exact Type 2 length, full key ID, public signature and configured challenge digest. It owns copies of incoming byte views before awaiting crypto. Rejections use fixed labels without reflecting credentials.
 
@@ -23,7 +23,21 @@ npm.cmd run test:bundle --prefix src/services/gateway
 npm.cmd audit --prefix src/services/gateway
 ```
 
-Build outputs are `dist/bootstrap.mjs` (public metadata smoke entry, exits), `dist/token-verifier.mjs` and `dist/http-auth.mjs`. Tests include real signed wrong-context tokens, malformed/tampered inputs, duplicate/ambiguous authentication, quoted parameters, header budgets, challenge-bearing 401s, unavailable snapshots, configuration/input isolation and compiled-bundle compatibility. Public fixtures and fresh ephemeral test keys are never printed or persisted as live credentials.
+Build outputs are `dist/bootstrap.mjs` (public metadata smoke entry, exits), `dist/token-verifier.mjs`, `dist/http-auth.mjs` and `dist/replay-scripts.mjs`. Tests include real signed wrong-context tokens, malformed/tampered inputs, duplicate/ambiguous authentication, quoted parameters, header budgets, challenge-bearing 401s, unavailable snapshots, configuration/input isolation and compiled-bundle compatibility. Public fixtures and fresh ephemeral test keys are never printed or persisted as live credentials.
+
+`REPLAY_SCRIPTS.snapshot` and `.claim` each expose immutable `{ source, sha1 }` values. Both sources share the same guard validation and derive constants from the frozen protocol. The controller must load these exact UTF-8 bytes before enabling a fresh run and put their hashes into the manifest **before computing its configuration digest**. Workers will use only `EVALSHA`; script loss must close the run, never trigger live reload. Bootstrap must separately compare every policy field with the trusted manifest, as specified in the [technical design](../../../docs/implementation/TECHNICAL_DESIGN.md).
+
+Snapshot is read-only and returns authoritative Redis time after checking exact guard keys, hash fields/types, non-expiring policy/clock, run/key/configuration identity, canonical integers and consistent clock highwater. Claim repeats those checks atomically, refuses a candidate from another epoch, validates the spent-key name/representation and uses `SET NX PXAT` to select one winner. Spent records expire at epoch end plus the configured guard; a replay neither refreshes nor refunds them. Responses follow the frozen tagged-array ABI; the future adapter must validate them with the shared `parseSnapshotReply` / `parseClaimReply` helpers.
+
+An unsafe result, malformed reply, script error, timeout or ambiguous mutation must **terminally close the caller's run latch**. These scripts do not implement that latch, supervise leases or authorize forwarding. They never repair missing guards, and snapshot cannot persist closure because it is read-only. Redis Lua serializes execution but does not roll back writes after a runtime error. No uncertain claim may be retried or refunded. Safety assumes trustworthy non-regressing Redis/host time and no silent state rollback; the clock tests cover detected regressions against recorded highwater, not arbitrary unseen clock excursions.
+
+Real Redis component tests require Docker and run separately from the Docker-free `check:g0` suite:
+
+```powershell
+npm.cmd run test:replay --prefix src/services/gateway
+```
+
+The harness starts a digest-pinned Redis 7.4.8 container with no host ports, external network or persistent data. It tests 20 concurrent claims, exact expiry, a real epoch transition, identity/encoding failures, guard corruption, recorded clock regression, malformed spent state, a deliberately discarded committed reply and missing scripts. The test-only administrative connection seeds/resets isolated fixtures; it is not the production gateway ACL or connection adapter. Minimal script-internal ACL commands for later integration are `TYPE`, `PTTL`, `HLEN`, `HMGET`, `TIME`, `GET`, `PEXPIRETIME`, `HSET` and `SET`, in addition to `EVALSHA` and the separately reviewed client handshake. [Redis scripting](https://redis.io/docs/latest/develop/programmability/eval-intro/) and [absolute expiry inspection](https://redis.io/docs/latest/commands/pexpiretime/) document these server behaviors.
 
 Docker: `docker build -f src/services/gateway/Dockerfile -t tokenforge-g0:local .` from **root**, then run without network/privileges. The image still uses the metadata smoke entry; it is not a serving gateway. The root `check:g0` command runs both consumers and the additional verifier tests.
 

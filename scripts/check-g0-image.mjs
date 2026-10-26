@@ -14,7 +14,9 @@ const script=`
 import {readdirSync,readFileSync,existsSync} from 'node:fs';
 import {publicVerif,TokenChallenge} from '@cloudflare/privacypass-ts';
 if(readdirSync('/app').some(p=>!['dist','node_modules'].includes(p)))throw Error('Unexpected app payload');
-if(JSON.stringify(readdirSync('/app/dist').sort())!==JSON.stringify(['bootstrap.mjs','http-auth.mjs','token-verifier.mjs']))throw Error('Unexpected build payload');
+if(JSON.stringify(readdirSync('/app/dist').sort())!==JSON.stringify(['bootstrap.mjs','http-auth.mjs','replay-scripts.mjs','token-verifier.mjs']))throw Error('Unexpected build payload');
+const {REPLAY_SCRIPTS}=await import('/app/dist/replay-scripts.mjs');
+for(const script of Object.values(REPLAY_SCRIPTS))if(!/^[0-9a-f]{40}$/.test(script.sha1)||typeof script.source!=='string')throw Error('Replay scripts missing');
 const {TokenVerifier}=await import('/app/dist/token-verifier.mjs');
 if(typeof TokenVerifier.prepare!=='function')throw Error('Verification component missing');
 const {parseAuthorization,GatewayResponses}=await import('/app/dist/http-auth.mjs');
