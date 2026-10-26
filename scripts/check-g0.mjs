@@ -11,7 +11,7 @@ run(['scripts/generate-contract-schemas.mjs','--check']);
 const gateway=fileURLToPath(new URL('../src/services/gateway/',import.meta.url));
 const lab=fileURLToPath(new URL('../src/services/lab/',import.meta.url));
 run(['node_modules/typescript/bin/tsc','--noEmit'],gateway);
-run(['--test','test/contracts.test.ts','test/crypto.test.ts','test/token-verifier.test.ts'],gateway);
+run(['--test','test/contracts.test.ts','test/crypto.test.ts','test/token-verifier.test.ts','test/http-auth.test.ts'],gateway);
 run(['scripts/build.mjs'],gateway);
 run(['--test','test/token-verifier-bundle.test.ts'],gateway);
 run(['dist/bootstrap.mjs'],gateway);

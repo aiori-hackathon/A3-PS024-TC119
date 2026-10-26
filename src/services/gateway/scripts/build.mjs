@@ -1,6 +1,6 @@
 import { build } from 'esbuild';
 await build({
-  entryPoints: { bootstrap: 'src/bootstrap.ts', 'token-verifier': 'src/token-verifier.ts' },
+  entryPoints: { bootstrap: 'src/bootstrap.ts', 'token-verifier': 'src/token-verifier.ts', 'http-auth': 'src/http-auth.ts' },
   outdir: 'dist',
   outExtension: { '.js': '.mjs' },
   bundle: true,

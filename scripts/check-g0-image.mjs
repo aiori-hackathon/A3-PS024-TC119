@@ -14,9 +14,11 @@ const script=`
 import {readdirSync,readFileSync,existsSync} from 'node:fs';
 import {publicVerif,TokenChallenge} from '@cloudflare/privacypass-ts';
 if(readdirSync('/app').some(p=>!['dist','node_modules'].includes(p)))throw Error('Unexpected app payload');
-if(JSON.stringify(readdirSync('/app/dist').sort())!==JSON.stringify(['bootstrap.mjs','token-verifier.mjs']))throw Error('Unexpected build payload');
+if(JSON.stringify(readdirSync('/app/dist').sort())!==JSON.stringify(['bootstrap.mjs','http-auth.mjs','token-verifier.mjs']))throw Error('Unexpected build payload');
 const {TokenVerifier}=await import('/app/dist/token-verifier.mjs');
 if(typeof TokenVerifier.prepare!=='function')throw Error('Verification component missing');
+const {parseAuthorization,GatewayResponses}=await import('/app/dist/http-auth.mjs');
+if(parseAuthorization([]).kind!=='missing'||typeof GatewayResponses.prepare!=='function')throw Error('HTTP auth components missing');
 for(const p of ['typescript','esbuild','ajv'])if(existsSync('/app/node_modules/'+p))throw Error('Dev tool in runtime');
 if(JSON.parse(readFileSync('/app/node_modules/sjcl/package.json','utf8')).version!=='1.0.9')throw Error('Patch missing');
 const {BlindRSAMode,Client,Issuer,Origin,getPublicKeyBytes}=publicVerif;
