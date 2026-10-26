@@ -7,7 +7,7 @@ import { REPLAY_SCRIPTS } from '../src/replay-scripts.ts';
 
 test('built verifier is a standalone project bundle and validates a fresh token', async () => {
   const directory = new URL('../dist/', import.meta.url);
-  assert.deepEqual(readdirSync(directory).sort(), ['bootstrap.mjs', 'flow-admission.mjs', 'http-auth.mjs', 'redis-adapter.mjs', 'replay-scripts.mjs', 'token-verifier.mjs', 'worker-lease.mjs']);
+  assert.deepEqual(readdirSync(directory).sort(), ['bootstrap.mjs', 'fixed-origin.mjs', 'flow-admission.mjs', 'http-auth.mjs', 'redis-adapter.mjs', 'replay-scripts.mjs', 'token-verifier.mjs', 'worker-lease.mjs']);
   const { openRedisReplayStore } = await import(new URL('redis-adapter.mjs', directory).href);
   await assert.rejects(() => openRedisReplayStore(null, null, () => {}), /replay-configuration-invalid/);
   const builtScripts = (await import(new URL('replay-scripts.mjs', directory).href)).REPLAY_SCRIPTS;
@@ -34,6 +34,9 @@ test('built verifier is a standalone project bundle and validates a fresh token'
   const admission = FlowAdmission.prepare(manifest, lease);
   const flow = await admission.acquire(new AbortController().signal);
   assert.equal(flow.kind, 'admitted'); assert.equal(flow.permit.checkActive(), true);
+  const { FixedOrigin } = await import(new URL('fixed-origin.mjs', directory).href);
+  const fixedOrigin = FixedOrigin.prepare(manifest, lease);
+  assert.equal(fixedOrigin.status.sockets, 0); await fixedOrigin.close();
   lease.fence(); assert.equal(lease.checkActive(), false); assert.equal(flow.permit.checkActive(), false);
   flow.permit.release(); await admission.close();
   const client = new publicVerif.Client(mode);
