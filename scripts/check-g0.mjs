@@ -9,8 +9,22 @@ function run(args,cwd=root) {
 }
 run(['scripts/generate-contract-schemas.mjs','--check']);
 const gateway=fileURLToPath(new URL('../src/services/gateway/',import.meta.url));
+const lab=fileURLToPath(new URL('../src/services/lab/',import.meta.url));
 run(['node_modules/typescript/bin/tsc','--noEmit'],gateway);
 run(['--test','test/contracts.test.ts','test/crypto.test.ts'],gateway);
 run(['scripts/build.mjs'],gateway);
 run(['dist/bootstrap.mjs'],gateway);
-console.log('PASS: Krish G0 candidate checks. G0 is NOT closed: Mihir consumer/review and full integration remain pending.');
+run(['node_modules/typescript/bin/tsc','--noEmit'],lab);
+run(['--test','test/fixture.test.ts','test/crypto.test.ts','test/controller-contract.test.ts'],lab);
+run(['scripts/build.mjs'],lab);
+run(['--test','test/bundle.test.ts'],lab);
+function metadata(cwd) {
+  const r=spawnSync(process.execPath,['dist/bootstrap.mjs'],{cwd,encoding:'utf8',shell:false,timeout:60000});
+  if(r.error||r.status!==0)throw Error('Bootstrap metadata check failed');
+  return JSON.parse(r.stdout);
+}
+const gatewayMetadata=metadata(gateway),labMetadata=metadata(lab);
+if(gatewayMetadata.contract_version!==labMetadata.contract_version||gatewayMetadata.profiles_digest!==labMetadata.profiles_digest||labMetadata.verified!==true) {
+  throw Error('Consumers disagree on contract/profile metadata or crypto verification');
+}
+console.log('PASS: both G0 consumers, independent fixture derivation, crypto interoperability, bundles and profile agreement. Runtime service/security integration remains G1 onward.');

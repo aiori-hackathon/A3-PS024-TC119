@@ -1,6 +1,6 @@
 # TokenForge technical design
 
-PS-024: Privacy Pass token issuance and anti-replay gateway. Contract candidate: `TF-PS024-1.0.0`.
+PS-024: Privacy Pass token issuance and anti-replay gateway. Accepted bootstrap contract: `TF-PS024-1.0.0`, 26 October 2026.
 
 **Implementation status:** shared encodings, strict schemas, protocol compatibility tests and a reproducible bootstrap image are implemented. Issuer/client services, gateway forwarding, Redis enforcement, network integration and measured performance remain planned. See [bootstrap status](G0_STATUS.md) for evidence and pending work.
 
@@ -32,7 +32,7 @@ Mitigate exposure through validated TLS, memory-only token inventory, no credent
 
 ## 1. Contract A — Public protocol and shared policy
 
-The schemas, fixtures and helpers in `src/contracts/` define the executable interface candidate. These sections specify the target services; the bootstrap does not yet implement the HTTP, replay-store or lifecycle components.
+The schemas, fixtures and helpers in `src/contracts/` define the accepted executable interface baseline. These sections specify the target services; the bootstrap does not yet implement the HTTP, replay-store or lifecycle components.
 
 ### 1.1 Service identities and public endpoints
 

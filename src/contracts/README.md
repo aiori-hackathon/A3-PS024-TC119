@@ -1,6 +1,6 @@
-# Shared contract candidate TF-PS024-1.0.0
+# Shared contract TF-PS024-1.0.0
 
-The gateway and lab consume these shared definitions rather than copying constants or importing each other's private implementation. This is G0's candidate, pending validation by both consuming packages. Read the technical design and change log.
+The gateway and lab consume these shared definitions rather than copying constants or importing each other's private implementation. Both consumers independently validated the fixtures, schemas, crypto compatibility, bundles and container builds; G0 accepted this baseline on 26 October 2026. Read the technical design and change log. Runtime services and enforcement remain subsequent work.
 
 - `protocol-v1.json`: exact names, limits, profiles, labels, scenarios and histogram bounds.
 - `schemas/`: generated strict JSON Schema draft-07. Update the owned generator and regenerate; CI rejects drift.

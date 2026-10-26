@@ -1,4 +1,4 @@
-name: G0 candidate checks
+name: Bootstrap checks
 on:
   push:
   pull_request:
@@ -15,9 +15,13 @@ jobs:
         with:
           node-version-file: .node-version
       - run: npm ci --ignore-scripts --prefix src/services/gateway
+      - run: npm ci --ignore-scripts --prefix src/services/lab
       - run: npm run check:g0
       - run: node scripts/check-secrets.mjs
       - run: python3 scripts/derive-golden-fixture.py --check
       - run: npm audit --prefix src/services/gateway
+      - run: npm audit --prefix src/services/lab
       - run: docker build -f src/services/gateway/Dockerfile -t tokenforge-g0:ci .
       - run: node scripts/check-g0-image.mjs tokenforge-g0:ci
+      - run: docker build -f src/services/lab/Dockerfile -t tokenforge-lab-g0:ci .
+      - run: node src/services/lab/scripts/check-image.mjs tokenforge-lab-g0:ci

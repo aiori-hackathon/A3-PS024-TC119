@@ -9,7 +9,7 @@ Team **A3-PS024-TC119**, Pandit Deendayal Energy University. Krish Sonpal: gatew
 
 The organizer-owned repository and submitted assets above are preserved. All implementation source lives under `src/` as requested by the existing `src/README.md`.
 
-**Current stage: G0 contract/bootstrap candidate.** Contract and cryptographic compatibility checks are implemented. The lab package and integrated issuer/gateway demo are the next implementation stage. See [G0 status](docs/implementation/G0_STATUS.md).
+**Current stage: G0 accepted; component implementation next.** Both gateway and lab packages independently validate the shared contract, cryptographic compatibility and reproducible builds. HTTP services, Redis replay enforcement and the integrated demonstration remain the next stages. See [G0 status](docs/implementation/G0_STATUS.md).
 
 Read the [technical design](docs/implementation/TECHNICAL_DESIGN.md), [shared contract reference](src/contracts/README.md), and [dependency review](docs/security/DEPENDENCY_REVIEW.md). Executable contract schemas and fixtures define the interfaces shared by the gateway and lab components.
 
@@ -19,8 +19,10 @@ Use Node **24.22.1**. On Windows PowerShell use `npm.cmd` if script policy block
 
 ```powershell
 npm.cmd ci --prefix src/services/gateway --ignore-scripts
+npm.cmd ci --prefix src/services/lab --ignore-scripts
 npm.cmd run check:g0
 npm.cmd audit --prefix src/services/gateway
+npm.cmd audit --prefix src/services/lab
 ```
 
 Optional independent fixture re-derivation with Python 3: `python scripts/derive-golden-fixture.py --check`.
@@ -30,8 +32,10 @@ Docker Desktop must be running Linux containers. From repository root:
 ```powershell
 docker build -f src/services/gateway/Dockerfile -t tokenforge-g0:local .
 docker run --rm --network none --read-only --cap-drop ALL --security-opt no-new-privileges --memory 128m --pids-limit 64 tokenforge-g0:local
+docker build -f src/services/lab/Dockerfile -t tokenforge-lab-g0:local .
+node src/services/lab/scripts/check-image.mjs tokenforge-lab-g0:local
 ```
 
 The image prints public bootstrap metadata and exits; it does not open ports. Do not run `docker compose up` until Mihir's authoritative configuration exists and has passed its integration checks.
 
-Before integrating services, verify that the lab package independently consumes the same contract version and fixtures. Each package maintains its own dependency lockfile and build checks.
+Contract `TF-PS024-1.0.0` is the accepted shared baseline. Both packages maintain independent dependency lockfiles and consume the shared definitions. Observable contract changes require coordinated consumer updates and a versioned change record.
