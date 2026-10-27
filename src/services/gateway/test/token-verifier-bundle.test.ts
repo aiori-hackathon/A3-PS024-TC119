@@ -7,7 +7,9 @@ import { REPLAY_SCRIPTS } from '../src/replay-scripts.ts';
 
 test('built verifier is a standalone project bundle and validates a fresh token', async () => {
   const directory = new URL('../dist/', import.meta.url);
-  assert.deepEqual(readdirSync(directory).sort(), ['bootstrap.mjs', 'fixed-origin.mjs', 'flow-admission.mjs', 'http-auth.mjs', 'https-gateway.mjs', 'redis-adapter.mjs', 'replay-scripts.mjs', 'request-coordinator.mjs', 'token-verifier.mjs', 'worker-lease.mjs']);
+  assert.deepEqual(readdirSync(directory).sort(), ['bootstrap.mjs', 'control-helper.mjs', 'fixed-origin.mjs', 'flow-admission.mjs', 'gateway-supervisor.mjs', 'http-auth.mjs', 'https-gateway.mjs', 'redis-adapter.mjs', 'replay-scripts.mjs', 'request-coordinator.mjs', 'serve.mjs', 'token-verifier.mjs', 'worker-host.mjs', 'worker-lease.mjs', 'worker-process.mjs']);
+  const { GatewaySupervisor } = await import(new URL('gateway-supervisor.mjs', directory).href);
+  assert.equal(new GatewaySupervisor(async () => { throw Error(); }).status.state, 'FENCED');
   const { HttpsGateway } = await import(new URL('https-gateway.mjs', directory).href);
   assert.throws(() => HttpsGateway.prepare(null, null, null, null), /https-configuration-invalid/);
   const { RequestCoordinator } = await import(new URL('request-coordinator.mjs', directory).href);

@@ -8,10 +8,12 @@ import { createServer } from 'node:http';
 import { connect, type Socket } from 'node:net';
 import { once } from 'node:events';
 import { readFileSync } from 'node:fs';
+import { unlink, lstat } from 'node:fs/promises';
+import { spawn } from 'node:child_process';
 import { request as httpsRequest, type RequestOptions } from 'node:https';
 import { connect as tlsConnect } from 'node:tls';
 import golden from '../../../contracts/fixtures/policy-golden.json' with { type: 'json' };
-import { configurationDigest, makeManifest, encodeBase64Url, redemptionContext, spendId, challengeBytes, type Manifest } from '../../../contracts/lib/index.ts';
+import { PROTOCOL, validateControlResponse, configurationDigest, makeManifest, encodeBase64Url, redemptionContext, spendId, challengeBytes, type Manifest } from '../../../contracts/lib/index.ts';
 import { REPLAY_SCRIPTS } from '../src/replay-scripts.ts';
 import { openRedisReplayStore } from '../src/redis-adapter.ts';
 import { ReplayStore, type ReplayConnection, type ReplayFault } from '../src/replay-store.ts';
@@ -404,4 +406,169 @@ for (const stage of ['before-claim', 'before-native-send'] as const) test(`HTTPS
   assert.equal(gateway.server.status.handlers, 0); assert.equal(f.received(), 0);
   assert.equal((await admin.keys('pp:spent:*')).length, stage === 'before-claim' ? 0 : 1);
   assert.equal(f.origin.status.sockets, 0); assert.equal(f.lease.status.state, 'ENABLED');
+});
+
+// Real production entry point, private Unix control, cluster shared handle and production DNS endpoints.
+async function serving(t: TestContext, profile: 'B0' | 'B1' = 'B1') {
+  const f = await flow(t), manifest = makeManifest({ ...f.manifest, gateway_profile: profile });
+  await admin.hset('pp:policy', 'config_digest', configurationDigest(manifest));
+  let arrivals = 0;
+  const origin = createServer((req, res) => {
+    if (req.url === '/resource') arrivals++;
+    if (req.headers['x-tokenforge-run'] !== manifest.run_id) { res.writeHead(409).end(); return; }
+    res.end('supervised resource');
+  });
+  origin.listen(8080, '127.0.0.1'); await once(origin, 'listening');
+  const child = spawn(process.execPath, ['dist/serve.mjs'], { stdio: ['pipe', 'pipe', 'pipe'] });
+  const exited = new Promise<void>(resolve => child.once('exit', () => resolve()));
+  child.stdout.resume(); let diagnostic = ''; child.stderr.on('data', b => { diagnostic += b.toString(); });
+  child.stdin.end(JSON.stringify({ tls: testTls, redis: { username: endpoint.username, password: endpoint.password }, listen_host: '127.0.0.1' }));
+  const links = new Set<Socket>(); let knownWorkers: number[] = [];
+  const workers = () => {
+    try { return readFileSync(`/proc/${child.pid}/task/${child.pid}/children`, 'utf8').trim().split(/\s+/).filter(Boolean).map(Number); }
+    catch { return []; }
+  };
+  t.after(async () => {
+    if (child.exitCode === null && child.signalCode === null) { child.kill('SIGCONT'); child.kill('SIGTERM'); }
+    await exited;
+    for (const socket of links) socket.destroy();
+    // All recorded PIDs were observed as children of our exact spawned supervisor. Never inspect/kill unrelated processes.
+    const running = (pid: number) => {
+      try { const stat = readFileSync(`/proc/${pid}/stat`, 'utf8'); return stat.slice(stat.lastIndexOf(')') + 2).split(' ')[0] !== 'Z'; }
+      catch { return false; }
+    };
+    for (let i = 0; i < 150 && knownWorkers.some(running); i++) await delay(20);
+    assert.ok(knownWorkers.every(pid => !running(pid)), 'owned workers must exit');
+    origin.closeAllConnections(); await new Promise<void>(resolve => origin.close(() => resolve()));
+    try { const info = await lstat(PROTOCOL.control_socket); if (info.isSocket()) await unlink(PROTOCOL.control_socket); } catch { /* already removed by native close */ }
+    assert.ok(!diagnostic.includes(endpoint.password));
+  });
+  let owner: Socket | undefined;
+  for (let i = 0; i < 150; i++) {
+    try { const s = connect(PROTOCOL.control_socket); s.on('error', () => {}); await once(s, 'connect'); owner = s; break; }
+    catch { if (child.exitCode !== null || child.signalCode !== null) throw Error('test-serving-start-failed'); await delay(20); }
+  }
+  if (!owner) throw Error('test-serving-start-failed'); links.add(owner);
+  let carry = '', incarnation: unknown = null, digest: unknown = null;
+  const pending = new Map<string, (value: Record<string, unknown>) => void>();
+  owner.on('data', b => {
+    carry += b.toString(); let newline: number;
+    while ((newline = carry.indexOf('\n')) >= 0) {
+      const reply = JSON.parse(carry.slice(0, newline)) as Record<string, unknown>; carry = carry.slice(newline + 1);
+      validateControlResponse(reply); pending.get(reply['request_id'] as string)?.(reply); pending.delete(reply['request_id'] as string);
+    }
+  });
+  async function call(command: string, payload: unknown = {}, extra: Record<string, unknown> = {}) {
+    const id = randomBytes(16).toString('hex');
+    const request = { version: 1, request_id: id, command, run_id: command === 'STATUS' ? null : manifest.run_id,
+      config_digest: digest, target_incarnation: incarnation, payload, ...extra };
+    const reply = await new Promise<Record<string, unknown>>((resolve, reject) => {
+      const timer = setTimeout(() => { pending.delete(id); reject(Error('test-control-timeout')); }, 8000);
+      pending.set(id, value => { clearTimeout(timer); resolve(value); }); owner!.write(JSON.stringify(request) + '\n');
+    });
+    incarnation = reply['incarnation']; digest = reply['config_digest']; return reply;
+  }
+  assert.equal((await call('STATUS'))['state'], 'FENCED');
+  const prepare = async () => {
+    const response = await call('PREPARE_RUN', { manifest, proposed_config_digest: configurationDigest(manifest), role: 'gateway', role_config: {} });
+    assert.equal(response['result'], 'PREPARED'); knownWorkers = workers();
+    assert.equal(knownWorkers.length, profile === 'B0' ? 1 : 2);
+    assert.equal((await call('CHECK_READY'))['result'], 'READY');
+  };
+  const enable = async () => { assert.equal((await call('ENABLE'))['result'], 'ENABLED'); };
+  function get(wire?: Uint8Array, timeoutMs = 6000) {
+    return new Promise<number>((resolve, reject) => {
+      const options: RequestOptions & { ALPNProtocols: string[] } = { host: '127.0.0.1', port: 443, servername: manifest.origin_name, ca: testTls.cert,
+        minVersion: 'TLSv1.3', maxVersion: 'TLSv1.3', ALPNProtocols: ['http/1.1'], agent: false, path: '/resource',
+        headers: { Host: manifest.origin_name, ...(wire ? { Authorization: `PrivateToken token="${encodeBase64Url(wire)}"` } : {}) } };
+      const req = httpsRequest(options, res => { res.resume(); res.on('error', reject); res.once('end', () => { clearTimeout(timer); resolve(res.statusCode!); }); });
+      const timer = setTimeout(() => req.destroy(), timeoutMs);
+      req.once('error', () => { clearTimeout(timer); reject(Error('test-serving-request-failed')); }); req.end();
+    });
+  }
+  return { f, manifest, child, exited, owner, links, workers, prepare, enable, call, get, arrivals: () => arrivals };
+}
+
+for (const profile of ['B0', 'B1'] as const) test(`production ${profile} workers serve one shared port with real atomic replay and private control`, async t => {
+  const g = await serving(t, profile), wire = await g.f.token();
+  await g.prepare(); await assert.rejects(() => g.get()); await g.enable();
+  assert.equal(await g.get(), 401);
+  let successes = 0, exercised = false;
+  for (let batch = 0; batch < 5; batch++) {
+    if (batch) assert.equal((await g.call('HEARTBEAT', { seq: batch }))['result'], 'HEARTBEAT_ACK');
+    const results = await Promise.allSettled(Array.from({ length: 20 }, () => g.get(wire)));
+    successes += results.filter(r => r.status === 'fulfilled' && r.value === 200).length;
+    const report = await g.call('REPORT'), data = report['data'] as { worker_verification_attempts: { attempts: number }[] };
+    assert.equal(data.worker_verification_attempts.length, profile === 'B0' ? 1 : 2);
+    if (data.worker_verification_attempts.every(w => w.attempts > 0)) { exercised = true; break; }
+  }
+  assert.equal(successes, 1); assert.equal(g.arrivals(), 1); assert.equal(exercised, true);
+  const fenced = await g.call('FENCE', { reason: 'test-cleanup' }, { target_incarnation: null, run_id: null, config_digest: null });
+  assert.equal(fenced['result'], 'FENCED'); assert.equal(g.workers().length, 0); await assert.rejects(() => g.get());
+  assert.equal((await g.call('ENABLE'))['ok'], false);
+});
+
+test('owning helper loss closes all real workers; unrelated STATUS disconnect does not', async t => {
+  const g = await serving(t); await g.prepare(); await g.enable();
+  const other = connect(PROTOCOL.control_socket); other.on('error', () => {}); await once(other, 'connect');
+  other.end(); await delay(30); assert.equal(await g.get(), 401);
+  g.owner.destroy();
+  for (let i = 0; i < 150 && g.workers().length; i++) await delay(20);
+  assert.equal(g.workers().length, 0); await assert.rejects(() => g.get()); assert.equal(g.arrivals(), 0);
+});
+
+test('paused supervisor cannot keep worker leases alive or revive them with a late heartbeat', async t => {
+  const g = await serving(t); await g.prepare(); await g.enable();
+  g.child.kill('SIGSTOP'); await delay(3300); await assert.rejects(() => g.get(undefined, 250));
+  g.child.kill('SIGCONT');
+  const heartbeat = await g.call('HEARTBEAT', { seq: 1 }); assert.equal(heartbeat['ok'], false);
+  assert.equal((await g.call('STATUS'))['state'], 'FAULTED');
+  assert.equal((await g.call('FENCE', { reason: 'test-cleanup' }))['result'], 'FENCED'); assert.equal(g.workers().length, 0);
+});
+
+test('FENCE kills a stopped worker and acknowledges only after confirmed exits', async t => {
+  const g = await serving(t); await g.prepare(); await g.enable(); const pid = g.workers()[0]!;
+  process.kill(pid, 'SIGSTOP'); const before = process.hrtime.bigint();
+  assert.equal((await g.call('FENCE', { reason: 'test-cleanup' }))['result'], 'FENCED');
+  assert.ok(process.hrtime.bigint() - before >= 900000000n); assert.equal(g.workers().length, 0);
+  assert.throws(() => process.kill(pid, 0)); await assert.rejects(() => g.get());
+});
+
+test('abrupt supervisor exit disconnects and terminates its real workers', async t => {
+  const g = await serving(t); await g.prepare(); await g.enable(); const pids = g.workers();
+  g.child.kill('SIGKILL'); await g.exited;
+  for (let i = 0; i < 150 && pids.some(pid => { try { process.kill(pid, 0); return true; } catch { return false; } }); i++) await delay(20);
+  // The container's PID1 may briefly retain a dead child as a zombie; no runnable process may remain.
+  for (const pid of pids) {
+    try { const stat = readFileSync(`/proc/${pid}/stat`, 'utf8'); assert.equal(stat.slice(stat.lastIndexOf(')') + 2).split(' ')[0], 'Z'); }
+    catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; }
+  }
+  await assert.rejects(() => g.get());
+});
+
+test('private control rejects overlong, invalid UTF8/schema and duplicate-ID frames without affecting an unrelated owner', async t => {
+  const g = await serving(t); await g.prepare(); await g.enable();
+  const status = { version: 1, request_id: 'a'.repeat(32), command: 'STATUS', run_id: null, config_digest: null, target_incarnation: null, payload: {} };
+  for (const bytes of [Buffer.alloc(65537, 120), Buffer.from([255, 10]), Buffer.from('{"bad":true}\n'),
+    Buffer.from(JSON.stringify(status) + '\n' + JSON.stringify(status) + '\n')]) {
+    const socket = connect(PROTOCOL.control_socket); socket.on('error', () => {}); await once(socket, 'connect');
+    const closed = once(socket, 'close'); socket.resume(); socket.write(bytes); await closed;
+  }
+  assert.equal(await g.get(), 401); assert.equal((await g.call('STATUS'))['state'], 'ENABLED');
+  assert.equal((await g.call('FENCE', { reason: 'test-cleanup' }))['result'], 'FENCED');
+});
+
+test('production control helper permits reserved FENCE alongside eight ordinary pending commands', async t => {
+  const g = await serving(t); await g.prepare(); await g.enable();
+  const helper = spawn(process.execPath, ['dist/control-helper.mjs'], { stdio: ['pipe', 'pipe', 'pipe'] });
+  let output = '', diagnostic = ''; helper.stdout.on('data', b => { output += b.toString(); }); helper.stderr.on('data', b => { diagnostic += b.toString(); });
+  const done = once(helper, 'close');
+  const commands = Array.from({ length: 9 }, (_, index) => ({ version: 1, request_id: randomBytes(16).toString('hex'),
+    command: index === 8 ? 'FENCE' : 'STATUS', run_id: null, config_digest: null, target_incarnation: null,
+    payload: index === 8 ? { reason: 'test-cleanup' } : {} }));
+  helper.stdin.end(commands.map(c => JSON.stringify(c)).join('\n') + '\n');
+  const [code] = await done; assert.equal(code, 0); assert.equal(diagnostic, '');
+  const replies = output.trim().split('\n').map(line => JSON.parse(line) as Record<string, unknown>);
+  assert.equal(replies.length, 9); for (const reply of replies) validateControlResponse(reply);
+  assert.equal(replies.filter(reply => reply['result'] === 'FENCED').length, 1); assert.equal(g.workers().length, 0);
 });

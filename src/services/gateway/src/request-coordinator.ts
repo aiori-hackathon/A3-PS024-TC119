@@ -44,6 +44,7 @@ export class RequestCoordinator {
   readonly #manifest: Manifest;
   readonly #onReplayClosed: () => void;
   #closed = false;
+  #verificationAttempts = 0;
   #drain: Promise<void> | null = null;
 
   private constructor(m: Manifest, lease: WorkerLease, replay: Replay, origin: Origin, verifier: TokenVerifier) {
@@ -73,6 +74,7 @@ export class RequestCoordinator {
   }
 
   get status() { return this.#admission.status; }
+  get verificationAttempts(): number { return this.#verificationAttempts; }
   get binding() { return Object.freeze({ run_id: this.#manifest.run_id, config_digest: configurationDigest(this.#manifest) }); }
   #fault(): void { this.#lease.requestClose('unsafe-state'); void this.close(); }
   #live(permit: FlowPermit): boolean { return !this.#closed && permit.checkActive() && !this.#closed; }
@@ -119,6 +121,8 @@ export class RequestCoordinator {
       const auth = parseAuthorization(fields); fields!.length = 0;
       if (auth.kind === 'missing') { await rejection('token-required'); return; }
       if (auth.kind === 'rejected') { await rejection(auth.reason); return; }
+      if (this.#verificationAttempts >= Number.MAX_SAFE_INTEGER) { this.#fault(); return; }
+      this.#verificationAttempts++;
       const verification = this.#verifier.verifySignature(auth.wire);
       auth.wire.fill(0); // Verifier owns its standalone copy before its first await.
       const signature = await verification;

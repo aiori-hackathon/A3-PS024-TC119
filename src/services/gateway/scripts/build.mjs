@@ -1,6 +1,6 @@
 import { build } from 'esbuild';
 await build({
-  entryPoints: { bootstrap: 'src/bootstrap.ts', 'token-verifier': 'src/token-verifier.ts', 'http-auth': 'src/http-auth.ts', 'replay-scripts': 'src/replay-scripts.ts', 'redis-adapter': 'src/redis-adapter.ts', 'worker-lease': 'src/worker-lease.ts', 'flow-admission': 'src/flow-admission.ts', 'fixed-origin': 'src/fixed-origin.ts', 'request-coordinator': 'src/request-coordinator.ts', 'https-gateway': 'src/https-gateway.ts' },
+  entryPoints: { bootstrap: 'src/bootstrap.ts', 'token-verifier': 'src/token-verifier.ts', 'http-auth': 'src/http-auth.ts', 'replay-scripts': 'src/replay-scripts.ts', 'redis-adapter': 'src/redis-adapter.ts', 'worker-lease': 'src/worker-lease.ts', 'flow-admission': 'src/flow-admission.ts', 'fixed-origin': 'src/fixed-origin.ts', 'request-coordinator': 'src/request-coordinator.ts', 'https-gateway': 'src/https-gateway.ts', 'worker-host': 'src/worker-host.ts', 'gateway-supervisor': 'src/gateway-supervisor.ts', serve: 'src/serve.ts', 'worker-process': 'src/worker-process.ts', 'control-helper': 'src/control-helper.ts' },
   outdir: 'dist',
   outExtension: { '.js': '.mjs' },
   bundle: true,

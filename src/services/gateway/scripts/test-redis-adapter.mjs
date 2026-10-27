@@ -16,6 +16,7 @@ docker(['build', '--target', 'redis-adapter-tests', '-f', 'src/services/gateway/
 let container = '';
 try {
   container = docker(['run', '-d', '--rm', '--network', 'none', '--user', 'redis', '--read-only', '--tmpfs', '/data:rw,noexec,nosuid,size=8m',
+    '--add-host', 'redis:127.0.0.1', '--add-host', 'protected-origin:127.0.0.1',
     '--cap-drop', 'ALL', '--security-opt', 'no-new-privileges', '--memory', '384m', '--pids-limit', '64', '--log-driver', 'none',
     redis, 'redis-server', '--bind', '127.0.0.1', '--save', '', '--appendonly', 'no', '--maxmemory', '268435456',
     '--maxmemory-policy', 'noeviction', '--slowlog-log-slower-than', '-1', '--slowlog-max-len', '0', '--acllog-max-len', '0']);
@@ -26,6 +27,7 @@ try {
     await delay(100);
   }
   if (!ready) throw Error('Isolated Redis did not become ready');
-  docker(['run', '--rm', '-i', '--network', `container:${container}`, '--user', 'node', '--read-only', '--cap-drop', 'ALL',
+  docker(['run', '--rm', '-i', '--network', `container:${container}`, '--user', 'node', '--read-only',
+    '--tmpfs', '/run/ps024:rw,noexec,nosuid,mode=0700,uid=1000,gid=1000,size=1m', '--cap-drop', 'ALL',
     '--security-opt', 'no-new-privileges', '--memory', '256m', '--pids-limit', '64', image], true, JSON.stringify(tls));
 } finally { if (container) docker(['rm', '-f', container]); }
