@@ -24,7 +24,9 @@ async function command(...args: string[]): Promise<any> {
 before(async () => {
   container = await docker('run', '-d', '--rm', '--network', 'none', '--user', 'redis', '--read-only',
     '--tmpfs', '/data:rw,noexec,nosuid,size=8m', '--cap-drop', 'ALL', '--security-opt', 'no-new-privileges',
-    '--memory', '384m', '--pids-limit', '64', '--log-driver', 'none', image, 'redis-server',
+    // Twenty concurrent docker-exec clients also need transient runc namespace-entry processes.
+    // This is a test-harness budget only; production gateway limits are unchanged.
+    '--memory', '384m', '--pids-limit', '128', '--log-driver', 'none', image, 'redis-server',
     '--bind', '127.0.0.1', '--save', '', '--appendonly', 'no', '--maxmemory', '268435456',
     '--maxmemory-policy', 'noeviction', '--slowlog-log-slower-than', '-1', '--slowlog-max-len', '0', '--acllog-max-len', '0');
   for (let attempt = 0; attempt < 30; attempt++) {
