@@ -30,6 +30,7 @@ export class ReplayStore {
   readonly #identity: readonly string[];
   readonly #slots: Slot[];
   readonly #onFault: (reason: ReplayFault) => void;
+  readonly #abort = new AbortController();
   #state: 'preparing' | 'ready' | 'closed' = 'preparing';
   #fault: ReplayFault | null = null;
 
@@ -86,11 +87,14 @@ export class ReplayStore {
   get status(): Readonly<{ state: 'preparing' | 'ready' | 'closed'; fault: ReplayFault | null }> {
     return Object.freeze({ state: this.#state, fault: this.#fault });
   }
+  get signal(): AbortSignal { return this.#abort.signal; }
+  get binding() { return Object.freeze({ run_id: this.#manifest.run_id, config_digest: this.#identity[2]! }); }
 
   /** Terminal local fence; never QUIT/reconnect/reinitialize. Suppresses late successes. */
   close(): void {
     this.#state = 'closed';
     for (const { connection } of this.#slots) { try { connection.close(); } catch { /* already closed locally */ } }
+    this.#abort.abort();
   }
 
   #fail(reason: ReplayFault): void {

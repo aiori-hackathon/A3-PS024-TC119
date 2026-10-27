@@ -16,6 +16,7 @@ export type TokenRejection =
 export type TokenVerification =
   | { kind: 'rejected'; reason: TokenRejection }
   | { kind: 'claim-candidate'; spend_id: string; epoch: number };
+export type TokenSignature = { kind: 'rejected'; reason: TokenRejection } | { kind: 'signature-valid'; receipt: object };
 
 const reject = (reason: TokenRejection): TokenVerification => ({ kind: 'rejected', reason });
 
@@ -25,6 +26,7 @@ export class TokenVerifier {
   readonly #keyId: Uint8Array;
   readonly #key: CryptoKey;
   readonly #origin: InstanceType<typeof publicVerif.Origin>;
+  readonly #receipts = new WeakMap<object, { bytes: Uint8Array; digest: Uint8Array }>();
 
   private constructor(manifest: Manifest, key: CryptoKey) {
     this.#manifest = manifest;
@@ -58,44 +60,62 @@ export class TokenVerifier {
    * parameter or client timestamp. The later atomic claim must recheck it.
    */
   async verify(wire: unknown, expectedEpoch: number): Promise<TokenVerification> {
-    let expectedDigest: Uint8Array;
     try {
-      expectedDigest = sha256(challengeBytes(this.#manifest, expectedEpoch));
+      challengeBytes(this.#manifest, expectedEpoch);
     } catch {
       return reject('authorization-unavailable');
     }
+    const signature = await this.verifySignature(wire);
+    return signature.kind === 'rejected' ? signature : this.checkContext(signature.receipt, expectedEpoch);
+  }
+
+  /** Own the wire before awaiting crypto. The opaque receipt proves signature only, never authorization. */
+  async verifySignature(wire: unknown): Promise<TokenSignature> {
     if (!(wire instanceof Uint8Array) || wire.byteLength !== PROTOCOL.token_bytes) {
-      return reject('token-malformed');
+      return { kind: 'rejected', reason: 'token-malformed' };
     }
     // Take ownership before the first await; caller mutation cannot change this decision.
     const bytes = libraryBytes(wire, PROTOCOL.token_bytes);
     if (new DataView(bytes.buffer).getUint16(0) !== PROTOCOL.token_type) {
-      return reject('token-type-unsupported');
+      return { kind: 'rejected', reason: 'token-type-unsupported' };
     }
     const keyOffset = PROTOCOL.auth_input_bytes - this.#keyId.length;
     if (!timingSafeEqual(bytes.subarray(keyOffset, PROTOCOL.auth_input_bytes), this.#keyId)) {
-      return reject('token-key-unknown');
+      return { kind: 'rejected', reason: 'token-key-unknown' };
     }
     let token: Token;
     try {
       token = Token.deserialize(TOKEN_TYPES.BLIND_RSA, bytes);
     } catch {
-      return reject('token-malformed');
+      return { kind: 'rejected', reason: 'token-malformed' };
     }
     let signatureValid: boolean;
     try {
       signatureValid = await this.#origin.verify(token, this.#key);
     } catch {
       // Unexpected crypto failure is unavailable state, never a successful verification.
-      return reject('authorization-unavailable');
+      return { kind: 'rejected', reason: 'authorization-unavailable' };
     }
-    if (!signatureValid) return reject('token-invalid');
-    if (!timingSafeEqual(token.authInput.challengeDigest, expectedDigest)) {
+    if (!signatureValid) return { kind: 'rejected', reason: 'token-invalid' };
+    const receipt = Object.freeze({});
+    this.#receipts.set(receipt, { bytes, digest: token.authInput.challengeDigest });
+    return { kind: 'signature-valid', receipt };
+  }
+
+  /** Consume once, on this verifier only, after an authoritative snapshot. */
+  checkContext(receipt: object, expectedEpoch: number): TokenVerification {
+    const verified = this.#receipts.get(receipt);
+    this.#receipts.delete(receipt);
+    if (!verified) return reject('authorization-unavailable');
+    let expectedDigest: Uint8Array;
+    try { expectedDigest = sha256(challengeBytes(this.#manifest, expectedEpoch)); }
+    catch { return reject('authorization-unavailable'); }
+    if (!timingSafeEqual(verified.digest, expectedDigest)) {
       return reject('token-context-mismatch');
     }
     return {
       kind: 'claim-candidate',
-      spend_id: spendId(bytes.subarray(0, PROTOCOL.auth_input_bytes)),
+      spend_id: spendId(verified.bytes.subarray(0, PROTOCOL.auth_input_bytes)),
       epoch: expectedEpoch,
     };
   }

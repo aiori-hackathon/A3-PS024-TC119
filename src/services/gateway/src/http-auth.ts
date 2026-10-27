@@ -73,19 +73,30 @@ function privateToken(value: string): AuthorizationInput {
   }
 }
 
-/** Pass Node's flat request.rawHeaders, NOT its merged/normalized headers map. */
-export function parseAuthorization(rawHeaders: unknown): AuthorizationInput {
-  const malformed = (): AuthorizationInput => ({ kind: 'rejected', reason: 'request-malformed' });
+/** Bound and own the complete flat raw header list before any asynchronous stage. */
+export function copyRawHeaders(rawHeaders: unknown): string[] | null {
   if (!Array.isArray(rawHeaders) || rawHeaders.length % 2 !== 0
-    || rawHeaders.length > PROTOCOL.gateway_common.headers_max_count * 2) return malformed();
+    || rawHeaders.length > PROTOCOL.gateway_common.headers_max_count * 2) return null;
   let bytes = 2; // End-of-headers CRLF; transport also enforces its framing limit.
-  let authorization: string | undefined;
+  const copy: string[] = [];
   for (let i = 0; i < rawHeaders.length; i += 2) {
     const name: unknown = rawHeaders[i], value: unknown = rawHeaders[i + 1];
-    if (typeof name !== 'string' || typeof value !== 'string') return malformed();
+    if (typeof name !== 'string' || typeof value !== 'string') return null;
     bytes += name.length + value.length + 4; // Latin-1 octets, colon-space and CRLF.
-    if (bytes > PROTOCOL.gateway_common.headers_max_bytes) return malformed();
-    if (!fieldName.test(name) || !fieldValue.test(value)) return malformed();
+    if (bytes > PROTOCOL.gateway_common.headers_max_bytes) return null;
+    if (!fieldName.test(name) || !fieldValue.test(value)) return null;
+    copy.push(name, value);
+  }
+  return copy;
+}
+
+/** Pass Node's flat request.rawHeaders, NOT its merged/normalized headers map. */
+export function parseAuthorization(rawHeaders: unknown): AuthorizationInput {
+  const fields = copyRawHeaders(rawHeaders);
+  if (!fields) return { kind: 'rejected', reason: 'request-malformed' };
+  let authorization: string | undefined;
+  for (let i = 0; i < fields.length; i += 2) {
+    const name = fields[i]!, value = fields[i + 1]!;
     if (name.toLowerCase() === 'authorization') {
       if (authorization !== undefined) return { kind: 'rejected', reason: 'token-malformed' };
       authorization = value;

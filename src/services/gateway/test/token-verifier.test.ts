@@ -51,6 +51,17 @@ test('repeated verification has no replay side effect and cannot substitute for 
   assert.ok(results.every(result => !Object.hasOwn(result, 'authorized')));
 });
 
+test('signature receipts are opaque, single-use and bound to the verifier, with owned wire bytes', async () => {
+  const input = epochZero.slice(); const pending = verifier.verifySignature(input); input.fill(0);
+  const signature = await pending; assert.equal(signature.kind, 'signature-valid');
+  if (signature.kind !== 'signature-valid') throw Error('Expected signature receipt');
+  assert.deepEqual(Object.keys(signature.receipt), []); assert.equal(Object.isFrozen(signature.receipt), true);
+  const other = await TokenVerifier.prepare(manifest);
+  assert.deepEqual(other.checkContext(signature.receipt, 0), { kind: 'rejected', reason: 'authorization-unavailable' });
+  assert.equal(verifier.checkContext(signature.receipt, 0).kind, 'claim-candidate');
+  assert.deepEqual(verifier.checkContext(signature.receipt, 0), { kind: 'rejected', reason: 'authorization-unavailable' });
+});
+
 test('rejects non-byte, truncated, trailing and oversized input', async () => {
   for (const input of [null, undefined, [], 'token', new ArrayBuffer(354), epochZero.subarray(1),
     new Uint8Array([...epochZero, 0]), new Uint8Array(65536)]) {

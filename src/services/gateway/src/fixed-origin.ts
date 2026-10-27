@@ -85,6 +85,7 @@ export class FixedOrigin {
       idle: Object.values(this.#agent.freeSockets).reduce((n, sockets) => n + (sockets?.length ?? 0), 0),
       queued: Object.values(this.#agent.requests).reduce((n, requests) => n + (requests?.length ?? 0), 0) });
   }
+  get binding() { return Object.freeze({ run_id: this.#manifest.run_id, config_digest: configurationDigest(this.#manifest) }); }
 
   #now(): bigint | null {
     try {
