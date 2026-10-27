@@ -75,6 +75,8 @@ The profile fixes pool capacity: one connection for B0 or two for B1 **per worke
 
 An unsafe result, malformed reply, script error, timeout or ambiguous mutation must **terminally close the caller's run latch**. These scripts do not implement that latch, supervise leases or authorize forwarding. They never repair missing guards, and snapshot cannot persist closure because it is read-only. Redis Lua serializes execution but does not roll back writes after a runtime error. No uncertain claim may be retried or refunded. Safety assumes trustworthy non-regressing Redis/host time and no silent state rollback; the clock tests cover detected regressions against recorded highwater, not arbitrary unseen clock excursions.
 
+The separate `npm.cmd run test:recovery --prefix src/services/gateway` command tests fresh Redis/key/run recovery with quarantined old credentials in private pipes. See the [reset guide](../../../docs/implementation/RESET_RECOVERY.md) for its scope and controller integration.
+
 Real Redis component tests require Docker and run separately from the Docker-free `check:g0` suite:
 
 ```powershell

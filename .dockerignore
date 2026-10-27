@@ -33,3 +33,4 @@ src/contracts/fixtures/*
 !src/services/gateway/test
 src/services/gateway/test/*
 !src/services/gateway/test/redis-adapter-redis.test.ts
+!src/services/gateway/test/recovery-phase.ts

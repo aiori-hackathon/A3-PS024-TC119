@@ -20,6 +20,10 @@ COPY src/contracts/fixtures/policy-golden.json /build/src/contracts/fixtures/pol
 COPY src/services/gateway/test/redis-adapter-redis.test.ts ./test/redis-adapter-redis.test.ts
 CMD ["node", "--test-isolation=none", "--test", "test/redis-adapter-redis.test.ts"]
 
+FROM build AS recovery-tests
+COPY src/services/gateway/test/recovery-phase.ts ./test/recovery-phase.ts
+CMD ["node", "test/recovery-phase.ts"]
+
 FROM build AS production-dependencies
 RUN npm ci --omit=dev --ignore-scripts --no-audit --no-fund
 

@@ -14,6 +14,7 @@
     "test:bundle": "node --test test/token-verifier-bundle.test.ts",
     "test:replay": "node --test test/replay-redis.test.ts",
     "test:redis-adapter": "node scripts/test-redis-adapter.mjs",
+    "test:recovery": "node scripts/test-recovery.mjs",
     "build": "node scripts/build.mjs",
     "audit:dependencies": "npm audit --omit=dev"
   },

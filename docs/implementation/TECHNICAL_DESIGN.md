@@ -220,6 +220,8 @@ This gives bounded detection under healthy scheduling, not instantaneous revocat
 
 ### 2.5 Strong reset barrier
 
+The public `src/security/reset-barrier.ts` utility now gates old Redis discard on complete identity-bound stop evidence, with an opaque single-use receipt and terminal handling of uncertainty. See [reset integration and recovery evidence](RESET_RECOVERY.md). Real lab control/Docker adapters and full deployed cross-role verification remain integration work.
+
 For intentional stop or fault, stop admitting first and broadcast FENCE. Gateway supervisor closes admission, removes queued jobs, prevents any late verify/Redis callback from authorizing another forward, aborts upstream/downstream work, closes pools/sockets and waits for active work to settle. A worker that cannot acknowledge is terminated.
 
 Controller waits for **strong FENCED acknowledgements** from all old serving workers, or kills the relevant container/process tree and confirms exit. Use a bounded local control wait (initial 10 seconds); timeout means kill-and-confirm, not assume success. A hung process/native promise may require process termination. Failure to confirm old processes are gone means remain closed.

@@ -8,6 +8,7 @@ function run(args,cwd=root) {
   if(r.status!==0)process.exit(r.status??1);
 }
 run(['scripts/generate-contract-schemas.mjs','--check']);
+run(['--test','src/security/test/reset-barrier.test.ts']);
 const gateway=fileURLToPath(new URL('../src/services/gateway/',import.meta.url));
 const lab=fileURLToPath(new URL('../src/services/lab/',import.meta.url));
 run(['node_modules/typescript/bin/tsc','--noEmit'],gateway);
