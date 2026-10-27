@@ -7,7 +7,9 @@ import { REPLAY_SCRIPTS } from '../src/replay-scripts.ts';
 
 test('built verifier is a standalone project bundle and validates a fresh token', async () => {
   const directory = new URL('../dist/', import.meta.url);
-  assert.deepEqual(readdirSync(directory).sort(), ['bootstrap.mjs', 'fixed-origin.mjs', 'flow-admission.mjs', 'http-auth.mjs', 'redis-adapter.mjs', 'replay-scripts.mjs', 'request-coordinator.mjs', 'token-verifier.mjs', 'worker-lease.mjs']);
+  assert.deepEqual(readdirSync(directory).sort(), ['bootstrap.mjs', 'fixed-origin.mjs', 'flow-admission.mjs', 'http-auth.mjs', 'https-gateway.mjs', 'redis-adapter.mjs', 'replay-scripts.mjs', 'request-coordinator.mjs', 'token-verifier.mjs', 'worker-lease.mjs']);
+  const { HttpsGateway } = await import(new URL('https-gateway.mjs', directory).href);
+  assert.throws(() => HttpsGateway.prepare(null, null, null, null), /https-configuration-invalid/);
   const { RequestCoordinator } = await import(new URL('request-coordinator.mjs', directory).href);
   await assert.rejects(() => RequestCoordinator.prepare(null, null, null, null), /coordinator-configuration-invalid/);
   const { openRedisReplayStore } = await import(new URL('redis-adapter.mjs', directory).href);

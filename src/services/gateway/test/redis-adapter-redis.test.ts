@@ -7,20 +7,29 @@ import { publicVerif, TokenChallenge, WWWAuthenticateHeader } from '@cloudflare/
 import { createServer } from 'node:http';
 import { connect, type Socket } from 'node:net';
 import { once } from 'node:events';
+import { readFileSync } from 'node:fs';
+import { request as httpsRequest, type RequestOptions } from 'node:https';
+import { connect as tlsConnect } from 'node:tls';
 import golden from '../../../contracts/fixtures/policy-golden.json' with { type: 'json' };
 import { configurationDigest, makeManifest, encodeBase64Url, redemptionContext, spendId, challengeBytes, type Manifest } from '../../../contracts/lib/index.ts';
 import { REPLAY_SCRIPTS } from '../src/replay-scripts.ts';
 import { openRedisReplayStore } from '../src/redis-adapter.ts';
 import { ReplayStore, type ReplayConnection, type ReplayFault } from '../src/replay-store.ts';
-import { WorkerLease } from '../src/worker-lease.ts';
+import { WorkerLease, type LeaseRuntime } from '../src/worker-lease.ts';
 import { FixedOrigin, type OriginRuntime } from '../src/fixed-origin.ts';
 import { RequestCoordinator, type CoordinatorResponse, type RequestView } from '../src/request-coordinator.ts';
+import { HttpsGateway, type GatewayTls } from '../src/https-gateway.ts';
 
 // Executed ONLY in a disposable container sharing an isolated Redis network
 // namespace. No host port, Docker socket, credentials file or external network.
 const admin = new Redis({ host: '127.0.0.1', port: 6379, protocol: 2, lazyConnect: true,
   enableReadyCheck: false, disableClientInfo: true, retryStrategy: () => null });
 admin.on('error', () => {});
+let testTls: GatewayTls;
+try {
+  testTls = JSON.parse(readFileSync(0, 'utf8')) as GatewayTls;
+  if (typeof testTls.key !== 'string' || typeof testTls.cert !== 'string') throw Error();
+} catch { throw Error('test-tls-input-invalid'); }
 const endpoint = { host: '127.0.0.1', port: 6379, username: 'gateway', password: randomBytes(32).toString('hex') };
 const stores: ReplayStore[] = [];
 const faults: ReplayFault[] = [];
@@ -210,10 +219,11 @@ async function flow(t: TestContext, nearBoundary = false) {
       sequence: 0, issued_at_ns: String(stamp), expires_at_ns: String(stamp + 3000000000n) }), true);
     return coordinator;
   }
-  async function token(wrongOrigin = false) {
+  async function token(wrongOrigin: boolean | TokenChallenge = false) {
     const client = new publicVerif.Client(mode);
-    const request = await client.createTokenRequest(new TokenChallenge(2, manifest.issuer_name, redemptionContext(manifest, 0),
-      [wrongOrigin ? 'other.lab.test' : manifest.origin_name]), spki);
+    const challenge = typeof wrongOrigin === 'boolean' ? new TokenChallenge(2, manifest.issuer_name, redemptionContext(manifest, 0),
+      [wrongOrigin ? 'other.lab.test' : manifest.origin_name]) : wrongOrigin;
+    const request = await client.createTokenRequest(challenge, spki);
     return (await client.finalize(await new publicVerif.Issuer(mode, manifest.issuer_name, keys.privateKey, keys.publicKey).issue(request))).serialize();
   }
   function view(wire?: Uint8Array, signal = new AbortController().signal): RequestView {
@@ -300,4 +310,98 @@ test('coordinator idle Redis failure cancels a claimed delayed-connect flow and 
   f.store.close(); assert.equal(f.lease.status.run_closed, true);
   assert.equal((await pending)[0]!.status, 503); complete(); await delay(20);
   assert.equal(f.received(), 0); assert.equal(f.origin.status.sockets, 0);
+});
+
+async function ingress(t: TestContext, f: Awaited<ReturnType<typeof flow>>, replay?: ReplayView, runtime?: LeaseRuntime) {
+  const coordinator = await f.start(replay); const server = HttpsGateway.prepare(f.manifest, f.lease, coordinator, testTls, runtime);
+  const address = await server.listen('127.0.0.1', 0); t.after(() => server.close());
+  function get(wire?: Uint8Array, path = '/resource') {
+    return new Promise<{ status: number; headers: import('node:http').IncomingHttpHeaders; body: Buffer }>((resolve, reject) => {
+      const options: RequestOptions & { ALPNProtocols: string[] } = { host: '127.0.0.1', port: address.port, servername: f.manifest.origin_name, ca: testTls.cert,
+        minVersion: 'TLSv1.3', maxVersion: 'TLSv1.3', ALPNProtocols: ['http/1.1'], agent: false, path,
+        headers: { Host: f.manifest.origin_name, ...(wire ? { Authorization: `PrivateToken token="${encodeBase64Url(wire)}"` } : {}) } };
+      const req = httpsRequest(options, res => {
+        const parts: Buffer[] = []; res.on('data', b => parts.push(b)); res.on('error', reject);
+        res.once('end', () => resolve({ status: res.statusCode!, headers: res.headers, body: Buffer.concat(parts) }));
+      });
+      req.once('error', () => reject(Error('test-https-request-failed'))); req.end();
+    });
+  }
+  async function raw(bytes: string) {
+    const socket = tlsConnect({ host: '127.0.0.1', port: address.port, servername: f.manifest.origin_name, ca: testTls.cert,
+      minVersion: 'TLSv1.3', maxVersion: 'TLSv1.3', ALPNProtocols: ['http/1.1'] });
+    socket.on('error', () => {}); await once(socket, 'secureConnect'); const parts: Buffer[] = [];
+    socket.on('data', b => parts.push(b)); const closed = once(socket, 'close'); socket.write(bytes); await closed;
+    return Buffer.concat(parts).toString();
+  }
+  return { server, get, raw };
+}
+
+test('real HTTPS challenge -> blind issuance -> concurrent single-spend redemption reaches origin once', async t => {
+  const f = await flow(t), gateway = await ingress(t, f);
+  const challenge = await gateway.get(); assert.equal(challenge.status, 401);
+  const parsed = WWWAuthenticateHeader.parse(String(challenge.headers['www-authenticate']));
+  assert.equal(encodeBase64Url(parsed[0]!.tokenKey), f.manifest.token_key_spki_b64url);
+  const wire = await f.token(parsed[0]!.challenge);
+  const results = await Promise.all([gateway.get(wire), gateway.get(wire)]);
+  assert.deepEqual(results.map(r => r.status).sort(), [200, 401]); assert.equal(f.received(), 1);
+  assert.equal(results.find(r => r.status === 200)!.body.toString(), 'protected resource');
+  for (const result of results) assert.equal(result.headers.connection, 'close');
+  assert.ok(results.find(r => r.status === 401)!.headers['www-authenticate']);
+  assert.equal((await admin.keys('pp:spent:*')).length, 1);
+});
+
+test('real HTTPS rejected signatures/contexts/routes/framing have zero origin arrivals or spent tokens', async t => {
+  const f = await flow(t), wire = await f.token(), wrong = await f.token(true), gateway = await ingress(t, f);
+  const forged = wire.slice(); forged[2] = forged[2]! ^ 1;
+  assert.equal((await gateway.get(forged)).status, 401); assert.equal((await gateway.get(wrong)).status, 401);
+  assert.equal((await gateway.get(wire, '/resource?forbidden=1')).status, 404);
+  const credential = `Authorization: PrivateToken token="${encodeBase64Url(wire)}"\r\n`;
+  const duplicateHost = await gateway.raw(`GET /resource HTTP/1.1\r\nHost: origin.lab.test\r\nHost: other.test\r\n${credential}\r\n`);
+  assert.match(duplicateHost, /^HTTP\/1.1 400/);
+  const malformed = await gateway.raw(`GET /resource HTTP/1.1\r\nHost: origin.lab.test\r\nContent-Length: 0\r\nTransfer-Encoding: chunked\r\n${credential}\r\n`);
+  assert.equal(malformed, ''); assert.equal(f.received(), 0); assert.equal((await admin.keys('pp:spent:*')).length, 0);
+});
+
+test('wildcard HTTPS listener isolates equal remote-port connections to different local addresses', async t => {
+  const f = await flow(t), coordinator = await f.start();
+  const gateway = HttpsGateway.prepare(f.manifest, f.lease, coordinator, testTls);
+  const address = await gateway.listen('0.0.0.0', 0); t.after(() => gateway.close());
+  const first = connect({ host: '127.0.0.1', port: address.port, localAddress: '127.0.0.1' });
+  first.on('error', () => {}); await once(first, 'connect');
+  const second = connect({ host: '127.0.0.2', port: address.port, localAddress: '127.0.0.1', localPort: first.localPort! });
+  second.on('error', () => {}); await once(second, 'connect');
+  t.after(() => { first.destroy(); second.destroy(); });
+  assert.equal(first.localPort, second.localPort);
+  for (let i = 0; gateway.status.sockets !== 2 && i < 50; i++) await delay(5);
+  assert.equal(gateway.status.sockets, 2);
+  async function challenge(raw: Socket) {
+    const tls = tlsConnect({ socket: raw, servername: f.manifest.origin_name, ca: testTls.cert,
+      minVersion: 'TLSv1.3', maxVersion: 'TLSv1.3', ALPNProtocols: ['http/1.1'] });
+    tls.on('error', () => {}); await once(tls, 'secureConnect'); const chunks: Buffer[] = [];
+    tls.on('data', data => chunks.push(data)); const closed = once(tls, 'close');
+    tls.write('GET /resource HTTP/1.1\r\nHost: origin.lab.test\r\n\r\n'); await closed;
+    assert.match(Buffer.concat(chunks).toString(), /^HTTP\/1.1 401/);
+  }
+  // Finish the SECOND handshake first: the first accepted raw record must not be selected accidentally.
+  await challenge(second); await delay(20); assert.equal(first.destroyed, false);
+  await challenge(first); assert.equal(f.received(), 0);
+});
+
+for (const stage of ['before-claim', 'before-native-send'] as const) test(`HTTPS absolute deadline rejects ${stage} even when timers never run`, async t => {
+  const f = await flow(t), wire = await f.token(); let offset = 0n;
+  const runtime: LeaseRuntime = { nowNs: () => process.hrtime.bigint() + offset, schedule: () => () => {} };
+  const replay = replayView(f.store), original = replay.snapshot;
+  if (stage === 'before-claim') replay.snapshot = async () => {
+    const result = await original(); offset = 5000000000n; return result;
+  };
+  else f.runtime.connect = () => connect({ host: 'delayed.test', port: f.port,
+    lookup(_host, _options, callback) { offset = 5000000000n; callback(null, '127.0.0.1', 4); } });
+  const gateway = await ingress(t, f, replay, runtime);
+  await assert.rejects(() => gateway.get(wire), /test-https-request-failed/);
+  // Client closure can precede native origin/handler cleanup; observe the actual drain.
+  for (let i = 0; gateway.server.status.handlers && i < 100; i++) await delay(5);
+  assert.equal(gateway.server.status.handlers, 0); assert.equal(f.received(), 0);
+  assert.equal((await admin.keys('pp:spent:*')).length, stage === 'before-claim' ? 0 : 1);
+  assert.equal(f.origin.status.sockets, 0); assert.equal(f.lease.status.state, 'ENABLED');
 });

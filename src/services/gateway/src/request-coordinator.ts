@@ -6,8 +6,8 @@ import type { ReplayStore } from './replay-store.ts';
 import type { FixedOrigin, OriginResult } from './fixed-origin.ts';
 import type { WorkerLease } from './worker-lease.ts';
 
-/** Trusted HTTP adapter view. The future listener must additionally enforce native framing/TLS/socket deadlines. */
-export type RequestView = { method: string; target: string; rawHeaders: unknown; hasBody: boolean; signal: AbortSignal };
+/** Trusted adapter view. checkActive enforces absolute transport deadlines even before delayed timers run. */
+export type RequestView = { method: string; target: string; rawHeaders: unknown; hasBody: boolean; signal: AbortSignal; checkActive?: () => boolean };
 export type CoordinatorResponse = HttpRejection | Extract<OriginResult, { kind: 'response' | 'upstream-error' }>;
 /** Resolve only after actual downstream write/abort cleanup. Never throw to request a second response. */
 export type ResponseSink = (response: CoordinatorResponse, signal: AbortSignal) => Promise<void>;
@@ -73,17 +73,19 @@ export class RequestCoordinator {
   }
 
   get status() { return this.#admission.status; }
+  get binding() { return Object.freeze({ run_id: this.#manifest.run_id, config_digest: configurationDigest(this.#manifest) }); }
   #fault(): void { this.#lease.requestClose('unsafe-state'); void this.close(); }
   #live(permit: FlowPermit): boolean { return !this.#closed && permit.checkActive() && !this.#closed; }
 
   async handle(view: RequestView, deliver: ResponseSink): Promise<void> {
     // Bounded, owned primitives before first await: callers cannot alter queued requests.
-    const method = view.method, target = view.target, hasBody = view.hasBody, client = view.signal;
+    const method = view.method, target = view.target, hasBody = view.hasBody, client = view.signal, checkActive = view.checkActive;
+    const transportLive = () => !client.aborted && (checkActive ? checkActive() : true) && !client.aborted;
     const fields = copyRawHeaders(view.rawHeaders);
     const preflightError = fields ? preflight(this.#manifest, method, target, fields, hasBody) : 'request-malformed';
     let permit: FlowPermit | null = null, delivered = false;
     const send = async (response: CoordinatorResponse) => {
-      if (delivered || client.aborted) return;
+      if (delivered || !transportLive()) return;
       if ((response.status === 200 || response.status === 401) && (!permit || !this.#live(permit))) response = this.#responses.rejection('authorization-unavailable');
       delivered = true; // A failed/partial sink must never cause a second response.
       await deliver(response, permit?.signal ?? client);
@@ -103,11 +105,15 @@ export class RequestCoordinator {
       await send(this.#responses.rejection(reason, snapshot.reply));
     };
     try {
+      if (!transportLive()) return;
       if (this.#closed || !this.#lease.checkActive()) { await inactive(); return; }
       const admission = await this.#admission.acquire(client);
       if (admission.kind === 'canceled') return;
       if (admission.kind === 'rejected') { await send(this.#responses.rejection(admission.reason)); return; }
-      permit = admission.permit;
+      const admitted = admission.permit;
+      // Carry the transport's absolute deadline into the origin's native send checks too.
+      permit = Object.freeze({ signal: admitted.signal, release: () => admitted.release(),
+        checkActive: () => transportLive() && admitted.checkActive() });
       if (!this.#live(permit)) { await inactive(); return; }
       if (preflightError) { await rejection(preflightError); return; }
       const auth = parseAuthorization(fields); fields!.length = 0;

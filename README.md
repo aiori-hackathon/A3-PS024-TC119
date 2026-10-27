@@ -9,7 +9,7 @@ Team **A3-PS024-TC119**, Pandit Deendayal Energy University. Krish Sonpal: gatew
 
 The organizer-owned repository and submitted assets above are preserved. All implementation source lives under `src/` as requested by the existing `src/README.md`.
 
-**Current stage: G0 accepted; component implementation next.** Both gateway and lab packages independently validate the shared contract, cryptographic compatibility and reproducible builds. HTTP services, Redis replay enforcement and the integrated demonstration remain the next stages. See [G0 status](docs/implementation/G0_STATUS.md).
+**Current stage: gateway HTTPS component implemented; deployment integration pending.** Real TLS tests connect challenge generation, blind-issued tokens, Redis single-spend enforcement and a counted protected origin. Both packages validate the shared contract and reproducible builds. The serving process, two-worker supervisor, complete reset barrier and integrated issuer/client deployment remain pending. See [gateway status](src/services/gateway/README.md) and historical [G0 status](docs/implementation/G0_STATUS.md).
 
 Read the [technical design](docs/implementation/TECHNICAL_DESIGN.md), [shared contract reference](src/contracts/README.md), and [dependency review](docs/security/DEPENDENCY_REVIEW.md). Executable contract schemas and fixtures define the interfaces shared by the gateway and lab components.
 
