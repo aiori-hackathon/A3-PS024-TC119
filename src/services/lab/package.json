@@ -6,7 +6,7 @@
   "engines": { "node": ">=24 <25" },
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "test": "node --test test/fixture.test.ts test/crypto.test.ts test/controller-contract.test.ts test/issuer.test.ts test/issuer-control.test.ts test/control-server.test.ts test/client.test.ts",
+    "test": "node --test test/fixture.test.ts test/crypto.test.ts test/controller-contract.test.ts test/issuer.test.ts test/issuer-control.test.ts test/control-server.test.ts test/client.test.ts test/client-control.test.ts",
     "build": "node scripts/build.mjs",
     "test:bundle": "node --test test/bundle.test.ts",
     "audit:dependencies": "npm audit --omit=dev"

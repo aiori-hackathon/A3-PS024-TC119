@@ -13,8 +13,10 @@
 | Issuer lifecycle | `issuer/control.ts` | Key creation, prepare, provision, ready, enable with lease, heartbeat, fence, status, report |
 | Control transport | `control-server.ts` | Newline-delimited JSON on a private local socket; async dispatch; reserved FENCE/STATUS path |
 | Client | `client/client.ts`, `challenge.ts`, `tunnel.ts`, `inventory.ts` | CONNECT then pinned TLS 1.3; strict challenge parse; one library `Client` per issuance; memory-only inventory |
+| Client lifecycle | `client/control.ts` | PREPARE, PROVISION_CLIENT, READY, ENABLE, async RUN_SCENARIO (one at a time), FENCE, STATUS, REPORT. Only `healthy-flow` exists; other frozen names refuse with `ILLEGAL_STATE` rather than fake a result |
+| Process entry points | `roles/issuer.ts`, `roles/client.ts`, `roles/control-helper.ts`, `roles/common.ts` | Three built bundles plus the G0 smoke bundle. Helper reads validated requests on stdin and prints validated replies; fixed error text; no echo |
 
-Tests: 59 pass on Node 24.18.0 (host, one POSIX-only socket-mode test skipped) and 59 of 59 on `node:24.22.1-bookworm-slim`. Typecheck, `npm run build`, `test:bundle` and `npm audit` are clean.
+Tests: 64 pass on Node 24.18.0 (host, one POSIX-only socket-mode test skipped) and 65 of 65 on `node:24.22.1-bookworm-slim`; `test:bundle` passes 4 of 4 on both. Typecheck, `npm run build`, the image check and `npm audit` are clean.
 
 ## Behaviour that is tested
 
@@ -32,9 +34,16 @@ Tests: 59 pass on Node 24.18.0 (host, one POSIX-only socket-mode test skipped) a
 4. **Issuance sign failure is 500 `issuance-failed`.** The plan says "fixed safe failure result" without a status. Please say if the gateway side expects something else.
 5. **REPORT from the issuer carries only `issuance_successes` and `issuance_failures`.** Issuance latency histograms are not recorded yet.
 
+- **Built-process test:** the built `issuer.mjs` is started with only a socket path, a secrets directory and a bind address, then driven through the built `control-helper.mjs` from STATUS discovery to a real HTTPS issuance and a FENCE. The process writes nothing to stdout or stderr. A malformed request makes the helper exit 1 with `control-helper-failed` and no echo.
+- **Client scenario control:** a stalled scenario does not block STATUS or FENCE; FENCE aborts it, waits for it to settle and returns no result. A scenario that throws is reported as FAIL with a fixed label.
+
+## Environment names read by roles
+
+`PS024_CONTROL_SOCKET` (default `/run/ps024/control.sock`), `PS024_SECRETS_DIR` (default `/run/secrets`), `PS024_BIND_ADDRESS` (default `127.0.0.1`, so an unconfigured issuer is never exposed) and `PS024_LISTEN_PORT` (default 443). None carries a secret. Compose (M03) must set the bind address to the planned interface.
+
 ## Not done yet
 
-- Process entry points: the issuer role and control listener are not wired to a runnable `issuer` entry or container, and there is no helper that reads private stdin.
-- The client lifecycle role (PREPARE, PROVISION_CLIENT, CHECK_READY, ENABLE, FENCE, RUN_SCENARIO) is not written. The client library is.
+- The Dockerfile runtime `CMD` is still the G0 smoke bundle; role selection by command (`node dist/issuer.mjs`) is for M03's Compose file.
 - Nothing has run against the real gateway, a real proxy, Redis or Compose. The proxy and gateway in these tests are stubs written for the tests.
-- Dockerfile and image check still cover only the G0 smoke entry.
+- Scenarios other than `healthy-flow`, origin counters and report assembly (M05); controller, lock and supervision (M04); Compose and network isolation (M03).
+- The issuer REPORT has no latency histograms yet.

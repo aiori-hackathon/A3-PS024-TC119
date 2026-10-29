@@ -16,11 +16,13 @@ const script = `
 import { readdirSync, readFileSync, existsSync } from 'node:fs';
 const app = readdirSync('/app');
 if (app.some((p) => !['dist', 'node_modules'].includes(p))) throw Error('Unexpected app payload');
-if (JSON.stringify(readdirSync('/app/dist')) !== JSON.stringify(['bootstrap.mjs'])) throw Error('Unexpected build payload');
+if (JSON.stringify(readdirSync('/app/dist').sort()) !== JSON.stringify(['bootstrap.mjs', 'client.mjs', 'control-helper.mjs', 'issuer.mjs'])) throw Error('Unexpected build payload');
 for (const p of ['typescript', 'esbuild', 'ajv']) if (existsSync('/app/node_modules/' + p)) throw Error('Dev tool in runtime: ' + p);
 if (JSON.parse(readFileSync('/app/node_modules/sjcl/package.json', 'utf8')).version !== '1.0.9') throw Error('sjcl override missing');
-const bundle = readFileSync('/app/dist/bootstrap.mjs', 'utf8');
-if (/services[\\\\/]gateway|policy-golden|rfc9578-public/.test(bundle)) throw Error('Gateway/fixture material in bundle');
+for (const f of readdirSync('/app/dist')) {
+  const bundle = readFileSync('/app/dist/' + f, 'utf8');
+  if (/services[\\\\/]gateway|policy-golden|rfc9578-public/.test(bundle)) throw Error('Gateway/fixture material in bundle: ' + f);
+}
 for (const p of ['/src', '/test', '/fixtures', '/build']) if (existsSync(p)) throw Error('Source tree in runtime: ' + p);
 console.log(JSON.stringify({ platform: process.platform, node: process.versions.node, runtime_payload: 'production-only' }));
 `;
