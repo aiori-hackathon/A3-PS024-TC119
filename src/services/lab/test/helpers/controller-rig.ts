@@ -4,7 +4,7 @@ import { randomBytes } from 'node:crypto';
 import { PROTOCOL, hex, validateControlRequest, validateControlResponse, type Manifest } from '../../../../contracts/lib/index.ts';
 import { IssuerRole } from '../../src/issuer/control.ts';
 import { OriginRole } from '../../src/origin/control.ts';
-import { ClientRole } from '../../src/client/control.ts';
+import { ClientRole, type ScenarioRunner } from '../../src/client/control.ts';
 import { InProcessLink } from '../../src/controller/link.ts';
 import { CLIENT_IDS, type ClientId, type Json, type RedisPort, type ResetPort, type RoleLink, type RoleName } from '../../src/controller/ports.ts';
 import { emergencyFence } from '../../src/controller/envelope.ts';
@@ -123,7 +123,7 @@ export type ControllerRig = {
   issuer: IssuerRole; origin: OriginRole; clients: Record<ClientId, ClientRole>; all: RoleLink[]; stop: () => Promise<void>;
 };
 
-export function controllerRig(options: { gateway?: boolean } = {}): ControllerRig {
+export function controllerRig(options: { gateway?: boolean; scenarios?: Record<string, ScenarioRunner> } = {}): ControllerRig {
   const pki = createPki();
   const tls = pki.leaf(PROTOCOL.issuer_name);
   const files: Record<string, string> = { '/run/secrets/tls.crt': tls.cert, '/run/secrets/tls.key': tls.key, '/run/secrets/ca.crt': pki.caPem };
@@ -131,7 +131,7 @@ export function controllerRig(options: { gateway?: boolean } = {}): ControllerRi
   const log: LogEntry[] = [];
   const issuer = new IssuerRole({ readSecret, listen: { host: '127.0.0.1', port: 0 }, clock: () => performance.now(), drainMs: 500 });
   const origin = new OriginRole({ listen: { host: '127.0.0.1', port: 0 }, drainMs: 500 });
-  const clients = Object.fromEntries(CLIENT_IDS.map((id) => [id, new ClientRole({ readSecret, proxy: { host: '127.0.0.1', port: 9 }, drainMs: 500 })])) as Record<ClientId, ClientRole>;
+  const clients = Object.fromEntries(CLIENT_IDS.map((id) => [id, new ClientRole({ readSecret, proxy: { host: '127.0.0.1', port: 9 }, drainMs: 500, ...(options.scenarios ? { scenarios: options.scenarios } : {}) })])) as Record<ClientId, ClientRole>;
   const gateway = new FakeGateway();
   const wrap = (role: RoleName, handle: (raw: unknown) => Promise<Json>) => new LoggedLink(new InProcessLink(role, handle), log);
   const links: RunLinks = {

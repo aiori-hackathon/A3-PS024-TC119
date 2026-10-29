@@ -130,6 +130,18 @@ export class LabClient {
     this.tokens.add(parsed.epoch, wire);
   }
 
+  /**
+   * For the trusted scenario harness only: one issuance POST with caller-supplied bytes and voucher, returning the HTTP
+   * status and (on 200) the response body. It is not used by ordinary client flow and keeps nothing.
+   */
+  async issuanceAttempt(requestWire: Uint8Array, voucher: Uint8Array | null): Promise<{ status: number; body: Buffer }> {
+    const r = await this.#exchange(this.#issuerAgent, this.#m.issuer_name, {
+      method: 'POST', path: new URL(this.#m.issuer_request_uri).pathname, body: requestWire,
+      headers: { 'Content-Type': REQUEST_TYPE, Accept: RESPONSE_TYPE, ...(voucher ? { 'X-Lab-Voucher': encodeBase64Url(voucher, false) } : {}) },
+    }, 4096);
+    return { status: r.status, body: r.body };
+  }
+
   /** Presents one inventoried token (removed first: a token is offered at most once). */
   async redeem(epoch: number): Promise<{ status: number; wwwAuthenticate: string[] }> {
     const wire = this.tokens.take(epoch);

@@ -9,7 +9,7 @@
 // Out of scope: the gateway and the real replay-store bootstrap (not available yet), and any claim about throughput.
 // Usage: node infra/scripts/check-controller.mjs
 import { spawn, spawnSync } from 'node:child_process';
-import { existsSync, rmSync } from 'node:fs';
+import { existsSync, rmSync, readFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { randomBytes } from 'node:crypto';
@@ -86,6 +86,29 @@ try {
   check('D. lab fence: strong FENCED from all 7 reachable roles', fenced.status === 0 && fenceLines.filter((l) => l.fenced === true).length === 7, fenced.stdout);
   check('D. issuer reports FENCED with the run still latched closed', (() => { const s = status('issuer'); return s?.state === 'FENCED' && s?.data?.run_closed === true; })());
   rmSync(lockPath, { force: true }); // operator decision, after the fence confirmed everything stopped
+
+  // ---- F: real scenarios, independent origin evidence, report ---------------------------------------------------
+  const reportPath = join(root, '.runtime', 'check-report.json');
+  rmSync(reportPath, { force: true });
+  console.log('Starting controller run with real scenarios (voucher-policy on client A, network-boundaries on client B)...');
+  const f = spawn(process.execPath, [cli, 'run', '--no-gateway', '--dev-redis', '--per-client', '2', '--scenarios', 'voucher-policy,network-boundaries', '--out', reportPath], { cwd: root, stdio: ['ignore', 'pipe', 'pipe'] });
+  const fl = []; let fb = '';
+  f.stdout.setEncoding('utf8'); f.stdout.on('data', (d) => { fb += d; let i; while ((i = fb.indexOf('\n')) >= 0) { try { fl.push(JSON.parse(fb.slice(0, i))); } catch { /* ignore */ } fb = fb.slice(i + 1); } });
+  f.stderr.resume();
+  const fEnd = await new Promise((r) => f.on('close', (code) => r(code)));
+  const scen = fl.filter((l) => l.event === 'scenario');
+  check('F. both real scenarios ran and PASSED with the origin as independent evidence', scen.length === 2 && scen.every((s) => s.status === 'PASS' && s.origin_counts_available === true), JSON.stringify(scen));
+  const verdict = sh(process.execPath, [cli, 'verify-report', '--file', reportPath]);
+  const vj = (() => { try { return JSON.parse(verdict.stdout.trim()); } catch { return {}; } })();
+  check('F. the report verifies (schema, evidence rules, privacy scan) and is honestly INCONCLUSIVE: 2 of the required scenarios', verdict.status === 0 && vj.ok === true && vj.status === 'INCONCLUSIVE', verdict.stdout);
+  check('F. verify-report --require-pass refuses the partial report', sh(process.execPath, [cli, 'verify-report', '--file', reportPath, '--require-pass']).status === 1);
+  const doc = existsSync(reportPath) ? JSON.parse(readFileSync(reportPath, 'utf8')) : null;
+  const rec = doc?.runs?.[0];
+  check('F. report run has ordered transitions ending FENCED/completed and origin deltas of zero',
+    rec?.state_transitions?.at(-1)?.state === 'FENCED' && rec?.state_transitions?.at(-1)?.reason === 'completed' &&
+    rec?.scenario_results?.every((s) => s.counters.protected_requests_received === 0), JSON.stringify(rec?.state_transitions));
+  check('F. controller exited 0 after fencing, discarding Redis and writing the final report', fEnd === 0 && fl.some((l) => l.event === 'closed' && l.reset_confirmed === true), String(fEnd));
+  rmSync(lockPath, { force: true });
 
   // ---- E ------------------------------------------------------------------------------------------------------
   console.log('Starting controller run 2 on freshly recreated roles...');

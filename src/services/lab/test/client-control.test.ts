@@ -109,7 +109,7 @@ test('frozen scenarios that are not implemented refuse honestly instead of repor
     const h = new Harness(rig);
     await h.toEnabled(b64(rig, 0, 2));
     fails(await h.scenario('wrong-context'), 'ILLEGAL_STATE');
-    assert.deepEqual(Object.keys(baseScenarios), ['healthy-flow']);
+    assert.deepEqual(Object.keys(baseScenarios).sort(), ['healthy-flow', 'network-boundaries', 'voucher-policy']);
     await h.fence();
   } finally { await rig.stop(); }
 });
@@ -145,4 +145,39 @@ test('a scenario that throws is reported as FAIL with a fixed label, never an ex
     assert.doesNotMatch(JSON.stringify(r), /secret-detail/);
     await h.fence();
   } finally { await rig.stop(); }
+});
+
+test('S03 voucher-policy runs against the real issuer: unknown/missing refused, 422 spares the voucher, one signing per voucher', async () => {
+  const rig = await startRig(2);
+  try {
+    const h = new Harness(rig);
+    await h.toEnabled(b64(rig, 0, 2));
+    const r = await h.scenario('voucher-policy');
+    ok(r, 'SCENARIO_COMPLETE');
+    assert.equal(r['data'].status, 'PASS', JSON.stringify(r['data']));
+    assert.equal(r['data'].expected, 'single-spend');
+    assert.equal(r['data'].counters.issuance_successes, 2);
+    assert.equal(r['data'].origin_counts_available, false);
+    // Both vouchers are spent now: the issuer refuses them if anyone tries again.
+    const again = await h.scenario('voucher-policy');
+    assert.equal(again['data'].status, 'INCONCLUSIVE', 'no vouchers left means no evidence, not a pass');
+    assert.deepEqual(again['data'].failure_labels, ['missing-evidence']);
+    await h.fence();
+  } finally { await rig.stop(); }
+});
+
+test('S14 network-boundaries logic: PASS only when every path is closed and the positive control worked', async () => {
+  const { networkBoundariesWith, DENIED_CONNECTS, LAB_DIRECT_TARGETS } = await import('../src/client/scenarios.ts');
+  const closed = { tcp: async () => false, resolves: async () => false, connectStatus: async (a: string) => (a === 'issuer.lab.test:443' ? 200 : 403) };
+  const good = await networkBoundariesWith(closed);
+  assert.equal(good.status, 'PASS');
+  assert.equal(good.counters?.observations, LAB_DIRECT_TARGETS.length + 4 + DENIED_CONNECTS.length);
+  // A reachable origin, a resolvable name, a tunnel to an arbitrary host, or a silent proxy each fail the scenario.
+  assert.equal((await networkBoundariesWith({ ...closed, tcp: async (h: string) => h === '172.28.50.10' })).status, 'FAIL');
+  assert.equal((await networkBoundariesWith({ ...closed, resolves: async (n: string) => n === 'redis' })).status, 'FAIL');
+  assert.equal((await networkBoundariesWith({ ...closed, connectStatus: async (a: string) => (a === 'example.com:443' || a === 'issuer.lab.test:443' ? 200 : 403) })).status, 'FAIL');
+  assert.equal((await networkBoundariesWith({ ...closed, connectStatus: async (a: string) => (a === 'issuer.lab.test:443' ? 200 : null) })).status, 'FAIL', 'no reply is not a refusal');
+  // If the positive control fails, the probes prove nothing.
+  const blind = await networkBoundariesWith({ ...closed, connectStatus: async () => 502 });
+  assert.equal(blind.status, 'INCONCLUSIVE'); assert.deepEqual(blind.failure_labels, ['missing-evidence']);
 });

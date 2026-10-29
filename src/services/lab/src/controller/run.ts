@@ -8,6 +8,7 @@ import {
 import { CLIENT_IDS, type ClientId, type GatewayLauncher, type Json, type RedisPort, type ResetPort, type RoleLink } from './ports.ts';
 import { discovery, newId, request, type Target } from './envelope.ts';
 import { batches, generateCohort } from './cohort.ts';
+import type { RunRecord, ScenarioRecord } from '../report/build.ts';
 
 export type ControllerErrorCode =
   | 'discovery-failed' | 'role-not-fresh' | 'setup-failed' | 'readiness-failed' | 'enable-failed' | 'supervision-lost' | 'close-unconfirmed';
@@ -34,6 +35,14 @@ export type RunInfo = { run_id: string; config_digest: string; manifest: Manifes
 export type CloseResult = { reason: string; reset_confirmed: boolean; error: ControllerErrorCode | null };
 type Phase = 'idle' | 'setting-up' | 'enabled' | 'closing' | 'closed';
 
+type Delta = { protected_requests_received: number; generation_mismatches: number; resources_served: number };
+/** What the ORIGIN must have seen for a scenario to pass, independent of anything the client claims. */
+const ORIGIN_RULES: Record<string, { needsGateway: boolean; holds: (d: Delta) => boolean }> = {
+  'voucher-policy': { needsGateway: false, holds: (d) => d.protected_requests_received === 0 },
+  'network-boundaries': { needsGateway: false, holds: (d) => d.protected_requests_received === 0 },
+  'healthy-flow': { needsGateway: true, holds: (d) => d.protected_requests_received === 1 && d.resources_served === 1 && d.generation_mismatches === 0 },
+};
+
 const SECRETS = { issuer_cert: '/run/secrets/tls.crt', issuer_key: '/run/secrets/tls.key', ca: '/run/secrets/ca.crt' } as const;
 
 export class LabRun {
@@ -45,6 +54,8 @@ export class LabRun {
   #closing: Promise<CloseResult> | null = null;
   #info: RunInfo | null = null;
   readonly #closedWaiters: ((r: CloseResult) => void)[] = [];
+  readonly #transitions: { state: string; reason: string }[] = [];
+  readonly #scenarios: ScenarioRecord[] = [];
 
   constructor(deps: RunDeps, config: RunConfig) {
     this.#d = deps;
@@ -83,6 +94,7 @@ export class LabRun {
   async start(): Promise<RunInfo> {
     if (this.#phase !== 'idle') throw new ControllerError('setup-failed', 'already-started');
     this.#phase = 'setting-up';
+    this.#transitions.push({ state: 'FENCED', reason: 'startup' });
     try {
       return await this.#setup();
     } catch (e) {
@@ -147,6 +159,7 @@ export class LabRun {
     }
     if (d.links.gateway) await this.#call(d.links.gateway, prep('gateway', {}), 'prepare-gateway', 'PREPARED');
     for (const t of this.#targets.values()) t.digest = digest;
+    this.#transitions.push({ state: 'PREPARED', reason: 'startup' });
 
     // 7. Provision the whole cohort now: bounded frames, explicit final seal, never again after ENABLE.
     const cohort = generateCohort(cfg.perClient);
@@ -163,6 +176,7 @@ export class LabRun {
     await ready('issuer', d.links.issuer, 1); await ready('origin', d.links.origin, 1);
     for (const id of CLIENT_IDS) await ready(`client-${id}`, d.links.clients[id], 1);
     if (d.links.gateway) await ready('gateway', d.links.gateway, manifest.limits.gateway.workers);
+    this.#transitions.push({ state: 'READY', reason: 'ready' });
 
     // 9. Enable: origin and clients, then the issuer (its lease starts now, so supervision starts at once), then the gateway LAST.
     const enable = async (name: string, link: RoleLink, workers: number) => {
@@ -173,6 +187,7 @@ export class LabRun {
     await Promise.all(CLIENT_IDS.map((id) => enable(`client-${id}`, d.links.clients[id], 1)));
     await enable('issuer', d.links.issuer, 1);
     this.#phase = 'enabled';
+    this.#transitions.push({ state: 'ENABLED', reason: 'enabled' });
     this.#supervise('issuer', d.links.issuer);
     if (d.links.gateway) {
       await enable('gateway', d.links.gateway, manifest.limits.gateway.workers);
@@ -216,6 +231,82 @@ export class LabRun {
     this.#heartbeats.push({ stop: () => { stopped = true; if (timer) clearTimeout(timer); } });
   }
 
+
+  /** Origin's settled aggregate counters right now, or null when it cannot be read or is mid-request (never a guess). */
+  async #originCounts(): Promise<Delta | null> {
+    try {
+      const r = await this.#d.links.origin.send(request('REPORT', this.#at('origin')), this.#cfg.controlTimeoutMs);
+      if (r['ok'] !== true || r['data'].origin_counts_available !== true) return null;
+      const c = r['data'].counters;
+      return { protected_requests_received: c.protected_requests_received, generation_mismatches: c.generation_mismatches, resources_served: c.resources_served };
+    } catch { return null; }
+  }
+  async #workerAttempts(): Promise<Map<number, number> | null> {
+    const g = this.#d.links.gateway;
+    if (!g) return null;
+    try {
+      const r = await g.send(request('REPORT', this.#at('gateway')), this.#cfg.controlTimeoutMs);
+      if (r['ok'] !== true) return null;
+      return new Map((r['data'].worker_verification_attempts as { worker_index: number; attempts: number }[]).map((w) => [w.worker_index, w.attempts]));
+    } catch { return null; }
+  }
+
+  /**
+   * Runs one named scenario on one client and merges the client's own result with INDEPENDENT evidence read from the
+   * origin (and gateway workers) before and after. A client PASS alone is never enough: without origin evidence, or if
+   * the origin saw what the scenario says it must not, the record is INCONCLUSIVE or FAIL. A scenario that needs the
+   * gateway cannot PASS in a gatewayless run.
+   */
+  async runScenario(clientId: ClientId, scenarioId: string, seed = 1): Promise<ScenarioRecord> {
+    if (this.#phase !== 'enabled') throw new ControllerError('setup-failed', 'not-enabled');
+    const before = await this.#originCounts(), workersBefore = await this.#workerAttempts();
+    let reply: Json | null = null;
+    try {
+      reply = await this.#d.links.clients[clientId].send(request('RUN_SCENARIO', this.#at(`client-${clientId}`), { scenario_id: scenarioId, schedule_seed: seed }), 120_000);
+    } catch { /* recorded below */ }
+    const after = await this.#originCounts(), workersAfter = await this.#workerAttempts();
+
+    const record: ScenarioRecord = { scenario_id: scenarioId, status: 'INCONCLUSIVE', expected: 'accepted', counters: {}, origin_counts_available: false, worker_verification_attempts: [], failure_labels: [] };
+    if (!reply || reply['ok'] !== true || reply['result'] !== 'SCENARIO_COMPLETE') {
+      // A scenario the client refuses (not implemented here) or could not be reached is NOT TESTED, never a failure or a pass.
+      record.failure_labels = [reply ? 'missing-evidence' : 'control-lost'];
+      record.status = 'INCONCLUSIVE';
+      this.#scenarios.push(record);
+      return record;
+    }
+    const d = reply['data'];
+    record.expected = d.expected; record.counters = { ...d.counters }; record.failure_labels = [...d.failure_labels];
+    const delta: Delta | null = before && after ? {
+      protected_requests_received: after.protected_requests_received - before.protected_requests_received,
+      generation_mismatches: after.generation_mismatches - before.generation_mismatches,
+      resources_served: after.resources_served - before.resources_served,
+    } : null;
+    if (delta) { record.origin_counts_available = true; Object.assign(record.counters, delta); }
+    if (workersBefore && workersAfter) {
+      record.worker_verification_attempts = [...workersAfter].map(([worker_index, attempts]) => ({ worker_index, attempts: attempts - (workersBefore.get(worker_index) ?? 0) }))
+        .sort((a, b) => a.worker_index - b.worker_index);
+    }
+    const rule = ORIGIN_RULES[scenarioId];
+    if (d.status === 'FAIL') record.status = 'FAIL';
+    else if (d.status !== 'PASS') record.status = 'INCONCLUSIVE';
+    else if (!rule || (rule.needsGateway && !this.#d.links.gateway) || !delta) { record.status = 'INCONCLUSIVE'; record.failure_labels.push('missing-evidence'); }
+    else if (!rule.holds(delta)) { record.status = 'FAIL'; record.failure_labels.push('assertion-failed'); }
+    else record.status = 'PASS';
+    this.#scenarios.push(record);
+    return record;
+  }
+
+  /** The evidence gathered so far, in the report's run shape. Safe at any phase; an unfinished run is visibly so. */
+  runRecord(retention: RunRecord['retention_checks'] = []): RunRecord | null {
+    if (!this.#info) return null;
+    const m = this.#info.manifest;
+    return {
+      run_id: this.#info.run_id, config_digest: this.#info.config_digest, token_key_id: m.token_key_id, gateway_profile: m.gateway_profile,
+      client_profile: m.client_profile, origin_incarnation: this.#targets.get('origin')?.incarnation ?? null, scenario_results: [...this.#scenarios],
+      measurements: [], state_transitions: [...this.#transitions], retention_checks: retention,
+    };
+  }
+
   /** A watched container/process exited or changed incarnation (from the Docker event monitor). */
   roleLost(_name: string): void { void this.close('process-exited'); }
 
@@ -225,6 +316,8 @@ export class LabRun {
   close(reason: string): Promise<CloseResult> {
     if (this.#closing) return this.#closing;
     this.#phase = 'closing';
+    const why = (PROTOCOL.faults as readonly string[]).includes(reason) ? reason : 'completed';
+    this.#transitions.push({ state: 'CLOSING', reason: why });
     for (const h of this.#heartbeats) h.stop();
     this.#closing = (async (): Promise<CloseResult> => {
       let result: CloseResult;
@@ -238,6 +331,7 @@ export class LabRun {
       }
       for (const { link } of this.#links()) link.close();
       this.#phase = 'closed';
+      this.#transitions.push({ state: 'FENCED', reason: why });
       for (const w of this.#closedWaiters.splice(0)) w(result);
       return result;
     })();

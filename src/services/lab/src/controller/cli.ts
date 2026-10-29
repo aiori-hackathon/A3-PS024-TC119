@@ -1,10 +1,11 @@
 // `lab` command line (plan section 9.1). One supervised foreground command owns a run:
 //   lab preflight                 read-only checks of the host, Compose file and provisioned secrets
-//   lab run [--per-client N] [--no-gateway] [--dev-redis]
+//   lab run [--per-client N] [--no-gateway] [--dev-redis] [--scenarios a,b --out report.json]
 //                                 recreate roles (fresh incarnations), build and enable one run, supervise until stopped
 //   lab fence                     emergency stop: strong FENCE to every reachable role, no run knowledge needed
+//   lab verify-report --file F    schema, evidence-rule and privacy check of a report file ([--require-pass])
 // Output is fixed single-line JSON with ids and states only. No token, voucher, key, password or reply body is printed.
-// `verify-report` and `serve-report` belong to the report work (M05/M06) and are not implemented here.
+// `serve-report` belongs to the viewer work (M06) and is not implemented here.
 import { existsSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -15,6 +16,9 @@ import { PartialResetBarrier } from './partial-barrier.ts';
 import { acquireProjectLock, LockHeldError } from './lock.ts';
 import { discovery, emergencyFence } from './envelope.ts';
 import { LinkError } from './link.ts';
+import { PROTOCOL } from '../../../../contracts/lib/index.ts';
+import { buildReport, writeReportAtomic } from '../report/build.ts';
+import { verifyReportFile } from '../report/verify.ts';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', '..', '..');
 const composeFile = join(root, 'infra', 'compose.yaml');
@@ -110,6 +114,22 @@ async function run(): Promise<number> {
     process.once('SIGINT', stop); process.once('SIGTERM', stop);
     const info = await runRef.start();
     say({ event: 'enabled', run_id: info.run_id, config_digest: info.config_digest, roles: Object.keys(info.incarnations).length });
+    // Optional named scenarios (fixed allowlist), one per client in order, with a live report snapshot after each.
+    const wanted = option('--scenarios', '').split(',').filter(Boolean);
+    const out = option('--out', '');
+    if (wanted.length > 0) {
+      if (wanted.some((id) => !(PROTOCOL.scenario_ids as readonly string[]).includes(id)) || !out) { await runRef.stop('operator-stop'); say({ error: 'bad-scenario-arguments' }); return 2; }
+      const snapshot = () => { const rec = runRef!.runRecord(); if (rec) writeReportAtomic(out, buildReport({ kind: 'demo', runs: [rec] })); };
+      for (const [i, id] of wanted.entries()) {
+        const rec = await runRef.runScenario(CLIENT_IDS[i % CLIENT_IDS.length]!, id);
+        say({ event: 'scenario', scenario_id: id, status: rec.status, origin_counts_available: rec.origin_counts_available });
+        snapshot();
+      }
+      await runRef.stop('completed');
+      snapshot(); // final snapshot includes the closing transitions
+      const finalReport = verifyReportFile(out);
+      say({ event: 'report', ok: finalReport.ok, status: finalReport.status });
+    }
     const closed = await runRef.closed();
     stopWatching();
     say({ event: 'closed', reason: closed.reason, reset_confirmed: closed.reset_confirmed, origin_counts: adapters.originCounts });
@@ -120,7 +140,15 @@ async function run(): Promise<number> {
   } finally { lock.release(); }
 }
 
+function verify(): number {
+  const file = option('--file', '');
+  if (!file) { say({ error: 'usage', detail: 'verify-report --file <path> [--require-pass]' }); return 2; }
+  const v = verifyReportFile(file);
+  say({ ok: v.ok, status: v.status, problems: v.problems });
+  return v.ok && (!flag('--require-pass') || v.status === 'PASS') ? 0 : 1;
+}
+
 const command = process.argv[2];
-const code = command === 'preflight' ? await preflight() : command === 'run' ? await run() : command === 'fence' ? await fence()
-  : (say({ error: 'usage', commands: ['preflight', 'run', 'fence'] }), 2);
+const code = command === 'preflight' ? await preflight() : command === 'run' ? await run() : command === 'fence' ? await fence() : command === 'verify-report' ? verify()
+  : (say({ error: 'usage', commands: ['preflight', 'run', 'fence', 'verify-report'] }), 2);
 process.exit(code);

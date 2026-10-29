@@ -10,7 +10,9 @@
 | `lab run --no-gateway --dev-redis [--per-client N]` | Recreates roles for fresh incarnations, builds and enables one run (issuer, origin, clients A to E), supervises until a role dies or the controller is stopped, then closes through the barrier |
 | `lab fence` | Emergency stop: strong FENCE to every reachable role with no run knowledge. It never claims a clean stop for a role that did not acknowledge |
 | `lab run` (with the gateway) | **Refused.** Needs the gateway entry point on `main` and the Redis bootstrap artifact (request 002) |
-| `lab verify-report`, `lab serve-report` | Not implemented; they belong to the report work (M05/M06) |
+| `lab run ... --scenarios a,b --out f.json` | Runs named scenarios, merges independent origin evidence, writes validated atomic report snapshots; see [SCENARIOS_AND_REPORTS.md](SCENARIOS_AND_REPORTS.md) |
+| `lab verify-report --file f.json [--require-pass]` | Schema, evidence-rule and privacy check |
+| `lab serve-report` | Not implemented; belongs to the viewer work (M06) |
 
 Output is single-line JSON with ids and states only. No voucher, token, key, password or reply body is printed.
 
@@ -32,12 +34,12 @@ Unit and component tests (`controller.test.ts`, `docker-barrier.test.ts`) cover 
 The end-to-end check found two real bugs the in-process tests had missed:
 
 1. **Docker's event layout.** The current event stream carries the container ID in `Actor.ID`, not a top-level `id`, so the first version never noticed a dead container. The monitor reads both layouts and has a test for each.
-2. **The issuer's lease watchdog could be forgotten.** It was a one-shot timer. Timers can fire a hair before their deadline, and in that case the handler found the lease not yet expired and did nothing, so after a controller was killed the issuer stayed ENABLED. It passed once and failed once in the real run. The watchdog now re-arms for the remainder when it fires early, and STATUS, REPORT and FENCE also judge expiry first. A unit test drives an early-firing scheduler and a scheduler that never fires. The full end-to-end check passed 20 of 20 once after the fix; it has not been repeated enough times to call the timing exhaustively proven.
+2. **The issuer's lease watchdog could be forgotten.** It was a one-shot timer. Timers can fire a hair before their deadline, and in that case the handler found the lease not yet expired and did nothing, so after a controller was killed the issuer stayed ENABLED. It passed once and failed once in the real run. The watchdog now re-arms for the remainder when it fires early, and STATUS, REPORT and FENCE also judge expiry first. A unit test drives an early-firing scheduler and a scheduler that never fires. The end-to-end check has passed twice in a row since the fix (20 of 20, then 25 of 25 with the scenario section added); that is still not enough runs to call the timing exhaustively proven.
 
 ## Not done
 
 - The gateway and the real replay-store bootstrap (request 002). The development replay store is a labelled stand-in and installs nothing in Redis.
 - Wiring Krish's `ResetBarrier` (the adapters it needs exist and match its documented interface, but it cannot be imported until it is on `main`).
 - Graceful SIGINT on Windows (Node cannot deliver it to a child there; the checks stop the controller by killing a container or the process).
-- Scenario execution, report assembly, `verify-report`, `serve-report`.
+- `serve-report`, and every scenario that needs the gateway or the benchmark harness.
 - The gateway ENABLE ordering and its heartbeat were tested against a scriptable fake, not the real gateway.

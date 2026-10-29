@@ -9,6 +9,8 @@ import {
 import { LabError, type ControlErrorResult } from '../errors.ts';
 import { ClientVouchers } from './vouchers.ts';
 import { LabClient } from './client.ts';
+import type { Counters as ReportCounters } from '../report/build.ts';
+import { networkBoundaries, voucherPolicy } from './scenarios.ts';
 
 type State = 'FENCED' | 'PREPARED' | 'READY' | 'ENABLED' | 'CLOSING' | 'FAULTED';
 type Fault = (typeof PROTOCOL.faults)[number] | null;
@@ -18,14 +20,22 @@ type Counters = { issuance_successes: number; issuance_failures: number; observa
 export type ScenarioOutcome = {
   status: 'PASS' | 'FAIL' | 'INCONCLUSIVE';
   expected: string;
-  counters?: Partial<Counters>;
+  counters?: ReportCounters;
   failure_labels?: string[];
 };
-export type ScenarioContext = { client: LabClient; manifest: Manifest; seed: number; signal: AbortSignal };
+export type ScenarioContext = {
+  client: LabClient; manifest: Manifest; seed: number; signal: AbortSignal;
+  /** Proxy this client dials. */
+  proxy: { host: string; port: number };
+  /** Removes and returns one of this client's vouchers for a harness check. The voucher is spent from the inventory. */
+  takeVoucher: () => Uint8Array | undefined;
+};
 export type ScenarioRunner = (ctx: ScenarioContext) => Promise<ScenarioOutcome>;
 
 /** The frozen scenario list is implemented incrementally (M05); this is the only one that exists at G1. */
 export const baseScenarios: Record<string, ScenarioRunner> = {
+  'voucher-policy': voucherPolicy,
+  'network-boundaries': networkBoundaries,
   'healthy-flow': async ({ client }) => {
     const challenge = await client.fetchChallenge();
     await client.obtainToken(challenge);
@@ -57,6 +67,7 @@ export class ClientRole {
   #manifest: Manifest | null = null;
   #clientId: string | null = null;
   #caPem: string | null = null;
+  #proxy: { host: string; port: number } | null = null;
   #vouchers: ClientVouchers | null = null;
   #client: LabClient | null = null;
   #running: { promise: Promise<unknown>; abort: AbortController } | null = null;
@@ -128,6 +139,7 @@ export class ClientRole {
     if (!cfg.client_id || !cfg.ca_cert_path) throw new LabError('BAD_MESSAGE');
     try { this.#caPem = this.#readSecret(cfg.ca_cert_path).toString('utf8'); } catch { throw new LabError('DEPENDENCY_UNAVAILABLE'); }
     const proxy = this.#proxyOverride ?? (() => { const u = new URL(manifest.endpoints.proxy_http); return { host: u.hostname, port: Number(u.port) }; })();
+    this.#proxy = proxy;
     this.#runId = runId;
     this.#manifest = manifest;
     this.#clientId = cfg.client_id;
@@ -166,7 +178,7 @@ export class ClientRole {
     if (!runner) throw new LabError('ILLEGAL_STATE'); // frozen name, not implemented yet: never fake a result
     const abort = new AbortController();
     const settled = (async (): Promise<ScenarioOutcome> => {
-      try { return await runner({ client: this.#client!, manifest: this.#manifest!, seed: payload['schedule_seed'] as number, signal: abort.signal }); }
+      try { return await runner({ client: this.#client!, manifest: this.#manifest!, seed: payload['schedule_seed'] as number, signal: abort.signal, proxy: this.#proxy!, takeVoucher: () => this.#vouchers!.take() }); }
       catch { return { status: 'FAIL', expected: 'accepted', failure_labels: ['authorization-unavailable'] }; }
     })();
     this.#running = { promise: settled, abort };
