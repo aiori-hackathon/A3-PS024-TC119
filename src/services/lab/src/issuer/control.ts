@@ -26,6 +26,8 @@ export type IssuerRoleOptions = {
   listen?: { host: string; port: number };
   /** Bound on waiting for in-flight signings to settle during FENCE. */
   drainMs?: number;
+  /** Schedules the lease watchdog. Injected for tests; the default is an unref'd setTimeout. */
+  schedule?: (ms: number, callback: () => void) => { cancel(): void };
 };
 
 export class IssuerRole {
@@ -47,7 +49,8 @@ export class IssuerRole {
   #service: IssuanceService | null = null;
   #server: Server | null = null;
   #leaseExpiry = 0;
-  #watchdog: NodeJS.Timeout | null = null;
+  readonly #schedule: (ms: number, callback: () => void) => { cancel(): void };
+  #watchdog: { cancel(): void } | null = null;
   #lastSeq = 0;
   #chain: Promise<unknown> = Promise.resolve();
 
@@ -56,6 +59,7 @@ export class IssuerRole {
     this.#now = options.clock ?? (() => performance.now());
     this.#listen = options.listen ?? { host: '0.0.0.0', port: 443 };
     this.#drainMs = options.drainMs ?? 8000;
+    this.#schedule = options.schedule ?? ((ms, callback) => { const t = setTimeout(callback, ms); t.unref(); return { cancel: () => clearTimeout(t) }; });
   }
 
   get state(): State { return this.#state; }
@@ -70,6 +74,7 @@ export class IssuerRole {
       let req: Json;
       try { req = validateControlRequest(raw); } catch (e) { if (e instanceof ContractError) throw new LabError('BAD_MESSAGE'); throw e; }
       const command = req['command'] as string;
+      this.#expireIfStale(); // STATUS, REPORT and FENCE must also see an expired lease, not only HEARTBEAT
       this.#checkEnvelope(req, command);
       // FENCE, STATUS and HEARTBEAT are never queued behind a mutation in progress.
       if (command === 'STATUS') return this.#ok(requestId, 'STATUS', { ready: this.#state === 'READY' || this.#state === 'ENABLED', run_closed: this.#runClosed, fault: this.#fault });
@@ -184,13 +189,20 @@ export class IssuerRole {
     return this.#ok(requestId, 'HEARTBEAT_ACK', { seq });
   }
 
-  #expireIfStale(): void { if (this.#state === 'ENABLED' && this.#now() >= this.#leaseExpiry) this.#faultNow('lease-expired'); }
+  /**
+   * Judged against the monotonic clock every time it is consulted. A timer can fire slightly before its deadline, so an
+   * early firing re-arms for the remainder instead of being forgotten (which would leave an expired lease unenforced).
+   */
+  #expireIfStale(): void {
+    if (this.#state !== 'ENABLED') return;
+    if (this.#now() >= this.#leaseExpiry) this.#faultNow('lease-expired');
+    else this.#armWatchdog();
+  }
 
   #armWatchdog(): void {
-    if (this.#watchdog) clearTimeout(this.#watchdog);
+    this.#watchdog?.cancel();
     const wait = Math.max(0, this.#leaseExpiry - this.#now());
-    this.#watchdog = setTimeout(() => this.#expireIfStale(), wait + 1);
-    this.#watchdog.unref();
+    this.#watchdog = this.#schedule(wait + 1, () => this.#expireIfStale());
   }
 
   /** Stop admitting and drop connections immediately; latches the run closed. Safe to call repeatedly. */
@@ -201,7 +213,7 @@ export class IssuerRole {
   }
 
   #closeAdmission(): void {
-    if (this.#watchdog) { clearTimeout(this.#watchdog); this.#watchdog = null; }
+    if (this.#watchdog) { this.#watchdog.cancel(); this.#watchdog = null; }
     this.#service?.setOpen(false);
     this.#vouchers?.clear();
     const server = this.#server;

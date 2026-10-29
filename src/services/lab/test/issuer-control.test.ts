@@ -209,3 +209,29 @@ test('FENCE on a role that never had a run does not latch a closed run', async (
   assert.deepEqual((await status(h))['data'], { ready: false, run_closed: false, fault: null });
   ok(await h.create(), 'KEY_CREATED');
 });
+
+test('a watchdog that fires early is re-armed, not forgotten; STATUS sees an expired lease without any timer', async () => {
+  const lease = PROTOCOL.gateway_common.controller_lease_ms;
+  const timers: { ms: number; cb: () => void; cancelled: boolean }[] = [];
+  const schedule = (ms: number, cb: () => void) => { const t = { ms, cb, cancelled: false }; timers.push(t); return { cancel: () => { t.cancelled = true; } }; };
+  const h = new Harness({ schedule });
+  await h.toEnabled(2);
+  const live = () => timers.filter((t) => !t.cancelled);
+  assert.equal(live().length, 1, 'one watchdog armed by ENABLE');
+  // The timer fires 1 ms early: the clock has not reached expiry. The issuer must keep enforcing.
+  h.now += lease - 1;
+  live()[0]!.cb();
+  assert.equal(h.role.state, 'ENABLED');
+  assert.ok(live().length >= 1 && live().some((t) => t.ms <= 2), 'early firing re-armed for the remainder');
+  // Time passes with no heartbeat and the re-armed timer fires on time.
+  h.now += 5;
+  live().at(-1)!.cb();
+  assert.equal(h.role.state, 'FAULTED');
+  assert.deepEqual((await status(h))['data'], { ready: false, run_closed: true, fault: 'lease-expired' });
+  // Separately: even with no timer firing at all, the next command of any kind judges expiry first.
+  const g = new Harness({ schedule: () => ({ cancel() { /* timer never fires */ } }) });
+  await g.toEnabled(2);
+  g.now += lease + 1;
+  assert.deepEqual((await status(g))['data'], { ready: false, run_closed: true, fault: 'lease-expired' });
+  await g.stop(); await h.stop();
+});
