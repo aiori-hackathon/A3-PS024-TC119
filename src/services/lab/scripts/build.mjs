@@ -4,6 +4,7 @@ const entries = {
   bootstrap: 'src/bootstrap.ts',
   issuer: 'src/roles/issuer.ts',
   client: 'src/roles/client.ts',
+  origin: 'src/roles/origin.ts',
   'control-helper': 'src/roles/control-helper.ts',
 };
 const { metafile } = await build({

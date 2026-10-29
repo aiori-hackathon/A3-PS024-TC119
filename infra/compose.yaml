@@ -1,0 +1,191 @@
+# The single authoritative TokenForge lab Compose file (plan section 8). Roles start FENCED; nothing here serves a
+# run by itself. A controller (M04) drives lifecycle, credentials and the gateway through private control sockets.
+#
+# Generate secrets first:  node infra/scripts/provision-secrets.ts      (writes the git-ignored .runtime/secrets/)
+# Check the boundaries:    node infra/scripts/check-network.mjs
+#
+# Rules this file enforces: five exclusive internal bridges (no default network, no host networking, no published
+# ports), IPv6 off, no privileged containers, no Docker socket, read-only roots, all capabilities dropped,
+# no-new-privileges, no restart, no Docker-managed logs, per-role secret mounts only. Listeners bind a named interface.
+name: tokenforge
+
+x-hardened: &hardened
+  restart: "no"
+  read_only: true
+  cap_drop: [ALL]
+  security_opt: ["no-new-privileges:true"]
+  logging:
+    driver: none
+  pids_limit: 128
+  mem_limit: 256m
+  stop_grace_period: 12s
+  sysctls:
+    net.ipv6.conf.all.disable_ipv6: "1"
+    net.ipv6.conf.default.disable_ipv6: "1"
+
+x-lab: &lab
+  <<: *hardened
+  image: tokenforge-lab:local
+  build:
+    context: ..
+    dockerfile: src/services/lab/Dockerfile
+  user: "1000:1000"
+  tmpfs:
+    - /tmp:size=8m,mode=1777,noexec,nosuid
+    - /run/ps024:uid=1000,gid=1000,mode=0700,size=1m,noexec,nosuid
+
+x-client: &client
+  <<: *lab
+  command: ["node", "dist/client.mjs"]
+  secrets:
+    - source: lab-ca
+      target: ca.crt
+  depends_on:
+    - proxy
+
+networks:
+  client_proxy:
+    driver: bridge
+    internal: true
+    enable_ipv6: false
+    ipam: { config: [{ subnet: 172.28.10.0/24 }] }
+  proxy_issuer:
+    driver: bridge
+    internal: true
+    enable_ipv6: false
+    ipam: { config: [{ subnet: 172.28.20.0/24 }] }
+  proxy_gateway:
+    driver: bridge
+    internal: true
+    enable_ipv6: false
+    ipam: { config: [{ subnet: 172.28.30.0/24 }] }
+  gateway_replay:
+    driver: bridge
+    internal: true
+    enable_ipv6: false
+    ipam: { config: [{ subnet: 172.28.40.0/24 }] }
+  gateway_origin:
+    driver: bridge
+    internal: true
+    enable_ipv6: false
+    ipam: { config: [{ subnet: 172.28.50.0/24 }] }
+
+# File secrets are mounted read-only at /run/secrets/<target> and only into the roles that list them.
+# The gateway's TLS key and Redis password are NOT mounted: the controller passes them over private stdin.
+secrets:
+  lab-ca:
+    file: ../.runtime/secrets/client/ca.crt
+  issuer-tls-cert:
+    file: ../.runtime/secrets/issuer/tls.crt
+  issuer-tls-key:
+    file: ../.runtime/secrets/issuer/tls.key
+  redis-acl:
+    file: ../.runtime/secrets/redis/redis-acl.conf
+
+services:
+  proxy:
+    <<: *hardened
+    build:
+      context: proxy
+    image: tokenforge-proxy:local
+    user: "100:101"
+    tmpfs:
+      - /tmp:size=4m,mode=1777,noexec,nosuid
+    volumes:
+      - ./proxy/tinyproxy.conf:/etc/tinyproxy/tinyproxy.conf:ro
+      - ./proxy/filter:/etc/tinyproxy/filter:ro
+    networks:
+      client_proxy: { ipv4_address: 172.28.10.2, aliases: [proxy] }
+      proxy_issuer: { ipv4_address: 172.28.20.2 }
+      proxy_gateway: { ipv4_address: 172.28.30.2 }
+    sysctls:
+      net.ipv4.ip_forward: "0"
+      net.ipv6.conf.all.disable_ipv6: "1"
+      net.ipv6.conf.default.disable_ipv6: "1"
+
+  issuer:
+    <<: *lab
+    command: ["node", "dist/issuer.mjs"]
+    environment:
+      PS024_BIND_ADDRESS: 172.28.20.10
+      PS024_LISTEN_PORT: "443"
+    secrets:
+      - source: issuer-tls-cert
+        target: tls.crt
+      - source: issuer-tls-key
+        target: tls.key
+    networks:
+      proxy_issuer: { ipv4_address: 172.28.20.10, aliases: [issuer.lab.test] }
+    sysctls:
+      net.ipv4.ip_unprivileged_port_start: "0"
+      net.ipv6.conf.all.disable_ipv6: "1"
+      net.ipv6.conf.default.disable_ipv6: "1"
+
+  gateway:
+    <<: *hardened
+    image: tokenforge-gateway:local
+    build:
+      context: ..
+      dockerfile: src/services/gateway/Dockerfile
+    user: "1000:1000"
+    # The serving entry point is Krish's (docs/implementation/GATEWAY_RUNTIME.md); credentials arrive over stdin.
+    command: ${PS024_GATEWAY_COMMAND:-node /app/dist/serve.mjs}
+    tmpfs:
+      - /tmp:size=8m,mode=1777,noexec,nosuid
+      - /run/ps024:uid=1000,gid=1000,mode=0700,size=1m,noexec,nosuid
+    networks:
+      proxy_gateway: { ipv4_address: 172.28.30.10, aliases: [origin.lab.test] }
+      gateway_replay: { ipv4_address: 172.28.40.20 }
+      gateway_origin: { ipv4_address: 172.28.50.20 }
+    sysctls:
+      net.ipv4.ip_unprivileged_port_start: "0"
+      net.ipv4.ip_forward: "0"
+      net.ipv6.conf.all.disable_ipv6: "1"
+      net.ipv6.conf.default.disable_ipv6: "1"
+
+  redis:
+    <<: *hardened
+    image: redis:7.4-alpine@sha256:8da19c7399dca900c6822a1cf30f9d2285585e2c4b457ff4095b0f4500054d3f
+    user: "999:1000"
+    entrypoint: ["redis-server"]
+    command: ["/etc/redis/redis.conf"]
+    tmpfs:
+      - /tmp:size=64m,mode=1777,noexec,nosuid
+      - /run/redis:uid=999,gid=1000,mode=0700,size=1m,noexec,nosuid
+    volumes:
+      - ./redis/redis.conf:/etc/redis/redis.conf:ro
+    secrets:
+      - source: redis-acl
+        target: redis-acl.conf
+    networks:
+      gateway_replay: { ipv4_address: 172.28.40.10, aliases: [redis] }
+
+  protected-origin:
+    <<: *lab
+    command: ["node", "dist/origin.mjs"]
+    environment:
+      PS024_BIND_ADDRESS: 172.28.50.10
+      PS024_LISTEN_PORT: "8080"
+    networks:
+      gateway_origin: { ipv4_address: 172.28.50.10, aliases: [protected-origin] }
+
+  client-a:
+    <<: *client
+    networks:
+      client_proxy: { ipv4_address: 172.28.10.11 }
+  client-b:
+    <<: *client
+    networks:
+      client_proxy: { ipv4_address: 172.28.10.12 }
+  client-c:
+    <<: *client
+    networks:
+      client_proxy: { ipv4_address: 172.28.10.13 }
+  client-d:
+    <<: *client
+    networks:
+      client_proxy: { ipv4_address: 172.28.10.14 }
+  client-e:
+    <<: *client
+    networks:
+      client_proxy: { ipv4_address: 172.28.10.15 }

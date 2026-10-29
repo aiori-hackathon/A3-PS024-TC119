@@ -16,7 +16,7 @@ const script = `
 import { readdirSync, readFileSync, existsSync } from 'node:fs';
 const app = readdirSync('/app');
 if (app.some((p) => !['dist', 'node_modules'].includes(p))) throw Error('Unexpected app payload');
-if (JSON.stringify(readdirSync('/app/dist').sort()) !== JSON.stringify(['bootstrap.mjs', 'client.mjs', 'control-helper.mjs', 'issuer.mjs'])) throw Error('Unexpected build payload');
+if (JSON.stringify(readdirSync('/app/dist').sort()) !== JSON.stringify(['bootstrap.mjs', 'client.mjs', 'control-helper.mjs', 'issuer.mjs', 'origin.mjs'])) throw Error('Unexpected build payload');
 for (const p of ['typescript', 'esbuild', 'ajv']) if (existsSync('/app/node_modules/' + p)) throw Error('Dev tool in runtime: ' + p);
 if (JSON.parse(readFileSync('/app/node_modules/sjcl/package.json', 'utf8')).version !== '1.0.9') throw Error('sjcl override missing');
 for (const f of readdirSync('/app/dist')) {

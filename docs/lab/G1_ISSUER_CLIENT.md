@@ -43,7 +43,7 @@ Tests: 64 pass on Node 24.18.0 (host, one POSIX-only socket-mode test skipped) a
 
 ## Not done yet
 
-- The Dockerfile runtime `CMD` is still the G0 smoke bundle; role selection by command (`node dist/issuer.mjs`) is for M03's Compose file.
-- Nothing has run against the real gateway, a real proxy, Redis or Compose. The proxy and gateway in these tests are stubs written for the tests.
-- Scenarios other than `healthy-flow`, origin counters and report assembly (M05); controller, lock and supervision (M04); Compose and network isolation (M03).
+- The Dockerfile runtime `CMD` is still the G0 smoke bundle; Compose selects the role by command.
+- Compose, the real proxy and Redis now exist (see `INFRA.md`); the real gateway has not run in them, and the proxy and gateway inside the library tests are still stubs.
+- Scenarios other than `healthy-flow` and report assembly (M05); controller, lock and supervision (M04).
 - The issuer REPORT has no latency histograms yet.
