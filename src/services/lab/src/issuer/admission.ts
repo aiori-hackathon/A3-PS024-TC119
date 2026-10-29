@@ -5,6 +5,7 @@ export class AdmissionGate {
   readonly #depth: number;
   readonly #waitMs: number;
   #running = 0;
+  readonly #idle: (() => void)[] = [];
   readonly #queue: { grant: () => void; cancel: () => void; timer: NodeJS.Timeout }[] = [];
 
   constructor(active: number, queueDepth: number, queueWaitMs: number) {
@@ -36,7 +37,17 @@ export class AdmissionGate {
       if (done) return;
       done = true; this.#running -= 1;
       this.#queue.shift()?.grant();
+      if (this.#running === 0) for (const wake of this.#idle.splice(0)) wake();
     };
+  }
+  /** Resolves true once no permit is held, false if that does not happen within the timeout. */
+  whenIdle(timeoutMs: number): Promise<boolean> {
+    if (this.#running === 0) return Promise.resolve(true);
+    return new Promise((resolve) => {
+      const timer = setTimeout(() => { this.#idle.splice(this.#idle.indexOf(wake), 1); resolve(false); }, timeoutMs);
+      const wake = () => { clearTimeout(timer); resolve(true); };
+      this.#idle.push(wake);
+    });
   }
   /** Drops all waiters (fence); active permits still settle on their own. */
   cancelQueued(): void {

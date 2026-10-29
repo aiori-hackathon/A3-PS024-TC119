@@ -30,6 +30,8 @@ export class IssuanceService {
     this.#truncatedKeyId = sha256(issuer.publicKeySpki).at(-1)!;
   }
 
+  /** True when every in-flight signing has settled (fence barrier). */
+  drain(timeoutMs: number): Promise<boolean> { return this.#gate.whenIdle(timeoutMs); }
   get counters() { return { issuance_successes: this.#successes, issuance_failures: this.#failures }; }
   /** Controller-owned. Closing also drops queued work; in-flight signings settle on their own. */
   setOpen(open: boolean): void { this.#open = open; if (!open) this.#gate.cancelQueued(); }
