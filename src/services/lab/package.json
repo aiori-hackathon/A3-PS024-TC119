@@ -6,7 +6,7 @@
   "engines": { "node": ">=24 <25" },
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "test": "node --test test/fixture.test.ts test/crypto.test.ts test/controller-contract.test.ts test/issuer.test.ts test/issuer-control.test.ts test/control-server.test.ts test/client.test.ts test/client-control.test.ts test/origin.test.ts test/controller.test.ts test/docker-barrier.test.ts test/report.test.ts test/scenario-evidence.test.ts test/setup-cancellation.test.ts test/lifecycle-races.test.ts test/controller-adapters.test.ts test/orchestrated.test.ts test/retention.test.ts",
+    "test": "node --test test/fixture.test.ts test/crypto.test.ts test/controller-contract.test.ts test/issuer.test.ts test/issuer-control.test.ts test/control-server.test.ts test/client.test.ts test/client-control.test.ts test/origin.test.ts test/controller.test.ts test/docker-barrier.test.ts test/report.test.ts test/scenario-evidence.test.ts test/setup-cancellation.test.ts test/lifecycle-races.test.ts test/controller-adapters.test.ts test/orchestrated.test.ts test/retention.test.ts test/epoch-scenario.test.ts",
     "build": "node scripts/build.mjs",
     "lab": "node src/controller/cli.ts",
     "test:bundle": "node --test test/bundle.test.ts",

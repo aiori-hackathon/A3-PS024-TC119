@@ -66,6 +66,8 @@ const ORIGIN_RULES: Record<string, Rule> = {
   'stolen-unused-token': { needsGateway: true, holds: one },
   // The new run: old credentials add nothing; the one fresh credential is the only arrival.
   'restart-and-reset': { needsGateway: true, holds: one },
+  // Two accepted tokens (one per side of the boundary); the stale one must never arrive.
+  'epoch-boundary': { needsGateway: true, holds: (e) => e.origin.protected_requests_received === 2 && e.origin.resources_served === 2 && e.origin.generation_mismatches === 0 && (e.client['claims_successful'] ?? 0) === 2 },
   'redis-failure': { needsGateway: true, holds: none },
   'retention-audit': { needsGateway: false, holds: none },
   'clock-rollback': { needsGateway: true, holds: none },

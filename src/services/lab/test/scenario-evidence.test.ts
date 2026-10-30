@@ -82,10 +82,10 @@ test('a gateway-dependent scenario cannot PASS without a gateway; an unimplement
 });
 
 test('a client FAIL stays a FAIL whatever the origin shows, and a scenario with no rule is never promoted to PASS', async () => {
-  const rig = controllerRig({ scenarios: { 'network-boundaries': async () => ({ status: 'FAIL', expected: 'isolated', failure_labels: ['assertion-failed'] }), 'epoch-boundary': pass('rejected') } });
+  const rig = controllerRig({ scenarios: { 'network-boundaries': async () => ({ status: 'FAIL', expected: 'isolated', failure_labels: ['assertion-failed'] }), 'admission-limits': pass('rejected') } });
   const r = start(rig); await r.start();
   assert.equal((await r.runScenario('A', 'network-boundaries')).status, 'FAIL');
-  const unruled = await r.runScenario('B', 'epoch-boundary');
+  const unruled = await r.runScenario('B', 'admission-limits');
   assert.equal(unruled.status, 'INCONCLUSIVE', 'no independent origin rule exists for it yet');
   await r.stop();
 });

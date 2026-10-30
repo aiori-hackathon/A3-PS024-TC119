@@ -54,6 +54,11 @@ export const SUITES: Record<string, SuiteDefinition> = {
     kind: 'security',
     plans: [{ name: 'retention', clientProfile: 'security', gatewayProfile: 'B1', perClient: 2, steps: [one('healthy-flow', 'A'), { orchestrated: 'retention-audit' }] }],
   },
+  // S09: run_start_ms is moved back so the first boundary arrives ~80 s after the clients start; setup leaves a margin.
+  'epoch-boundary': {
+    kind: 'security',
+    plans: [{ name: 'epoch-boundary', clientProfile: 'security', gatewayProfile: 'B1', perClient: 4, epochOffsetMs: 600_000 - 80_000, steps: [one('epoch-boundary', 'A')] }],
+  },
   'upstream': {
     kind: 'security',
     plans: [{ name: 'upstream-failure', clientProfile: 'security', gatewayProfile: 'B1', perClient: 2, harnessVouchers: 4, steps: [{ orchestrated: 'upstream-failure' }] }],
