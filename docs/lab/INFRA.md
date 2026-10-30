@@ -45,8 +45,8 @@ All five are `internal`, IPv6 off. No host port is published and the proxy has n
 
 ## Limits and open items
 
-- **The gateway serving entry point (`node /app/dist/serve.mjs`) is on Krish's branch, not in `main`.** Compose references it through `PS024_GATEWAY_COMMAND`. The network check replaces the gateway, issuer and origin commands with inert listeners that only accept and close, so it proves paths, not application behavior. The real gateway has not run in this Compose file.
-- Redis ACLs, policy, clock key and script loading are the controller's job (M04) using Krish's requirements. This file creates only the controller account.
+- **The gateway now runs in this Compose file.** Its container starts idle and fenced; the controller launches `node /app/dist/serve.mjs` inside it with `docker exec -i` and delivers its private startup input on stdin (`docs/implementation/GATEWAY_RUNTIME.md`). `check-network.mjs` still swaps the issuer, gateway and origin commands for inert listeners, so it proves network paths only; the deployed suite (`docs/demo/DEMO.md`) proves behavior.
+- Redis ACLs, policy, clock and script loading are done by the controller through the shared artifact (`docs/implementation/REDIS_BOOTSTRAP.md`); this file creates only the controller account. Redis runs in a 384 MiB container with `maxmemory 268435456`, `noeviction`, no persistence and no replica; the network check verifies those live settings and the container memory limit.
 - Docker Desktop on Windows was the only runtime tested. The checks read `/proc` inside Linux containers, but a native Linux host has not been tried.
 - `apk add` in the proxy image needs network access at build time; the package version is pinned, the Alpine package index is not.
 - Tinyproxy has no option to disable plain-HTTP proxying; the anchored `host:443` filter is what refuses it. A tinyproxy upgrade should rerun the checks.

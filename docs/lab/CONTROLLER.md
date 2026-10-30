@@ -1,45 +1,51 @@
-# Run controller (M04)
+# Run controller
 
-**Contract:** `TF-PS024-1.0.0`, unchanged. **Paths:** `src/services/lab/src/controller/`, `infra/scripts/`. Run with `npm run lab -- <command>` from `src/services/lab/` or `node src/services/lab/src/controller/cli.ts <command>`.
+**Contract:** `TF-PS024-1.0.0`, unchanged. **Paths:** `src/services/lab/src/controller/`, `infra/scripts/`. Run with `node src/services/lab/src/controller/cli.ts <command>` (or `npm run lab -- <command>` from `src/services/lab/`). The CLI resolves the repository from its own file location, so the working directory does not matter.
 
 ## Commands
 
-| Command | State |
+| Command | Behavior |
 |---|---|
-| `lab preflight` | Read-only checks: Docker reachable, Compose file valid, secrets provisioned, Node 24 |
-| `lab run --no-gateway --dev-redis [--per-client N]` | Recreates roles for fresh incarnations, builds and enables one run (issuer, origin, clients A to E), supervises until a role dies or the controller is stopped, then closes through the barrier |
-| `lab fence` | Emergency stop: strong FENCE to every reachable role with no run knowledge. It never claims a clean stop for a role that did not acknowledge |
-| `lab run` (with the gateway) | **Refused.** Needs the gateway entry point on `main` and the Redis bootstrap artifact (request 002) |
-| `lab run ... --scenarios a,b --out f.json` | Runs named scenarios, merges independent origin evidence, writes validated atomic report snapshots; see [SCENARIOS_AND_REPORTS.md](SCENARIOS_AND_REPORTS.md) |
-| `lab verify-report --file f.json [--require-pass]` | Schema, evidence-rule and privacy check |
-| `lab serve-report` | Not implemented; belongs to the viewer work (M06) |
+| `lab preflight` | Read-only: Docker reachable, Compose file valid, secrets provisioned, Node 24 |
+| `lab run --suite NAME --out F` | Fixed multi-generation suites (`demo`, `gateway-core`, `redis-faults`, `upstream`); writes a validated atomic report after every generation |
+| `lab run [--profile demo\|security] [--per-client N] [--scenarios a,b --out F]` | One ad-hoc generation running named client scenarios |
+| `lab run --partial` | Development mode without the gateway; uses a partial reset barrier that refuses eight-role runs. Never reports a complete suite as PASS |
+| `lab fence` | Emergency stop for every role: strong FENCE, else kill-and-confirm by container ID. Never claims a clean stop it could not confirm |
+| `lab verify-report --file F [--require-pass]` | Schema, evidence-rule and privacy check |
+| `lab serve-report` | Not implemented |
 
-Output is single-line JSON with ids and states only. No voucher, token, key, password or reply body is printed.
+Output is single-line JSON with ids, states and fixed check names only. No voucher, token, key, password or reply body is printed.
 
-## Design
+## What one generation does
 
-- **`LabRun`** (`run.ts`) holds no state that outlives the process. Order: discover fresh incarnations (every role must be FENCED and never have carried a run), fresh run ID, issuer creates its own key, Redis scripts and clock, manifest and digest, Redis policy and ACLs, gateway startup input, PREPARE with a null envelope digest, whole voucher cohort provisioned in frames of at most 128 with a final seal, READY (the gateway must report exactly the profile's worker count), then ENABLE: origin and clients, the issuer, and the gateway last.
-- **Supervision:** sequenced heartbeats to the issuer from the moment it is enabled and to the gateway from its ENABLE, exactly one outstanding per link. A late, missing, erroring or misnumbered acknowledgement closes the run. A Docker event monitor (container ID, not service name) closes it when any pinned container dies; loss of the event stream counts as loss of every role.
-- **Closing** is one path for operator stop, fault and failed setup: reset barrier first, Redis discard only with the barrier's single-use receipt. If shutdown cannot be confirmed the run stays closed, no discard happens and nothing restarts. A closed `LabRun` cannot be started again.
-- **Links** (`link.ts`) validate every frame against the frozen schemas, correlate replies by request ID, cap outstanding requests at nine, time out, and fail every pending request when the link is lost. A reply for an unknown request poisons the link.
-- **Docker adapters** (`docker.ts`) pin identity to the 64-hex container ID. Termination is kill then `docker inspect` until the container is gone; the success of the kill call is not accepted. Origin counters are recorded only from the settled REPORT after the origin's strong FENCE; if that cannot be bound to the old run they stay `null`, not zero.
-- **Project lock** (`lock.ts`) is created exclusively and never removed because of what it contains. A stale file means an operator must fence and confirm, then clear it.
-- **Vouchers** (`cohort.ts`) come from the OS CSPRNG, live only in controller memory until each client receives its own inventory, and the issuer gets digests only.
-- **Barrier:** a full eight-role run must use Krish's `ResetBarrier`, which is not on `main` yet. `partial-barrier.ts` applies the same rules to a subset of roles and refuses to be constructed for all eight, so it cannot silently replace the real one.
+1. Takes the project lock (exclusive; never removed because of what it contains).
+2. **Confirms the previous generation is gone** by immutable container ID (strong FENCE where possible, then kill-and-confirm). Only after every role is confirmed gone is the old Redis removed. If anything is unconfirmed it refuses and the lock stays.
+3. Recreates all containers and records every identity in an outer cleanup scope **before** using it.
+4. Discovers fresh incarnations of the seven non-gateway roles (each must be FENCED and have never carried a run), asks the issuer for a fresh key, then bootstraps the replay store through the shared artifact (`docs/implementation/REDIS_BOOTSTRAP.md`): scripts loaded and hash-checked, `run_start_ms` from the exact Redis's `TIME`, one atomic empty-store initializer, the minimal gateway ACL, and a field-by-field readiness check.
+5. **Launches the gateway** inside its idle container with `docker exec -i node /app/dist/serve.mjs`, delivering `{listen_host, tls, redis}` on stdin, then discovers its control socket and incarnation. Nothing secret is in argv, environment, labels or logs.
+6. PREPARE (null envelope digest), the whole voucher cohort in sealed frames of at most 128 (plus quarantined harness vouchers kept in controller memory), READY (the gateway must report exactly the profile's worker count), then ENABLE: origin and clients, the issuer, the gateway last.
+7. Supervises with sequenced heartbeats (one outstanding per link) and a Docker event monitor keyed to container IDs.
+8. Runs the plan's scenarios, then closes through the real `ResetBarrier` (eight participants with real incarnations and container IDs) and discards the old Redis only with the barrier's single-use receipt.
+9. Releases the lock only if shutdown of everything it created was confirmed.
 
-## Evidence
+If setup fails before a complete snapshot exists (no manifest or no gateway incarnation yet) the identity-bound cleanup scope stops and confirms every recorded container instead; it never invents values for the barrier.
 
-Unit and component tests (`controller.test.ts`, `docker-barrier.test.ts`) cover ordering, heartbeats, setup-failure closure, unconfirmed shutdown, single-use receipts, identity binding, origin counts and the event monitor. `infra/scripts/check-controller.mjs` runs the real CLI against the real containers; result 20 of 20 on the final code. It covers heartbeats keeping an issuer alive past two leases, SIGKILL of the controller followed by the issuer closing itself when its lease lapsed, the stale lock being left in place and refusing a second controller, `lab fence`, and a killed client container closing the whole run, discarding the old Redis container and exiting 0.
+## Safety rules the code and tests enforce
 
-The end-to-end check found two real bugs the in-process tests had missed:
+- **Unknown is not gone.** A container's state is running, stopped, absent or unknown. Only an inspection of the exact ID answering "stopped", or the daemon's explicit "no such object: <id>", is exit evidence. Daemon loss, permission errors, timeouts, empty or garbled output and answers about another ID are unknown and block every Redis discard.
+- **Setup is cancellable.** The close promise is published synchronously before any hook runs; every await in setup rechecks it. A delayed callback from an old setup step cannot send another mutation, install state, adopt a late-launched gateway or enable anything. Fifteen race tests pin this.
+- **Never blocks the event loop.** Every Docker operation is asynchronous with monotonic deadlines rechecked after each await; the lease was not lengthened to compensate.
+- **Role barriers.** The issuer latches a run closed even while its first key is being generated, and checks the controller lease synchronously at admission, at queue promotion and before consuming a voucher. The origin's FENCE waits for a pending bind and for the listener and sockets to close.
+- **Faults are real.** Redis faults (script flush, deleted clock, corrupted policy, stopped Redis, regressed highwater) and the paused origin are applied to the live deployment through the controller's own access, only from allowlisted scenarios.
 
-1. **Docker's event layout.** The current event stream carries the container ID in `Actor.ID`, not a top-level `id`, so the first version never noticed a dead container. The monitor reads both layouts and has a test for each.
-2. **The issuer's lease watchdog could be forgotten.** It was a one-shot timer. Timers can fire a hair before their deadline, and in that case the handler found the lease not yet expired and did nothing, so after a controller was killed the issuer stayed ENABLED. It passed once and failed once in the real run. The watchdog now re-arms for the remainder when it fires early, and STATUS, REPORT and FENCE also judge expiry first. A unit test drives an early-firing scheduler and a scheduler that never fires. The end-to-end check has passed twice in a row since the fix (20 of 20, then 25 of 25 with the scenario section added); that is still not enough runs to call the timing exhaustively proven.
+## Findings that real runs exposed (all fixed, all with tests)
+
+1. Docker's event stream carries the container ID in `Actor.ID`, not a top-level `id`.
+2. The issuer's lease watchdog was a one-shot timer that could fire early and be forgotten, leaving an expired lease unenforced.
+3. The current Docker CLI says `error: no such object: <id>`; the first stricter parser treated it as unknown, which would have blocked every discard.
+4. The lab image build must also type-check the host controller, which imports the public reset utility.
+5. A faulted gateway stops acknowledging heartbeats, so supervision legitimately closes the run mid-scenario; the fault scenarios treat that as evidence instead of fighting it, and take origin counts from the barrier's settled report when the live read is gone.
 
 ## Not done
 
-- The gateway and the real replay-store bootstrap (request 002). The development replay store is a labelled stand-in and installs nothing in Redis.
-- Wiring Krish's `ResetBarrier` (the adapters it needs exist and match its documented interface, but it cannot be imported until it is on `main`).
-- Graceful SIGINT on Windows (Node cannot deliver it to a child there; the checks stop the controller by killing a container or the process).
-- `serve-report`, and every scenario that needs the gateway or the benchmark harness.
-- The gateway ENABLE ordering and its heartbeat were tested against a scriptable fake, not the real gateway.
+`serve-report`; scenarios S09, S10, S15 and S18; measurement histograms; a Linux host and a fresh-checkout rehearsal; the deployment scripts for a separate host. Windows cannot deliver a graceful SIGINT to the controller; stopping it abruptly is exactly the case the issuer and gateway leases cover.
