@@ -1,5 +1,6 @@
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { readdirSync } from 'node:fs';
 const root=fileURLToPath(new URL('../',import.meta.url));
 if(Number(process.versions.node.split('.')[0])!==24)throw Error('G0 requires Node 24');
 function run(args,cwd=root) {
@@ -12,12 +13,15 @@ run(['--test','src/security/test/reset-barrier.test.ts']);
 const gateway=fileURLToPath(new URL('../src/services/gateway/',import.meta.url));
 const lab=fileURLToPath(new URL('../src/services/lab/',import.meta.url));
 run(['node_modules/typescript/bin/tsc','--noEmit'],gateway);
-run(['--test','test/contracts.test.ts','test/crypto.test.ts','test/token-verifier.test.ts','test/http-auth.test.ts','test/replay-store.test.ts','test/worker-lease.test.ts','test/flow-admission.test.ts','test/fixed-origin.test.ts','test/request-coordinator.test.ts','test/https-gateway.test.ts','test/gateway-supervisor.test.ts'],gateway);
+run(['--test','test/contracts.test.ts','test/crypto.test.ts','test/token-verifier.test.ts','test/http-auth.test.ts','test/replay-store.test.ts','test/worker-lease.test.ts','test/flow-admission.test.ts','test/fixed-origin.test.ts','test/request-coordinator.test.ts','test/https-gateway.test.ts','test/gateway-supervisor.test.ts','test/replay-bootstrap.test.ts'],gateway);
 run(['scripts/build.mjs'],gateway);
 run(['--test','test/token-verifier-bundle.test.ts'],gateway);
 run(['dist/bootstrap.mjs'],gateway);
 run(['node_modules/typescript/bin/tsc','--noEmit'],lab);
-run(['--test','test/fixture.test.ts','test/crypto.test.ts','test/controller-contract.test.ts'],lab);
+// Every lab test except the bundle test (which needs the build below). All are in-process: no Docker, no network.
+const labTests=readdirSync(new URL('../src/services/lab/test/',import.meta.url)).filter(f=>f.endsWith('.test.ts')&&f!=='bundle.test.ts').sort();
+if(labTests.length<10)throw Error('Lab test discovery found too few files: '+labTests.length);
+run(['--test',...labTests.map(f=>'test/'+f)],lab);
 run(['scripts/build.mjs'],lab);
 run(['--test','test/bundle.test.ts'],lab);
 function metadata(cwd) {
