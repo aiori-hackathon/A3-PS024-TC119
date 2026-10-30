@@ -17,7 +17,7 @@ function world(over: { inspect?: (service: string) => unknown; files?: (id: stri
     async run(args) {
       if (args[0] === 'inspect') { const svc = byId.get(args[1]!)!; return ok(JSON.stringify([over.inspect ? over.inspect(svc) : good()])); }
       if (args[0] === 'logs') return over.logs ? ok(over.logs) : { ...ok('', 1), stderr: 'configured logging driver does not support reading' };
-      if (args[0] === 'exec' && args.includes('find')) return ok(over.files ? over.files(args[2]!) : '');
+      if (args[0] === 'exec' && args.includes('find')) return ok(over.files ? over.files(args[1]!) : '');
       if (args[0] === 'exec' && args.includes('cat')) return ok(over.proxyConf ?? 'Syslog Off\nListen 1.2.3.4\n# LogFile "/x"\n');
       return ok();
     },
