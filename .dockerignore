@@ -25,3 +25,12 @@ artifacts
 **/*.pdf
 **/*.pptx
 **/*.heapsnapshot
+# Exact public inputs for the isolated Redis adapter test target only.
+# Runtime stages still copy only production bundles/dependencies.
+!src/contracts/fixtures
+src/contracts/fixtures/*
+!src/contracts/fixtures/policy-golden.json
+!src/services/gateway/test
+src/services/gateway/test/*
+!src/services/gateway/test/redis-adapter-redis.test.ts
+!src/services/gateway/test/recovery-phase.ts

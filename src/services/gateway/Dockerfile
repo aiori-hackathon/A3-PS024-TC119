@@ -1,4 +1,4 @@
-# G0 contract build/smoke image ONLY; not a serving gateway yet.
+# Default metadata smoke command; explicit serving command: node dist/serve.mjs (private startup stdin required).
 # node:24.22.1-bookworm-slim, multi-platform image digest resolved 2026-10-24.
 FROM node:24.22.1-bookworm-slim@sha256:55fb5f5a527ea2c5c4a95f963e48ef90aa38c7b346054fdc8ee9957a2b55d205 AS build
 WORKDIR /build
@@ -14,6 +14,15 @@ COPY src/services/gateway/scripts ./scripts
 COPY src/services/gateway/src ./src
 COPY src/services/gateway/tsconfig.json ./tsconfig.json
 RUN npm run typecheck && npm run build
+
+FROM build AS redis-adapter-tests
+COPY src/contracts/fixtures/policy-golden.json /build/src/contracts/fixtures/policy-golden.json
+COPY src/services/gateway/test/redis-adapter-redis.test.ts ./test/redis-adapter-redis.test.ts
+CMD ["node", "--test-isolation=none", "--test", "test/redis-adapter-redis.test.ts"]
+
+FROM build AS recovery-tests
+COPY src/services/gateway/test/recovery-phase.ts ./test/recovery-phase.ts
+CMD ["node", "test/recovery-phase.ts"]
 
 FROM build AS production-dependencies
 RUN npm ci --omit=dev --ignore-scripts --no-audit --no-fund

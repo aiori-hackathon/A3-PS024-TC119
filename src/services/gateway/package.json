@@ -3,18 +3,29 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "engines": { "node": ">=24 <25" },
+  "engines": {
+    "node": ">=24 <25"
+  },
   "scripts": {
+    "start": "node dist/serve.mjs",
+    "control": "node dist/control-helper.mjs",
     "typecheck": "tsc --noEmit",
-    "test": "node --test test/contracts.test.ts test/crypto.test.ts",
+    "test": "node --test test/contracts.test.ts test/crypto.test.ts test/token-verifier.test.ts test/http-auth.test.ts test/replay-store.test.ts test/worker-lease.test.ts test/flow-admission.test.ts test/fixed-origin.test.ts test/request-coordinator.test.ts test/https-gateway.test.ts test/gateway-supervisor.test.ts",
+    "test:bundle": "node --test test/token-verifier-bundle.test.ts",
+    "test:replay": "node --test test/replay-redis.test.ts",
+    "test:redis-adapter": "node scripts/test-redis-adapter.mjs",
+    "test:recovery": "node scripts/test-recovery.mjs",
     "build": "node scripts/build.mjs",
     "audit:dependencies": "npm audit --omit=dev"
   },
   "dependencies": {
-    "@cloudflare/privacypass-ts": "0.9.0"
+    "@cloudflare/privacypass-ts": "0.9.0",
+    "ioredis": "6.0.0"
   },
   "overrides": {
-    "@cloudflare/blindrsa-ts": { "sjcl": "1.0.9" }
+    "@cloudflare/blindrsa-ts": {
+      "sjcl": "1.0.9"
+    }
   },
   "devDependencies": {
     "@types/node": "24.19.2",
