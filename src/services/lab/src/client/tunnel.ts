@@ -36,6 +36,18 @@ function openTunnel(o: TunnelOptions, target: TunnelTarget, timeoutMs: number): 
   });
 }
 
+/** A verified TLS 1.3 socket to an allowed lab host through the CONNECT proxy (used by the agent and the raw security kit). */
+export function connectTls(o: TunnelOptions, host: string): Promise<import('node:tls').TLSSocket> {
+  const timeout = o.connectTimeoutMs ?? 2000;
+  if (!o.allowedHosts.includes(host)) return Promise.reject(new Error('destination-not-allowed'));
+  return openTunnel(o, { host, port: 443 }, timeout).then((raw) => new Promise((resolve, reject) => {
+    const tls = tlsConnect({ socket: raw, servername: host, ca: o.caPem, minVersion: 'TLSv1.3', ALPNProtocols: ['http/1.1'] });
+    const timer = setTimeout(() => tls.destroy(new Error('tls-timeout')), timeout);
+    tls.once('secureConnect', () => { clearTimeout(timer); resolve(tls); });
+    tls.once('error', (e) => { clearTimeout(timer); reject(e); });
+  }));
+}
+
 type ConnOptions = { host?: string | null; hostname?: string | null; port?: number | string | null; servername?: string };
 
 /** Agent whose sockets are CONNECT tunnels + verified TLS. maxSockets bounds concurrent sockets per destination. */

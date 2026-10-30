@@ -38,11 +38,27 @@ export type CloseResult = { reason: string; reset_confirmed: boolean; error: Con
 type Phase = 'idle' | 'setting-up' | 'enabled' | 'closing' | 'closed';
 
 type Delta = { protected_requests_received: number; generation_mismatches: number; resources_served: number };
-/** What the ORIGIN must have seen for a scenario to pass, independent of anything the client claims. */
-const ORIGIN_RULES: Record<string, { needsGateway: boolean; holds: (d: Delta) => boolean }> = {
-  'voucher-policy': { needsGateway: false, holds: (d) => d.protected_requests_received === 0 },
-  'network-boundaries': { needsGateway: false, holds: (d) => d.protected_requests_received === 0 },
-  'healthy-flow': { needsGateway: true, holds: (d) => d.protected_requests_received === 1 && d.resources_served === 1 && d.generation_mismatches === 0 },
+type Evidence = { origin: Delta; workers: number[]; client: Record<string, number> };
+type Rule = { needsGateway: boolean; needsWorkers?: boolean; holds: (e: Evidence) => boolean };
+const none = (e: Evidence) => e.origin.protected_requests_received === 0;
+const one = (e: Evidence) => e.origin.protected_requests_received === 1 && e.origin.resources_served === 1 && e.origin.generation_mismatches === 0;
+/** What the ORIGIN (and, where relevant, the gateway workers) must have seen, independent of anything a client claims. */
+const ORIGIN_RULES: Record<string, Rule> = {
+  'voucher-policy': { needsGateway: false, holds: none },
+  'network-boundaries': { needsGateway: false, holds: none },
+  'healthy-flow': { needsGateway: true, holds: one },
+  'malformed-token': { needsGateway: true, holds: none },
+  'signature-and-key': { needsGateway: true, holds: none },
+  'wrong-context': { needsGateway: true, holds: none },
+  'sequential-replay': { needsGateway: true, holds: one },
+  // Exactly one arrival per winning trial, and verification attempts on EVERY configured worker (no worker-selection hook exists).
+  'concurrent-replay': { needsGateway: true, needsWorkers: true, holds: (e) => {
+    const wins = e.client['claims_successful'] ?? 0;
+    return wins >= 1 && e.origin.protected_requests_received === wins && e.origin.resources_served === wins && e.origin.generation_mismatches === 0
+      && e.workers.length > 0 && e.workers.every((attempts) => attempts > 0);
+  } },
+  // Five clients x two tokens: ten distinct first spends reached the origin, and nothing else did.
+  'shared-egress': { needsGateway: true, holds: (e) => e.origin.protected_requests_received === 10 && e.origin.resources_served === 10 && e.origin.generation_mismatches === 0 },
 };
 
 const SECRETS = { issuer_cert: '/run/secrets/tls.crt', issuer_key: '/run/secrets/tls.key', ca: '/run/secrets/ca.crt' } as const;
@@ -291,41 +307,49 @@ export class LabRun {
    * the origin saw what the scenario says it must not, the record is INCONCLUSIVE or FAIL. A scenario that needs the
    * gateway cannot PASS in a gatewayless run.
    */
-  async runScenario(clientId: ClientId, scenarioId: string, seed = 1): Promise<ScenarioRecord> {
+  async runScenario(clients: ClientId | readonly ClientId[], scenarioId: string, seed = 1): Promise<ScenarioRecord> {
     if (this.#phase !== 'enabled') throw new ControllerError('setup-failed', 'not-enabled');
+    const ids = typeof clients === 'string' ? [clients] : [...clients];
     const before = await this.#originCounts(), workersBefore = await this.#workerAttempts();
-    let reply: Json | null = null;
-    try {
-      reply = await this.#d.links.clients[clientId].send(request('RUN_SCENARIO', this.#at(`client-${clientId}`), { scenario_id: scenarioId, schedule_seed: seed }), 120_000);
-    } catch { /* recorded below */ }
+    const replies = await Promise.all(ids.map(async (id): Promise<Json | null> => {
+      try { return await this.#d.links.clients[id].send(request('RUN_SCENARIO', this.#at(`client-${id}`), { scenario_id: scenarioId, schedule_seed: seed }), 180_000); }
+      catch { return null; }
+    }));
     const after = await this.#originCounts(), workersAfter = await this.#workerAttempts();
 
     const record: ScenarioRecord = { scenario_id: scenarioId, status: 'INCONCLUSIVE', expected: 'accepted', counters: {}, origin_counts_available: false, worker_verification_attempts: [], failure_labels: [] };
-    if (!reply || reply['ok'] !== true || reply['result'] !== 'SCENARIO_COMPLETE') {
+    if (replies.some((r) => !r || r['ok'] !== true || r['result'] !== 'SCENARIO_COMPLETE')) {
       // A scenario the client refuses (not implemented here) or could not be reached is NOT TESTED, never a failure or a pass.
-      record.failure_labels = [reply ? 'missing-evidence' : 'control-lost'];
+      record.failure_labels = [replies.some((r) => r === null) ? 'control-lost' : 'missing-evidence'];
       record.status = 'INCONCLUSIVE';
       this.#scenarios.push(record);
       return record;
     }
-    const d = reply['data'];
-    record.expected = d.expected; record.counters = { ...d.counters }; record.failure_labels = [...d.failure_labels];
+    const datas = replies.map((r) => r!['data']);
+    record.expected = datas[0].expected;
+    const summed: Record<string, number> = {};
+    for (const d of datas) for (const [k, v] of Object.entries(d.counters as Record<string, number>)) summed[k] = (summed[k] ?? 0) + v;
+    const labels = new Set<string>(datas.flatMap((d) => d.failure_labels as string[]));
     const delta: Delta | null = before && after ? {
       protected_requests_received: after.protected_requests_received - before.protected_requests_received,
       generation_mismatches: after.generation_mismatches - before.generation_mismatches,
       resources_served: after.resources_served - before.resources_served,
     } : null;
+    const clientCounters = { ...summed };
+    record.counters = { ...summed };
     if (delta) { record.origin_counts_available = true; Object.assign(record.counters, delta); }
     if (workersBefore && workersAfter) {
       record.worker_verification_attempts = [...workersAfter].map(([worker_index, attempts]) => ({ worker_index, attempts: attempts - (workersBefore.get(worker_index) ?? 0) }))
         .sort((a, b) => a.worker_index - b.worker_index);
     }
     const rule = ORIGIN_RULES[scenarioId];
-    if (d.status === 'FAIL') record.status = 'FAIL';
-    else if (d.status !== 'PASS') record.status = 'INCONCLUSIVE';
-    else if (!rule || (rule.needsGateway && !this.#gateway) || !delta) { record.status = 'INCONCLUSIVE'; record.failure_labels.push('missing-evidence'); }
-    else if (!rule.holds(delta)) { record.status = 'FAIL'; record.failure_labels.push('assertion-failed'); }
+    const statuses = datas.map((d) => d.status as string);
+    if (statuses.includes('FAIL')) record.status = 'FAIL';
+    else if (statuses.some((st) => st !== 'PASS')) record.status = 'INCONCLUSIVE';
+    else if (!rule || (rule.needsGateway && !this.#gateway) || !delta || (rule.needsGateway && !workersAfter) || (rule.needsWorkers && record.worker_verification_attempts.length === 0)) { record.status = 'INCONCLUSIVE'; labels.add('missing-evidence'); }
+    else if (!rule.holds({ origin: delta, workers: record.worker_verification_attempts.map((w) => w.attempts), client: clientCounters })) { record.status = 'FAIL'; labels.add('assertion-failed'); }
     else record.status = 'PASS';
+    record.failure_labels = [...labels];
     this.#scenarios.push(record);
     return record;
   }

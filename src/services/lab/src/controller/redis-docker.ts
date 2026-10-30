@@ -53,11 +53,21 @@ export class DockerRedisIo implements RedisIo {
 export class DockerRedis implements RedisPort {
   readonly #io: RedisIo;
   readonly #newPassword: () => string;
-  constructor(io: RedisIo, newPassword: () => string = () => randomBytes(36).toString('base64url')) { this.#io = io; this.#newPassword = newPassword; }
+  readonly #startOffsetMs: number;
+  /**
+   * `startOffsetMs` moves run_start_ms into the past (never the future) so an epoch boundary arrives soon after start; it is
+   * used only by the epoch-boundary run. It is still derived from this Redis instance's TIME.
+   */
+  constructor(io: RedisIo, newPassword: () => string = () => randomBytes(36).toString('base64url'), startOffsetMs = 0) {
+    if (!Number.isSafeInteger(startOffsetMs) || startOffsetMs < 0) throw new Error('offset');
+    this.#io = io; this.#newPassword = newPassword; this.#startOffsetMs = startOffsetMs;
+  }
 
   async prepare(_runId: string) {
     await loadReplayScripts(this.#io);
-    const run_start_ms = await readRunStart(this.#io); // this exact Redis instance's TIME, never the host clock
+    const now = await readRunStart(this.#io); // this exact Redis instance's TIME, never the host clock
+    const run_start_ms = now - this.#startOffsetMs;
+    if (run_start_ms < 1) throw new Error('offset');
     return { run_start_ms, snapshot_script_sha1: REPLAY_SCRIPTS.snapshot.sha1, claim_script_sha1: REPLAY_SCRIPTS.claim.sha1 };
   }
 

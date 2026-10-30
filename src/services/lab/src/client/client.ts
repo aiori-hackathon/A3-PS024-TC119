@@ -11,7 +11,7 @@ import { LabIssuance, verifyTokenSignature } from '../protocol.ts';
 import { REQUEST_TYPE, RESPONSE_TYPE } from '../issuer/issuance.ts';
 import { DIRECTORY_PATH, DIRECTORY_TYPE } from '../issuer/directory.ts';
 import { parseChallenge, plausibleEpochs, type ParsedChallenge } from './challenge.ts';
-import { TunnelAgent } from './tunnel.ts';
+import { TunnelAgent, connectTls, type TunnelOptions } from './tunnel.ts';
 import { TokenInventory } from './inventory.ts';
 import type { ClientVouchers } from './vouchers.ts';
 
@@ -63,6 +63,7 @@ export class LabClient {
   readonly #issuerAgent: Agent;
   readonly #gatewayAgent: Agent;
   readonly #gates = new Map<Agent, Gate>();
+  readonly #tunnel: TunnelOptions;
   readonly #now: () => number;
   readonly #timeoutMs: number;
 
@@ -75,6 +76,7 @@ export class LabClient {
     this.tokens = new TokenInventory(cfg.manifest.limits.client.inventory_max);
     const allowedHosts = [cfg.manifest.issuer_name, cfg.manifest.origin_name];
     const common = { proxy: cfg.proxy, caPem: cfg.caPem, allowedHosts };
+    this.#tunnel = { ...common, maxSockets: cfg.manifest.limits.client.gateway_sockets };
     this.#issuerAgent = new TunnelAgent({ ...common, maxSockets: cfg.manifest.limits.client.issuer_sockets });
     this.#gatewayAgent = new TunnelAgent({ ...common, maxSockets: cfg.manifest.limits.client.gateway_sockets });
     this.#gates.set(this.#issuerAgent, new Gate(cfg.manifest.limits.client.issuer_sockets));
@@ -109,9 +111,18 @@ export class LabClient {
    */
   async obtainToken(parsed: ParsedChallenge): Promise<void> {
     if (this.tokens.size >= this.#m.limits.client.inventory_max) throw new LabClientError('no-token');
+    this.tokens.add(parsed.epoch, await this.issueWire(parsed.challenge));
+  }
+
+  /**
+   * One real issuance for ANY challenge (including a deliberately wrong-context one) returned as bytes instead of stored.
+   * Trusted scenario harness only: the caller owns the token and must not retain it past the scenario. Same one-voucher,
+   * one-attempt rules as obtainToken; the issuer signs blindly and cannot know which context the challenge carries.
+   */
+  async issueWire(challenge: import('@cloudflare/privacypass-ts').TokenChallenge): Promise<Uint8Array> {
     const voucher = this.#vouchers.take();
     if (!voucher) throw new LabClientError('no-voucher');
-    const issuance = await LabIssuance.begin(parsed.challenge, this.#issuerKey);
+    const issuance = await LabIssuance.begin(challenge, this.#issuerKey);
     const r = await this.#exchange(this.#issuerAgent, this.#m.issuer_name, {
       method: 'POST', path: new URL(this.#m.issuer_request_uri).pathname, body: issuance.requestWire,
       headers: { 'Content-Type': REQUEST_TYPE, Accept: RESPONSE_TYPE, 'X-Lab-Voucher': encodeBase64Url(voucher, false) },
@@ -123,11 +134,11 @@ export class LabClient {
     try {
       wire = await issuance.finalize(r.body);
       const token = Token.deserialize(TOKEN_TYPES.BLIND_RSA, wire);
-      const expected = sha256(parsed.challenge.serialize());
+      const expected = sha256(challenge.serialize());
       if (hex(token.authInput.challengeDigest) !== hex(expected) || hex(token.authInput.tokenKeyId) !== this.#m.token_key_id
         || !(await verifyTokenSignature(this.#issuerKey, wire))) throw new Error('token-invalid');
     } catch { throw new LabClientError('issuance-invalid'); }
-    this.tokens.add(parsed.epoch, wire);
+    return wire;
   }
 
   /**
@@ -150,11 +161,48 @@ export class LabClient {
   }
 
   /** For the trusted scenario harness: present exact bytes (including deliberately wrong ones). */
-  async redeemWire(wire: Uint8Array): Promise<{ status: number; wwwAuthenticate: string[] }> {
+  async redeemWire(wire: Uint8Array): Promise<{ status: number; wwwAuthenticate: string[]; label: string | null }> {
     const r = await this.#exchange(this.#gatewayAgent, this.#m.origin_name, {
       method: 'GET', path: '/resource', headers: { Authorization: `PrivateToken token="${encodeBase64Url(wire)}"` },
     }, PROTOCOL.gateway_common.origin_body_max_bytes);
-    return { status: r.status, wwwAuthenticate: headerValues(r.rawHeaders, 'www-authenticate') };
+    return { status: r.status, wwwAuthenticate: headerValues(r.rawHeaders, 'www-authenticate'), label: errorLabel(r.body) };
+  }
+
+  /**
+   * Security kit: send exact bytes to the gateway over a verified tunnel and report what came back. This is how duplicate
+   * headers, bad framing and oversize inputs are exercised; it is fixed harness code, reachable only from allowlisted
+   * scenarios, never from a control message. The socket count obeys the same manifest bound as ordinary requests.
+   */
+  async rawGateway(bytes: Uint8Array, options: { timeoutMs?: number; maxResponse?: number } = {}): Promise<{ status: number | null; label: string | null; closed: boolean }> {
+    const gate = this.#gates.get(this.#gatewayAgent)!;
+    const leave = await gate.enter();
+    const timeoutMs = options.timeoutMs ?? 5000, max = options.maxResponse ?? 32768;
+    try {
+      let socket: import('node:tls').TLSSocket;
+      try { socket = await connectTls(this.#tunnel, this.#m.origin_name); } catch { return { status: null, label: null, closed: true }; }
+      return await new Promise((resolve) => {
+        let data = Buffer.alloc(0), done = false;
+        const finish = (closed: boolean) => {
+          if (done) return; done = true; clearTimeout(timer); socket.destroy();
+          const text = data.toString('latin1');
+          const m = /^HTTP\/1\.1 (\d{3}) /.exec(text);
+          const body = data.subarray(Math.max(0, data.indexOf('\r\n\r\n') + 4));
+          resolve({ status: m ? Number(m[1]) : null, label: errorLabel(body), closed });
+        };
+        const timer = setTimeout(() => finish(false), timeoutMs);
+        socket.on('data', (c: Buffer) => {
+          data = Buffer.concat([data, c]);
+          const end = data.indexOf('\r\n\r\n');
+          if (end >= 0) {
+            const len = Number(/content-length:\s*(\d+)/i.exec(data.subarray(0, end).toString('latin1'))?.[1] ?? 0);
+            if (data.length >= end + 4 + len) finish(false);
+          }
+          if (data.length > max) finish(false);
+        });
+        socket.on('close', () => finish(true)); socket.on('error', () => finish(true));
+        socket.write(Buffer.from(bytes));
+      });
+    } finally { leave(); }
   }
 
   async #exchange(agent: Agent, host: string, o: { method: string; path: string; headers?: Record<string, string>; body?: Uint8Array }, maxBody: number): Promise<Reply> {
@@ -183,6 +231,14 @@ export class LabClient {
       req.end(o.body ? Buffer.from(o.body) : undefined);
     });
   }
+}
+
+/** The gateway's fixed JSON error label (`{"error":"token-..."}`), or null if absent or not a known label. */
+export function errorLabel(body: Buffer): string | null {
+  try {
+    const e = (JSON.parse(body.toString('utf8')) as { error?: unknown }).error;
+    return typeof e === 'string' && Object.hasOwn(PROTOCOL.gateway_results, e) ? e : null;
+  } catch { return null; }
 }
 
 function headerValues(raw: string[], name: string): string[] {

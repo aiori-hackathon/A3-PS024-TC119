@@ -82,10 +82,10 @@ test('a gateway-dependent scenario cannot PASS without a gateway; an unimplement
 });
 
 test('a client FAIL stays a FAIL whatever the origin shows, and a scenario with no rule is never promoted to PASS', async () => {
-  const rig = controllerRig({ scenarios: { 'network-boundaries': async () => ({ status: 'FAIL', expected: 'isolated', failure_labels: ['assertion-failed'] }), 'wrong-context': pass('rejected') } });
+  const rig = controllerRig({ scenarios: { 'network-boundaries': async () => ({ status: 'FAIL', expected: 'isolated', failure_labels: ['assertion-failed'] }), 'epoch-boundary': pass('rejected') } });
   const r = start(rig); await r.start();
   assert.equal((await r.runScenario('A', 'network-boundaries')).status, 'FAIL');
-  const unruled = await r.runScenario('B', 'wrong-context');
+  const unruled = await r.runScenario('B', 'epoch-boundary');
   assert.equal(unruled.status, 'INCONCLUSIVE', 'no independent origin rule exists for it yet');
   await r.stop();
 });
@@ -106,4 +106,59 @@ test('before the run is enabled there is no record and scenarios are refused', a
   const rig = controllerRig(); const r = start(rig);
   assert.equal(r.runRecord(), null);
   await assert.rejects(r.runScenario('A', 'voucher-policy'), (e: ControllerError) => e.code === 'setup-failed');
+});
+
+test('shared-egress: five clients must produce exactly ten distinct first spends at the origin', async () => {
+  for (const [arrivals, expected] of [[2, 'PASS'], [1, 'FAIL']] as const) {
+    let rig!: ControllerRig;
+    const part: ScenarioRunner = async ({ manifest }) => { for (let i = 0; i < arrivals; i++) await hitOrigin(rig, manifest.run_id); return { status: 'PASS', expected: 'accepted', counters: { claims_successful: arrivals } }; };
+    rig = controllerRig({ scenarios: { 'shared-egress': part } });
+    const r = start(rig); await r.start();
+    const rec = await r.runScenario(['A', 'B', 'C', 'D', 'E'], 'shared-egress');
+    assert.equal(rec.status, expected, `${arrivals} arrivals per client`);
+    assert.equal(rec.counters.protected_requests_received, arrivals * 5);
+    assert.equal(rec.counters.claims_successful, arrivals * 5, 'client counters are summed across the five clients');
+    await r.stop();
+  }
+});
+
+test('concurrent-replay: needs exactly one arrival per winning trial AND verification attempts on every configured worker', async () => {
+  const cases: [string, number[], number, string][] = [
+    ['both workers verified, one win', [3, 4], 1, 'PASS'],
+    ['only one worker verified', [7, 0], 1, 'FAIL'],
+    ['no worker evidence at all', [], 1, 'INCONCLUSIVE'],
+  ];
+  for (const [name, bumps, arrivals, expected] of cases) {
+    let rig!: ControllerRig;
+    const scenario: ScenarioRunner = async ({ manifest }) => {
+      bumps.forEach((n, i) => { rig.gateway.attempts[i] = { worker_index: i, attempts: (rig.gateway.attempts[i]?.attempts ?? 0) + n }; });
+      for (let i = 0; i < arrivals; i++) await hitOrigin(rig, manifest.run_id);
+      return { status: 'PASS', expected: 'single-spend', counters: { claims_successful: 1 } };
+    };
+    rig = controllerRig({ scenarios: { 'concurrent-replay': scenario } });
+    rig.gateway.attempts = bumps.length ? [{ worker_index: 0, attempts: 0 }, { worker_index: 1, attempts: 0 }] : [];
+    const r = start(rig); await r.start();
+    const rec = await r.runScenario('A', 'concurrent-replay');
+    assert.equal(rec.status, expected, name);
+    await r.stop();
+  }
+  // Two winning trials reaching the origin only once is a failure of evidence, not a pass.
+  let rig!: ControllerRig;
+  rig = controllerRig({ scenarios: { 'concurrent-replay': async ({ manifest }) => { rig.gateway.attempts = [{ worker_index: 0, attempts: 5 }, { worker_index: 1, attempts: 5 }]; await hitOrigin(rig, manifest.run_id); return { status: 'PASS', expected: 'single-spend', counters: { claims_successful: 2 } }; } } });
+  rig.gateway.attempts = [{ worker_index: 0, attempts: 0 }, { worker_index: 1, attempts: 0 }];
+  const r = start(rig); await r.start();
+  assert.equal((await r.runScenario('A', 'concurrent-replay')).status, 'FAIL');
+  await r.stop();
+});
+
+test('malformed-token, signature-and-key and wrong-context all require ZERO origin arrivals', async () => {
+  for (const id of ['malformed-token', 'signature-and-key', 'wrong-context']) {
+    for (const arrive of [false, true]) {
+      let rig!: ControllerRig;
+      rig = controllerRig({ scenarios: { [id]: async ({ manifest }) => { if (arrive) await hitOrigin(rig, manifest.run_id); return { status: 'PASS', expected: 'rejected' }; } } });
+      const r = start(rig); await r.start();
+      assert.equal((await r.runScenario('A', id)).status, arrive ? 'FAIL' : 'PASS', `${id} arrive=${arrive}`);
+      await r.stop();
+    }
+  }
 });

@@ -1,6 +1,7 @@
 // `lab` command line (plan section 9.1). One supervised foreground command owns a run:
 //   lab preflight                 read-only checks of the host, Compose file and provisioned secrets
-//   lab run [--per-client N] [--partial] [--scenarios a,b --out report.json]
+//   lab run [--per-client N] [--partial] [--profile demo|security] [--scenarios a,b --out report.json]
+//   lab run --suite NAME --out report.json     execute a fixed multi-run suite (see suites.ts)
 //                                 confirm any old generation is gone, recreate roles (fresh incarnations), bootstrap the
 //                                 replay store through the shared artifact, launch the gateway with its private input,
 //                                 enable one run, supervise it, and close it through the strong reset barrier
@@ -32,7 +33,8 @@ import { LinkError } from './link.ts';
 import { CleanupScope, ScopeBarrier, discardRedis, stopRoles } from './scope.ts';
 import { DockerRedis, DockerRedisIo } from './redis-docker.ts';
 import { DockerGatewayLauncher } from './gateway-docker.ts';
-import { buildReport, writeReportAtomic } from '../report/build.ts';
+import { SUITES, type RunPlan } from './suites.ts';
+import { buildReport, writeReportAtomic, type RunRecord, type SuiteKind } from '../report/build.ts';
 import { verifyReportFile } from '../report/verify.ts';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', '..', '..');
@@ -86,28 +88,24 @@ async function fence(): Promise<number> {
   return failed === 0 ? 0 : 1;
 }
 
-async function run(): Promise<number> {
-  const partial = flag('--partial');
-  const perClient = Number(option('--per-client', '2'));
-  let lock;
-  try { lock = acquireProjectLock(join(root, '.runtime', 'project.lock')); }
-  catch (e) { if (e instanceof LockHeldError) { say({ error: 'project-lock-held' }); return 3; } throw e; }
+/** What one fresh run produced. `confirmed` is true only when its whole generation was confirmed shut down. */
+type PlanResult = { record: RunRecord | null; confirmed: boolean };
+let activeStop: (() => void) | null = null;
 
-  const project = new DockerProject(realDocker, composeFile);
+/** One fresh run: confirm the previous generation is gone, recreate, bootstrap, enable, execute the plan's steps, close. */
+async function executePlan(plan: RunPlan, partial: boolean, project: DockerProject, adHocEvents: boolean): Promise<PlanResult> {
   const scope = new CleanupScope();
   const links = new Map<RoleName, RoleLink>();
   const adapters = new DockerAdapters(project, links);
   let runRef: LabRun | null = null;
-  let released = false;
-  const releaseLock = () => { if (!released) { released = true; lock.release(); } };
-  let confirmed = false; // true only when shutdown of everything this controller created was confirmed
+  let confirmed = false;
   try {
     // 1. The previous generation must be confirmed gone, by immutable ID, before anything is recreated.
     const old = new CleanupScope();
     for (const e of await project.existing()) { if (e.service === 'redis') old.recordRedis(e.container_id); else if (e.service !== 'proxy') old.recordRole({ name: e.service, container_id: e.container_id }); }
     if (old.roles.length > 0 || old.redisId) {
       const oldAdapters = new DockerAdapters(project, new Map());
-      if (!(await stopRoles(old, oldAdapters)) || !(await discardRedis(old, oldAdapters))) { say({ error: 'old-generation-unconfirmed' }); return 1; } // lock stays
+      if (!(await stopRoles(old, oldAdapters)) || !(await discardRedis(old, oldAdapters))) { say({ error: 'old-generation-unconfirmed' }); return { record: null, confirmed: false }; }
     }
 
     // 2. Fresh containers. Record every identity before using it.
@@ -126,7 +124,7 @@ async function run(): Promise<number> {
 
     // 3. Replay store (shared artifact) and gateway launcher (private stdin input).
     const io = new DockerRedisIo(realDocker, redisId, readFileSync(join(secretsDir, 'controller', 'redis-password'), 'utf8').trim());
-    const redis = new DockerRedis(io);
+    const redis = new DockerRedis(io, undefined, plan.epochOffsetMs ?? 0);
     const baseLauncher = partial ? undefined : new DockerGatewayLauncher(realDocker, instances.get('gateway')!, { secretsDir });
     const launcher = baseLauncher && { async launch(input: Parameters<DockerGatewayLauncher['launch']>[0]) {
       const link = await baseLauncher.launch(input); links.set('gateway', link); scope.recordLink(instances.get('gateway')!.container_id, link); return link;
@@ -154,43 +152,71 @@ async function run(): Promise<number> {
     };
     const reset: ResetPort = { fenceAll: () => build().fenceAll(), discardOldRedis: (r) => build().discardOldRedis(r) };
 
-    runRef = new LabRun({ links: runLinks, redis, reset, ...(launcher ? { gatewayLauncher: launcher } : {}) }, { perClient, clientProfile: 'demo' });
+    runRef = new LabRun({ links: runLinks, redis, reset, ...(launcher ? { gatewayLauncher: launcher } : {}) },
+      { perClient: plan.perClient, clientProfile: plan.clientProfile, gatewayProfile: plan.gatewayProfile });
     const stopWatching = project.watch([...instances.values()], (role) => runRef!.roleLost(role));
-    const stop = () => void runRef!.stop('operator-stop');
-    process.once('SIGINT', stop); process.once('SIGTERM', stop);
+    activeStop = () => void runRef!.stop('operator-stop');
 
     const info = await runRef.start();
-    say({ event: 'enabled', run_id: info.run_id, config_digest: info.config_digest, roles: Object.keys(info.incarnations).length });
-    const wanted = option('--scenarios', '').split(',').filter(Boolean);
-    const out = option('--out', '');
-    if (wanted.length > 0) {
-      if (wanted.some((id) => !(PROTOCOL.scenario_ids as readonly string[]).includes(id)) || !out) { await runRef.stop('operator-stop'); say({ error: 'bad-scenario-arguments' }); return 2; }
-      const snapshot = () => { const rec = runRef!.runRecord(); if (rec) writeReportAtomic(out, buildReport({ kind: 'demo', runs: [rec] })); };
-      for (const [i, id] of wanted.entries()) {
-        const rec = await runRef.runScenario(CLIENT_IDS[i % CLIENT_IDS.length]!, id);
-        say({ event: 'scenario', scenario_id: id, status: rec.status, origin_counts_available: rec.origin_counts_available });
-        snapshot();
-      }
-      await runRef.stop('completed');
-      snapshot();
-      const finalReport = verifyReportFile(out);
-      say({ event: 'report', ok: finalReport.ok, status: finalReport.status });
+    say({ event: 'enabled', plan: plan.name, run_id: info.run_id, config_digest: info.config_digest, roles: Object.keys(info.incarnations).length });
+    for (const step of plan.steps) {
+      const rec = await runRef.runScenario(step.clients.length === 1 ? step.clients[0]! : step.clients, step.scenario);
+      say({ event: 'scenario', plan: plan.name, scenario_id: step.scenario, status: rec.status, origin_counts_available: rec.origin_counts_available });
     }
+    if (plan.steps.length > 0 || adHocEvents) await runRef.stop('completed');
     const closed = await runRef.closed();
     stopWatching();
     confirmed = closed.reset_confirmed;
-    say({ event: 'closed', reason: closed.reason, reset_confirmed: closed.reset_confirmed, origin_counts: adapters.originCounts });
-    return closed.reset_confirmed ? 0 : 1;
+    say({ event: 'closed', plan: plan.name, reason: closed.reason, reset_confirmed: closed.reset_confirmed, origin_counts: adapters.originCounts });
+    return { record: runRef.runRecord(), confirmed };
   } catch (e) {
     say({ error: e instanceof ControllerError ? e.code : 'controller-failed', step: e instanceof ControllerError ? e.step : undefined });
     // Outer cleanup: close the run if there is one, otherwise (or if that is unconfirmed) clean up by recorded identity.
     if (runRef) { const r = await runRef.stop('unsafe-state'); confirmed = r.reset_confirmed; }
     if (!confirmed) confirmed = (await stopRoles(scope, adapters)) && (await discardRedis(scope, adapters));
-    return 1;
+    return { record: runRef?.runRecord() ?? null, confirmed };
   } finally {
-    // Release ownership ONLY when shutdown of everything this controller created was confirmed (or nothing was created).
-    if (confirmed || (scope.roles.length === 0 && !scope.redisId)) releaseLock();
-    else say({ event: 'lock-retained', reason: 'shutdown-unconfirmed' });
+    activeStop = null;
+  }
+}
+
+async function run(): Promise<number> {
+  const partial = flag('--partial');
+  const suiteName = option('--suite', '');
+  const out = option('--out', '');
+  let kind: SuiteKind = 'demo';
+  let plans: RunPlan[];
+  if (suiteName) {
+    const def = SUITES[suiteName];
+    if (!def || !out || partial) { say({ error: 'bad-suite-arguments' }); return 2; }
+    kind = def.kind; plans = def.plans;
+  } else {
+    const wanted = option('--scenarios', '').split(',').filter(Boolean);
+    if (wanted.some((id) => !(PROTOCOL.scenario_ids as readonly string[]).includes(id)) || (wanted.length > 0 && !out)) { say({ error: 'bad-scenario-arguments' }); return 2; }
+    const profile = option('--profile', 'demo') === 'security' ? 'security' : 'demo';
+    plans = [{ name: 'adhoc', clientProfile: profile, gatewayProfile: 'B1', perClient: Number(option('--per-client', '2')),
+      steps: wanted.map((scenario, i) => ({ scenario, clients: [CLIENT_IDS[i % CLIENT_IDS.length]!] })) }];
+  }
+  let lock;
+  try { lock = acquireProjectLock(join(root, '.runtime', 'project.lock')); }
+  catch (e) { if (e instanceof LockHeldError) { say({ error: 'project-lock-held' }); return 3; } throw e; }
+
+  const project = new DockerProject(realDocker, composeFile);
+  process.once('SIGINT', () => activeStop?.()); process.once('SIGTERM', () => activeStop?.());
+  const records: RunRecord[] = [];
+  let allConfirmed = true;
+  try {
+    for (const plan of plans) {
+      const result = await executePlan(plan, partial, project, false);
+      if (result.record) records.push(result.record);
+      if (out && records.length > 0) writeReportAtomic(out, buildReport({ kind, runs: records })); // snapshot after every run
+      if (!result.confirmed) { allConfirmed = false; break; } // never start another generation on top of an unconfirmed one
+    }
+    if (out && records.length > 0) { const v = verifyReportFile(out); say({ event: 'report', ok: v.ok, status: v.status }); }
+    return allConfirmed && records.length === plans.length ? 0 : 1;
+  } finally {
+    // Release ownership ONLY when everything this controller created was confirmed shut down.
+    if (allConfirmed) lock.release(); else say({ event: 'lock-retained', reason: 'shutdown-unconfirmed' });
   }
 }
 

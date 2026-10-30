@@ -11,6 +11,7 @@ import { ClientVouchers } from './vouchers.ts';
 import { LabClient } from './client.ts';
 import type { Counters as ReportCounters } from '../report/build.ts';
 import { networkBoundaries, voucherPolicy } from './scenarios.ts';
+import { concurrentReplay, malformedToken, sequentialReplay, sharedEgress, signatureAndKey, wrongContext } from './security-scenarios.ts';
 
 type State = 'FENCED' | 'PREPARED' | 'READY' | 'ENABLED' | 'CLOSING' | 'FAULTED';
 type Fault = (typeof PROTOCOL.faults)[number] | null;
@@ -29,12 +30,20 @@ export type ScenarioContext = {
   proxy: { host: string; port: number };
   /** Removes and returns one of this client's vouchers for a harness check. The voucher is spent from the inventory. */
   takeVoucher: () => Uint8Array | undefined;
+  /** True if at least n vouchers remain (scenarios that cannot run without them report "not tested", never a pass). */
+  hasVoucher: (n: number) => boolean;
 };
 export type ScenarioRunner = (ctx: ScenarioContext) => Promise<ScenarioOutcome>;
 
 /** The frozen scenario list is implemented incrementally (M05); this is the only one that exists at G1. */
 export const baseScenarios: Record<string, ScenarioRunner> = {
   'voucher-policy': voucherPolicy,
+  'malformed-token': malformedToken,
+  'signature-and-key': signatureAndKey,
+  'wrong-context': wrongContext,
+  'sequential-replay': sequentialReplay,
+  'concurrent-replay': concurrentReplay,
+  'shared-egress': sharedEgress,
   'network-boundaries': networkBoundaries,
   'healthy-flow': async ({ client }) => {
     const challenge = await client.fetchChallenge();
@@ -178,7 +187,7 @@ export class ClientRole {
     if (!runner) throw new LabError('ILLEGAL_STATE'); // frozen name, not implemented yet: never fake a result
     const abort = new AbortController();
     const settled = (async (): Promise<ScenarioOutcome> => {
-      try { return await runner({ client: this.#client!, manifest: this.#manifest!, seed: payload['schedule_seed'] as number, signal: abort.signal, proxy: this.#proxy!, takeVoucher: () => this.#vouchers!.take() }); }
+      try { return await runner({ client: this.#client!, manifest: this.#manifest!, seed: payload['schedule_seed'] as number, signal: abort.signal, proxy: this.#proxy!, takeVoucher: () => this.#vouchers!.take(), hasVoucher: (n) => this.#vouchers!.remaining >= n }); }
       catch { return { status: 'FAIL', expected: 'accepted', failure_labels: ['authorization-unavailable'] }; }
     })();
     this.#running = { promise: settled, abort };
