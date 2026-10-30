@@ -29,6 +29,8 @@ export class LoggedLink implements RoleLink {
 /** A gateway that obeys the control contract but whose behavior tests can bend. */
 export class FakeGateway {
   readonly incarnation = hex(randomBytes(16));
+  /** The real gateway creates its control socket only after it has been given its private startup input. */
+  started = false;
   state: 'FENCED' | 'PREPARED' | 'READY' | 'ENABLED' = 'FENCED';
   runId: string | null = null; digest: string | null = null; runClosed = false;
   workers = 2;
@@ -36,6 +38,7 @@ export class FakeGateway {
   concurrent = 0; maxConcurrent = 0;
   ackDelayMs = 0; dropAcks = false; badSeq = false; failCommand: string | null = null;
   async handle(raw: unknown): Promise<Json> {
+    if (!this.started) throw new Error('control socket does not exist yet');
     const req = validateControlRequest(raw);
     const c = req['command'] as string;
     const ok = (result: string, data: Json) => this.#reply(req, true, result, data);
@@ -87,12 +90,13 @@ export class FakeRedis implements RedisPort {
 export class FakeReset implements ResetPort {
   events: string[] = [];
   failFence = false; failDiscard = false;
-  readonly #links: RoleLink[];
+  readonly #links: () => RoleLink[];
   readonly #issued = new WeakSet<object>();
-  constructor(links: RoleLink[]) { this.#links = links; }
+  /** `links` is evaluated at fence time: a role that was never launched (e.g. the gateway before launch) is not a participant. */
+  constructor(links: () => RoleLink[]) { this.#links = links; }
   async fenceAll() {
     this.events.push('fence-start');
-    const replies = await Promise.all(this.#links.map(async (l) => {
+    const replies = await Promise.all(this.#links().map(async (l) => {
       try { return await l.send(emergencyFence('operator-stop'), 4000); } catch { return null; }
     }));
     if (this.failFence || replies.some((r) => !r || r['ok'] !== true || r['result'] !== 'FENCED' || r['state'] !== 'FENCED')) throw new Error('unconfirmed');
@@ -107,19 +111,22 @@ export class FakeReset implements ResetPort {
 }
 
 /** New links onto the SAME role objects (a replacement controller attaching to roles a previous run used). */
-export function relink(rig: ControllerRig): { links: RunLinks; log: LogEntry[] } {
+export function relink(rig: ControllerRig): { links: RunLinks; log: LogEntry[]; launcher: ControllerRig['launcher'] } {
   const log: LogEntry[] = [];
   const wrap = (role: RoleName, handle: (raw: unknown) => Promise<Json>) => new LoggedLink(new InProcessLink(role, handle), log);
   return { log, links: {
     issuer: wrap('issuer', (r) => rig.issuer.handle(r)), origin: wrap('origin', (r) => rig.origin.handle(r)),
     clients: Object.fromEntries(CLIENT_IDS.map((id) => [id, wrap(`client-${id}`, (r) => rig.clients[id].handle(r))])) as unknown as Record<ClientId, RoleLink>,
-    gateway: wrap('gateway', (r) => rig.gateway.handle(r)),
+  }, launcher: {
+    launched: 0, fail: false, hold: null,
+    async launch(): Promise<RoleLink> { rig.gateway.started = true; return wrap('gateway', (r) => rig.gateway.handle(r)); },
   } };
 }
 
 export type ControllerRig = {
-  launcher: { launched: number; fail: boolean; launch: (input: { redis: { username: string; password: string } }) => Promise<void> };
-  links: RunLinks; log: LogEntry[]; gateway: FakeGateway; redis: FakeRedis; reset: FakeReset;
+  launcher: { launched: number; fail: boolean; hold: Promise<void> | null; launch: (input: { redis: { username: string; password: string } }) => Promise<RoleLink> };
+  links: RunLinks;
+  gatewayLink: LoggedLink | null; log: LogEntry[]; gateway: FakeGateway; redis: FakeRedis; reset: FakeReset;
   issuer: IssuerRole; origin: OriginRole; clients: Record<ClientId, ClientRole>; all: RoleLink[]; stop: () => Promise<void>;
 };
 
@@ -138,14 +145,23 @@ export function controllerRig(options: { gateway?: boolean; scenarios?: Record<s
     issuer: wrap('issuer', (r) => issuer.handle(r)),
     origin: wrap('origin', (r) => origin.handle(r)),
     clients: Object.fromEntries(CLIENT_IDS.map((id) => [id, wrap(`client-${id}`, (r) => clients[id].handle(r))])) as unknown as Record<ClientId, RoleLink>,
-    ...(options.gateway === false ? {} : { gateway: wrap('gateway', (r) => gateway.handle(r)) }),
   };
-  const all = [links.issuer, links.origin, ...CLIENT_IDS.map((id) => links.clients[id]), ...(links.gateway ? [links.gateway] : [])];
+  const gatewayLink = options.gateway === false ? null : wrap('gateway', (r) => gateway.handle(r));
+  const all = [links.issuer, links.origin, ...CLIENT_IDS.map((id) => links.clients[id]), ...(gatewayLink ? [gatewayLink] : [])];
   // The barrier fakes talk to the roles through their own, unlogged links so ordering assertions see only controller traffic.
   const raw: RoleLink[] = [new InProcessLink('issuer', (r) => issuer.handle(r)), new InProcessLink('origin', (r) => origin.handle(r)),
     ...CLIENT_IDS.map((id) => new InProcessLink(`client-${id}` as RoleName, (r) => clients[id].handle(r))),
-    ...(links.gateway ? [new InProcessLink('gateway', (r) => gateway.handle(r))] : [])];
-  const reset = new FakeReset(raw);
-  const launcher = { launched: 0, fail: false, async launch(input: { redis: { username: string; password: string } }) { if (launcher.fail || !input.redis.password) throw new Error('launch'); launcher.launched += 1; } };
-  return { launcher, links, log, gateway, redis: new FakeRedis(), reset, issuer, origin, clients, all, stop: async () => { await reset.fenceAll().catch(() => undefined); } };
+  ];
+  const rawGateway = gatewayLink ? new InProcessLink('gateway', (r) => gateway.handle(r)) : null;
+  const reset = new FakeReset(() => [...raw, ...(rawGateway && gateway.started ? [rawGateway] : [])]);
+  const launcher = {
+    launched: 0, fail: false, hold: null as Promise<void> | null,
+    async launch(input: { redis: { username: string; password: string } }): Promise<RoleLink> {
+      if (launcher.hold) await launcher.hold; // lets a test keep the launch pending while a close arrives
+      if (launcher.fail || !input.redis.password) throw new Error('launch');
+      launcher.launched += 1; gateway.started = true;
+      return gatewayLink!;
+    },
+  };
+  return { launcher, links, gatewayLink, log, gateway, redis: new FakeRedis(), reset, issuer, origin, clients, all, stop: async () => { await reset.fenceAll().catch(() => undefined); } };
 }

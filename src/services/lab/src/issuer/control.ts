@@ -52,6 +52,7 @@ export class IssuerRole {
   readonly #schedule: (ms: number, callback: () => void) => { cancel(): void };
   #watchdog: { cancel(): void } | null = null;
   #lastSeq = 0;
+  #keyPending: Promise<void> | null = null;
   #chain: Promise<unknown> = Promise.resolve();
 
   constructor(options: IssuerRoleOptions = {}) {
@@ -118,9 +119,18 @@ export class IssuerRole {
 
   async #createKey(requestId: string, runId: string): Promise<Json> {
     if (this.#keyReply && this.#runId === runId && this.#keyReply.request_id === requestId) return this.#ok(requestId, 'KEY_CREATED', this.#keyReply.data);
-    if (this.#state !== 'FENCED' || this.#runClosed || this.#issuer) throw new LabError('ILLEGAL_STATE');
-    this.#issuer = await LabIssuer.generate(PROTOCOL.issuer_name);
+    if (this.#state !== 'FENCED' || this.#runClosed || this.#issuer || this.#keyPending) throw new LabError('ILLEGAL_STATE');
+    // The run identity is claimed BEFORE the await, so a FENCE that arrives while the key is being generated sees a run and
+    // latches it closed. A key that completes after that is discarded, never installed.
     this.#runId = runId;
+    const pending = LabIssuer.generate(PROTOCOL.issuer_name);
+    this.#keyPending = pending.then(() => undefined, () => undefined);
+    let issuer: LabIssuer;
+    try { issuer = await pending; }
+    catch { this.#runId = null; throw new LabError('DEPENDENCY_UNAVAILABLE'); }
+    finally { this.#keyPending = null; }
+    if (this.#state !== 'FENCED' || this.#runClosed) throw new LabError('FAULTED'); // fenced or faulted meanwhile: suppress the late result
+    this.#issuer = issuer;
     const data = { token_key_spki_b64url: encodeBase64Url(this.#issuer.publicKeySpki, true), token_key_id: hex(sha256(this.#issuer.publicKeySpki)) };
     this.#keyReply = { request_id: requestId, data };
     return this.#ok(requestId, 'KEY_CREATED', data);
@@ -139,7 +149,7 @@ export class IssuerRole {
     this.#manifest = manifest;
     this.#digest = payload['proposed_config_digest'] as string;
     this.#vouchers = new VoucherStore(manifest.inventory_total);
-    this.#service = new IssuanceService(this.#issuer, this.#vouchers, manifest.limits.issuer);
+    this.#service = new IssuanceService(this.#issuer, this.#vouchers, manifest.limits.issuer, () => this.#leaseLive());
     this.#state = 'PREPARED';
     return this.#ok(requestId, 'PREPARED', {});
   }
@@ -193,6 +203,9 @@ export class IssuerRole {
    * Judged against the monotonic clock every time it is consulted. A timer can fire slightly before its deadline, so an
    * early firing re-arms for the remainder instead of being forgotten (which would leave an expired lease unenforced).
    */
+  /** True only while ENABLED with an unexpired lease; consulting it applies expiry first, so it never depends on a timer. */
+  #leaseLive(): boolean { this.#expireIfStale(); return this.#state === 'ENABLED' && this.#now() < this.#leaseExpiry; }
+
   #expireIfStale(): void {
     if (this.#state !== 'ENABLED') return;
     if (this.#now() >= this.#leaseExpiry) this.#faultNow('lease-expired');
@@ -224,7 +237,14 @@ export class IssuerRole {
     const hadRun = this.#runId !== null;
     this.#state = this.#state === 'FAULTED' ? 'FAULTED' : 'CLOSING';
     this.#closeAdmission();
-    // Strong barrier: acknowledge only once no signing is in flight. A hang means the controller must kill us.
+    // Strong barrier: acknowledge only once no signing is in flight and no key generation is still pending. A hang means
+    // the controller must kill us.
+    if (this.#keyPending) {
+      let timer: NodeJS.Timeout | undefined;
+      const settled = await Promise.race([this.#keyPending.then(() => true), new Promise<boolean>((r) => { timer = setTimeout(() => r(false), this.#drainMs); timer.unref(); })]);
+      clearTimeout(timer);
+      if (!settled) return this.#error(requestId, 'FAULTED');
+    }
     if (this.#service && !(await this.#service.drain(this.#drainMs))) return this.#error(requestId, 'FAULTED');
     if (this.#server?.listening) await new Promise<void>((resolve) => this.#server!.close(() => resolve()));
     if (hadRun) { this.#runClosed = true; this.#fault = this.#fault ?? reason; }

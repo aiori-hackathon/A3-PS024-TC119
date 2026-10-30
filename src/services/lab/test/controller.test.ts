@@ -29,7 +29,10 @@ test('setup follows the plan order, ends with every role ENABLED and the gateway
   const first = (role: string, cmd: string) => rig.log.findIndex((e) => e.role === role && e.command === cmd);
   const last = (cmd: string) => Math.max(...rig.log.map((e, i) => (e.command === cmd ? i : -1)));
   // discovery before anything, key before prepare, prepare before provision, provision before ready, ready before enable.
-  assert.ok(rig.log.slice(0, 8).every((e) => e.command === 'STATUS'));
+  // Seven roles are discovered first; the gateway can only be discovered after it has been launched with its private input.
+  assert.ok(rig.log.slice(0, 7).every((e) => e.command === 'STATUS' && e.role !== 'gateway'));
+  assert.ok(first('issuer', 'CREATE_ISSUER_KEY') < first('gateway', 'STATUS'), 'gateway is launched and discovered after the key exists');
+  assert.ok(first('gateway', 'STATUS') < first('gateway', 'PREPARE_RUN'));
   assert.ok(first('issuer', 'CREATE_ISSUER_KEY') < first('issuer', 'PREPARE_RUN'));
   assert.ok(last('PREPARE_RUN') < first('issuer', 'PROVISION_VOUCHERS'));
   assert.ok(last('PROVISION_CLIENT') < first('issuer', 'CHECK_READY'));
@@ -141,7 +144,7 @@ test('a role that has already carried a run is refused and nothing new is prepar
   const rig = controllerRig();
   const first = run(rig); await first.start(); await first.stop();
   const again = relink(rig);
-  const second = new LabRun({ links: again.links, redis: rig.redis, reset: rig.reset, gatewayLauncher: rig.launcher }, fast);
+  const second = new LabRun({ links: again.links, redis: rig.redis, reset: rig.reset, gatewayLauncher: again.launcher }, fast);
   await assert.rejects(second.start(), (e: ControllerError) => e.code === 'role-not-fresh');
   assert.ok(again.log.every((e) => e.command === 'STATUS' || e.command === 'FENCE'), 'only discovery, never PREPARE or ENABLE');
   assert.equal(rig.gateway.state, 'FENCED');

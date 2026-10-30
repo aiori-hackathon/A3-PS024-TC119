@@ -23,7 +23,15 @@ export class IssuanceService {
   #successes = 0;
   #failures = 0;
 
-  constructor(issuer: LabIssuer, vouchers: VoucherStore, limits: typeof PROTOCOL.issuer_limits) {
+  readonly #live: () => boolean;
+
+  /**
+   * `isLive` is the controller lease, evaluated synchronously against the monotonic clock: at admission, after queue promotion and
+   * immediately before a voucher is consumed and signing starts. `#open` alone is not enough, because a delayed watchdog timer
+   * must not extend authorization.
+   */
+  constructor(issuer: LabIssuer, vouchers: VoucherStore, limits: typeof PROTOCOL.issuer_limits, isLive: () => boolean = () => true) {
+    this.#live = isLive;
     this.#issuer = issuer;
     this.#vouchers = vouchers;
     this.#gate = new AdmissionGate(limits.active_signings, limits.queue_depth, limits.queue_wait_ms);
@@ -37,7 +45,7 @@ export class IssuanceService {
   setOpen(open: boolean): void { this.#open = open; if (!open) this.#gate.cancelQueued(); }
 
   async handle(input: IssueInput): Promise<IssueOutput> {
-    if (!this.#open) return this.#fail(503, 'issuance-unavailable');
+    if (!this.#open || !this.#live()) return this.#fail(503, 'issuance-unavailable');
     if (input.contentType !== REQUEST_TYPE) return this.#fail(415, 'unsupported-media-type');
     const b = input.body;
     // Complete, bounded but protocol-invalid requests are 422 and consume nothing (RFC 9578 section 6.2).
@@ -47,7 +55,8 @@ export class IssuanceService {
     const release = await this.#gate.acquire();
     if (release === null) return this.#fail(503, 'issuance-busy');
     try {
-      if (!this.#open) return this.#fail(503, 'issuance-unavailable');
+      // Re-judged after any wait in the queue, and in the same tick as the consume and the start of signing below.
+      if (!this.#open || !this.#live()) return this.#fail(503, 'issuance-unavailable');
       const voucher = this.#parseVoucher(input.voucherHeaders);
       // Atomic removal happens before signing starts and is never undone.
       if (voucher === null || !this.#vouchers.consume(voucherDigest(voucher))) return this.#fail(403, 'issuance-not-authorized');

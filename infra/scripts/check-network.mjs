@@ -175,11 +175,15 @@ try {
   const password = readFileSync(join(root, '.runtime', 'secrets', 'controller', 'redis-password'), 'utf8');
   const cli = (...argv) => inside('redis', ['redis-cli', '-s', '/run/redis/redis.sock', '--user', 'controller', ...argv], { REDISCLI_AUTH: password });
   check('controller account works over the private local socket', cli('PING').stdout.trim() === 'PONG');
-  const wantConfig = { 'slowlog-max-len': '0', 'slowlog-log-slower-than': '-1', 'acllog-max-len': '0', 'latency-monitor-threshold': '0', 'notify-keyspace-events': '', appendonly: 'no', save: '', bind: '172.28.40.10' };
+  const wantConfig = { maxmemory: '268435456', 'maxmemory-policy': 'noeviction', 'cluster-enabled': 'no', 'replica-read-only': 'yes', 'slowlog-max-len': '0', 'slowlog-log-slower-than': '-1', 'acllog-max-len': '0', 'latency-monitor-threshold': '0', 'notify-keyspace-events': '', appendonly: 'no', save: '', bind: '172.28.40.10' };
   for (const [key, want] of Object.entries(wantConfig)) {
     const out = cli('CONFIG', 'GET', key).stdout.split('\n').map((l) => l.trim());
     check(`Redis ${key} = ${want === '' ? '(empty)' : want}`, out[0] === key && (out[1] ?? '') === want, out.join('|'));
   }
+  const repl = cli('INFO', 'replication').stdout;
+  check('Redis is a single primary with no replicas (role:master, connected_slaves:0)', /role:master/.test(repl) && /connected_slaves:0/.test(repl), repl.slice(0, 80));
+  check('Redis container memory limit is exactly 384 MiB', byService['redis']?.HostConfig?.Memory === 402653184, String(byService['redis']?.HostConfig?.Memory));
+  check('Redis data directory and socket are tmpfs, not host mounts', !byService['redis'].Mounts.some((m) => m.Type === 'bind' && m.Destination !== '/etc/redis/redis.conf' && !m.Destination.startsWith('/run/secrets/')));
   check('Redis has no default-user access even locally', /NOAUTH|WRONGPASS|ERR/.test(inside('redis', ['redis-cli', '-s', '/run/redis/redis.sock', 'PING']).stdout));
 } catch (e) {
   failures++;

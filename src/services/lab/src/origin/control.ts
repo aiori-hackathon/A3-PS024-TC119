@@ -21,12 +21,18 @@ export const RUN_HEADER = 'x-tokenforge-run';
 const ROUTE = new URL(PROTOCOL.endpoints.origin_http).pathname;
 const BODY = Buffer.alloc(1024, 0x61); // deterministic, well under origin_body_max_bytes
 
-export type OriginRoleOptions = { listen?: { host: string; port: number }; drainMs?: number };
+export type OriginRoleOptions = {
+  listen?: { host: string; port: number }; drainMs?: number;
+  /** Test seam only (never set in production code or images): delays the bind so races with FENCE can be driven. */
+  beforeListen?: () => Promise<void>;
+};
 
 export class OriginRole {
   readonly incarnation = hex(randomBytes(16));
   readonly #listen: { host: string; port: number };
   readonly #drainMs: number;
+  readonly #beforeListen: (() => Promise<void>) | undefined;
+  #listening: Promise<void> | null = null;
   #state: State = 'FENCED';
   #fault: Fault = null;
   #runClosed = false;
@@ -41,6 +47,7 @@ export class OriginRole {
   constructor(options: OriginRoleOptions = {}) {
     this.#listen = options.listen ?? { host: '127.0.0.1', port: Number(PROTOCOL.endpoints.origin_http.match(/:(\d+)\//)![1]) };
     this.#drainMs = options.drainMs ?? 5000;
+    this.#beforeListen = options.beforeListen;
   }
   get state(): State { return this.#state; }
   get address(): AddressInfo | null { return (this.#server?.address() as AddressInfo | null) ?? null; }
@@ -114,9 +121,20 @@ export class OriginRole {
     server.maxHeadersCount = PROTOCOL.gateway_common.headers_max_count + 1;
     server.on('clientError', (_e, socket) => socket.destroy());
     this.#server = server;
-    try { await new Promise<void>((resolve, reject) => { server.once('error', reject); server.listen(this.#listen.port, this.#listen.host, () => resolve()); }); }
+    const binding = (async () => {
+      if (this.#beforeListen) await this.#beforeListen();
+      if (this.#state !== 'READY') return; // fenced before the bind even started: never open a listener
+      await new Promise<void>((resolve, reject) => { server.once('error', reject); server.listen(this.#listen.port, this.#listen.host, () => resolve()); });
+    })();
+    this.#listening = binding.then(() => undefined, () => undefined);
+    try { await binding; }
     catch { this.#faultNow('dependency-lost'); throw new LabError('FAULTED'); }
-    if (this.#state !== 'READY') { server.closeAllConnections(); server.close(); throw new LabError('FAULTED'); } // fenced while binding
+    finally { this.#listening = null; }
+    if (this.#state !== 'READY') { // fenced while binding: the listener must not outlive that FENCE
+      server.closeAllConnections();
+      if (server.listening) await new Promise<void>((resolve) => server.close(() => resolve()));
+      throw new LabError('FAULTED');
+    }
     this.#state = 'ENABLED';
     return this.#ok(requestId, 'ENABLED', { workers_enabled: 1 });
   }
@@ -151,7 +169,22 @@ export class OriginRole {
     const hadRun = this.#runId !== null;
     this.#state = this.#state === 'FAULTED' ? 'FAULTED' : 'CLOSING';
     const server = this.#server;
-    if (server) { server.close(); server.closeAllConnections(); }
+    // A bind still in progress must settle first, otherwise it could open a listener after this FENCE was acknowledged.
+    if (this.#listening) {
+      let timer: NodeJS.Timeout | undefined;
+      const settled = await Promise.race([this.#listening.then(() => true), new Promise<boolean>((r) => { timer = setTimeout(() => r(false), this.#drainMs); timer.unref(); })]);
+      clearTimeout(timer);
+      if (!settled) return this.#error(requestId, 'FAULTED');
+    }
+    if (server) {
+      // Await the close completion itself (not merely the request to close): no socket remains when FENCED is returned.
+      const closed = server.listening ? new Promise<void>((resolve) => server.close(() => resolve())) : Promise.resolve();
+      server.closeAllConnections();
+      let timer: NodeJS.Timeout | undefined;
+      const done = await Promise.race([closed.then(() => true), new Promise<boolean>((r) => { timer = setTimeout(() => r(false), this.#drainMs); timer.unref(); })]);
+      clearTimeout(timer);
+      if (!done) return this.#error(requestId, 'FAULTED');
+    }
     if (this.#active > 0) {
       const settled = await new Promise<boolean>((resolve) => {
         const timer = setTimeout(() => resolve(false), this.#drainMs);

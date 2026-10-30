@@ -25,9 +25,13 @@ export interface RedisPort {
   install(manifest: Manifest, configDigest: string): Promise<GatewayCredentials>;
 }
 
-/** Delivers the gateway's startup configuration (credentials over private stdin, never argv/env/logs). */
+/**
+ * Starts the gateway's serving entry point with its private startup input (listen_host, TLS key/cert, Redis account) over
+ * stdin, never argv/env/labels/logs, and returns a control link to the process that is now serving. The gateway's control
+ * socket does not exist until that input has been validated, so discovery of the gateway can only follow this call.
+ */
 export interface GatewayLauncher {
-  launch(input: { redis: GatewayCredentials }): Promise<void>;
+  launch(input: { redis: GatewayCredentials }): Promise<RoleLink>;
 }
 
 /** Strong reset barrier. The production implementation is Krish's ResetBarrier driven by this controller's adapters. */

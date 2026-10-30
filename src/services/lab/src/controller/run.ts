@@ -19,7 +19,7 @@ export class ControllerError extends Error {
   constructor(code: ControllerErrorCode, step?: string) { super(step ? `${code}:${step}` : code); this.name = 'ControllerError'; this.code = code; this.step = step; }
 }
 
-export type RunLinks = { issuer: RoleLink; origin: RoleLink; clients: Record<ClientId, RoleLink>; gateway?: RoleLink };
+export type RunLinks = { issuer: RoleLink; origin: RoleLink; clients: Record<ClientId, RoleLink> };
 export type RunDeps = { links: RunLinks; redis: RedisPort; reset: ResetPort; gatewayLauncher?: GatewayLauncher };
 export type RunConfig = {
   /** Vouchers (and thus tokens) per client. The issuer inventory is exactly clients x perClient. */
@@ -30,6 +30,8 @@ export type RunConfig = {
   /** A heartbeat acknowledgement later than this closes the run (must stay below the lease). */
   ackDeadlineMs?: number;
   controlTimeoutMs?: number;
+  /** After a close request, how long to wait for an in-flight setup step to notice the latch before the barrier runs anyway. */
+  setupDrainMs?: number;
 };
 export type RunInfo = { run_id: string; config_digest: string; manifest: Manifest; incarnations: Record<string, string> };
 export type CloseResult = { reason: string; reset_confirmed: boolean; error: ControllerErrorCode | null };
@@ -56,12 +58,15 @@ export class LabRun {
   readonly #closedWaiters: ((r: CloseResult) => void)[] = [];
   readonly #transitions: { state: string; reason: string }[] = [];
   readonly #scenarios: ScenarioRecord[] = [];
+  #gateway: RoleLink | null = null;
+  #manifest: Manifest | null = null;
+  #setupRun: Promise<unknown> | null = null;
 
   constructor(deps: RunDeps, config: RunConfig) {
     this.#d = deps;
     this.#cfg = {
       gatewayProfile: 'B1', clientProfile: 'demo', heartbeatMs: PROTOCOL.gateway_common.controller_heartbeat_ms, ackDeadlineMs: 1500,
-      controlTimeoutMs: 10_000, ...config,
+      controlTimeoutMs: 10_000, setupDrainMs: 5_000, ...config,
     };
     if (this.#cfg.ackDeadlineMs >= PROTOCOL.gateway_common.controller_lease_ms) throw new Error('ack deadline must be below the lease');
   }
@@ -69,6 +74,8 @@ export class LabRun {
   get info(): RunInfo | null { return this.#info; }
   /** Incarnations discovered so far (available even if setup failed part-way, for the reset barrier). */
   get discovered(): Record<string, string> { return Object.fromEntries([...this.#targets].map(([n, t]) => [n, t.incarnation])); }
+  /** The accepted manifest as soon as it exists (before setup finishes), for building the full reset snapshot. */
+  get manifestSoFar(): Manifest | null { return this.#manifest; }
   /** Manifest facts the barrier needs, once they exist. */
   get runId(): string | null { return this.#info?.run_id ?? this.#targets.get('issuer')?.runId ?? null; }
   get configDigest(): string | null { return this.#info?.config_digest ?? this.#targets.get('issuer')?.digest ?? null; }
@@ -80,11 +87,18 @@ export class LabRun {
   #links(): { name: string; link: RoleLink }[] {
     const l = this.#d.links;
     return [{ name: 'issuer', link: l.issuer }, { name: 'origin', link: l.origin },
-      ...CLIENT_IDS.map((id) => ({ name: `client-${id}`, link: l.clients[id] })), ...(l.gateway ? [{ name: 'gateway', link: l.gateway }] : [])];
+      ...CLIENT_IDS.map((id) => ({ name: `client-${id}`, link: l.clients[id] })), ...(this.#gateway ? [{ name: 'gateway', link: this.#gateway }] : [])];
   }
+  /**
+   * Terminal cancellation latch. close() publishes its promise synchronously before any hook runs, so every await in
+   * setup re-checks it: a delayed callback from an old setup step can never cause a later mutation or an ENABLE.
+   */
+  #guard(): void { if (this.#closing !== null) throw new ControllerError('setup-failed', 'cancelled'); }
   async #call(link: RoleLink, req: Json, step: string, expect: string, code: ControllerErrorCode = 'setup-failed'): Promise<Json> {
+    this.#guard(); // before the request leaves: nothing is sent to a role once closing has begun
     let reply: Json;
-    try { reply = await link.send(req, this.#cfg.controlTimeoutMs); } catch { throw new ControllerError(code, step); }
+    try { reply = await link.send(req, this.#cfg.controlTimeoutMs); } catch { this.#guard(); throw new ControllerError(code, step); }
+    this.#guard();
     if (reply['ok'] !== true || reply['result'] !== expect) throw new ControllerError(code, step);
     return reply;
   }
@@ -96,7 +110,8 @@ export class LabRun {
     this.#phase = 'setting-up';
     this.#transitions.push({ state: 'FENCED', reason: 'startup' });
     try {
-      return await this.#setup();
+      this.#setupRun = this.#setup();
+      return await (this.#setupRun as Promise<RunInfo>);
     } catch (e) {
       const err = e instanceof ControllerError ? e : new ControllerError('setup-failed', 'unexpected');
       await this.close(err.code === 'role-not-fresh' || err.code === 'discovery-failed' ? 'configuration-mismatch' : 'unsafe-state');
@@ -110,7 +125,9 @@ export class LabRun {
     // 1. Discover fresh incarnations; every role must be FENCED and must never have carried a run.
     for (const { name, link } of this.#links()) {
       let r: Json;
-      try { r = await link.send(discovery(), cfg.controlTimeoutMs); } catch { throw new ControllerError('discovery-failed', name); }
+      this.#guard();
+      try { r = await link.send(discovery(), cfg.controlTimeoutMs); } catch { this.#guard(); throw new ControllerError('discovery-failed', name); }
+      this.#guard();
       if (r['ok'] !== true || r['result'] !== 'STATUS') throw new ControllerError('discovery-failed', name);
       if (r['state'] !== 'FENCED' || r['data']?.run_closed !== false || r['run_id'] !== null) throw new ControllerError('role-not-fresh', name);
       this.#targets.set(name, { incarnation: r['incarnation'], runId: null, digest: null });
@@ -125,7 +142,9 @@ export class LabRun {
 
     // 3. Replay store: exact scripts loaded and clock read while everything is fenced.
     let store: Awaited<ReturnType<RedisPort['prepare']>>;
-    try { store = await d.redis.prepare(runId); } catch { throw new ControllerError('setup-failed', 'redis-prepare'); }
+    this.#guard();
+    try { store = await d.redis.prepare(runId); } catch { this.#guard(); throw new ControllerError('setup-failed', 'redis-prepare'); }
+    this.#guard();
 
     // 4. Public manifest and its digest, from the real key, scripts and clock.
     const total = cfg.perClient * CLIENT_IDS.length;
@@ -140,13 +159,27 @@ export class LabRun {
       throw new ControllerError('setup-failed', 'key-mismatch');
     }
     const digest = configurationDigest(manifest);
+    this.#manifest = manifest;
 
     // 5. Policy, clock and minimal ACLs for the accepted manifest; then the gateway's private startup input.
     let credentials: Awaited<ReturnType<RedisPort['install']>>;
-    try { credentials = await d.redis.install(manifest, digest); } catch { throw new ControllerError('setup-failed', 'redis-install'); }
-    if (d.links.gateway) {
-      if (!d.gatewayLauncher) throw new ControllerError('setup-failed', 'gateway-launcher');
-      try { await d.gatewayLauncher.launch({ redis: credentials }); } catch { throw new ControllerError('setup-failed', 'gateway-launch'); }
+    this.#guard(); // never install policy into a store once a reset may already be under way
+    try { credentials = await d.redis.install(manifest, digest); } catch { this.#guard(); throw new ControllerError('setup-failed', 'redis-install'); }
+    this.#guard();
+    if (d.gatewayLauncher) {
+      // The gateway creates its control socket only after it has received and validated its private startup input, so it
+      // is launched first and discovered second. A launch that completes after close() is discarded, never adopted.
+      let link: RoleLink;
+      try { link = await d.gatewayLauncher.launch({ redis: credentials }); } catch { this.#guard(); throw new ControllerError('setup-failed', 'gateway-launch'); }
+      if (this.#closing !== null) { try { link.close(); } catch { /* best effort */ } throw new ControllerError('setup-failed', 'cancelled'); }
+      this.#gateway = link;
+      let g: Json;
+      try { g = await link.send(discovery(), cfg.controlTimeoutMs); } catch { this.#guard(); throw new ControllerError('discovery-failed', 'gateway'); }
+      this.#guard();
+      if (g['ok'] !== true || g['result'] !== 'STATUS') throw new ControllerError('discovery-failed', 'gateway');
+      if (g['state'] !== 'FENCED' || g['data']?.run_closed !== false || g['run_id'] !== null) throw new ControllerError('role-not-fresh', 'gateway');
+      this.#targets.set('gateway', { incarnation: g['incarnation'], runId, digest: null });
+      if (new Set([...this.#targets.values()].map((t) => t.incarnation)).size !== this.#targets.size) throw new ControllerError('discovery-failed', 'duplicate-incarnation');
     }
 
     // 6. PREPARE every role. The initial PREPARE carries a null envelope digest and the proposed one in the payload.
@@ -157,7 +190,7 @@ export class LabRun {
       await this.#call(d.links.clients[id], request('PREPARE_RUN', { ...this.#at(`client-${id}`), digest: null }, { manifest, proposed_config_digest: digest, role: 'client',
         role_config: { client_id: id, ca_cert_path: SECRETS.ca } }), `prepare-client-${id}`, 'PREPARED');
     }
-    if (d.links.gateway) await this.#call(d.links.gateway, prep('gateway', {}), 'prepare-gateway', 'PREPARED');
+    if (this.#gateway) await this.#call(this.#gateway, prep('gateway', {}), 'prepare-gateway', 'PREPARED');
     for (const t of this.#targets.values()) t.digest = digest;
     this.#transitions.push({ state: 'PREPARED', reason: 'startup' });
 
@@ -175,7 +208,7 @@ export class LabRun {
     };
     await ready('issuer', d.links.issuer, 1); await ready('origin', d.links.origin, 1);
     for (const id of CLIENT_IDS) await ready(`client-${id}`, d.links.clients[id], 1);
-    if (d.links.gateway) await ready('gateway', d.links.gateway, manifest.limits.gateway.workers);
+    if (this.#gateway) await ready('gateway', this.#gateway, manifest.limits.gateway.workers);
     this.#transitions.push({ state: 'READY', reason: 'ready' });
 
     // 9. Enable: origin and clients, then the issuer (its lease starts now, so supervision starts at once), then the gateway LAST.
@@ -186,12 +219,13 @@ export class LabRun {
     await enable('origin', d.links.origin, 1);
     await Promise.all(CLIENT_IDS.map((id) => enable(`client-${id}`, d.links.clients[id], 1)));
     await enable('issuer', d.links.issuer, 1);
+    this.#guard();
     this.#phase = 'enabled';
     this.#transitions.push({ state: 'ENABLED', reason: 'enabled' });
     this.#supervise('issuer', d.links.issuer);
-    if (d.links.gateway) {
-      await enable('gateway', d.links.gateway, manifest.limits.gateway.workers);
-      this.#supervise('gateway', d.links.gateway);
+    if (this.#gateway) {
+      await enable('gateway', this.#gateway, manifest.limits.gateway.workers);
+      this.#supervise('gateway', this.#gateway);
     }
     const incarnations = Object.fromEntries([...this.#targets].map(([n, t]) => [n, t.incarnation]));
     this.#info = { run_id: runId, config_digest: digest, manifest, incarnations };
@@ -242,7 +276,7 @@ export class LabRun {
     } catch { return null; }
   }
   async #workerAttempts(): Promise<Map<number, number> | null> {
-    const g = this.#d.links.gateway;
+    const g = this.#gateway;
     if (!g) return null;
     try {
       const r = await g.send(request('REPORT', this.#at('gateway')), this.#cfg.controlTimeoutMs);
@@ -289,7 +323,7 @@ export class LabRun {
     const rule = ORIGIN_RULES[scenarioId];
     if (d.status === 'FAIL') record.status = 'FAIL';
     else if (d.status !== 'PASS') record.status = 'INCONCLUSIVE';
-    else if (!rule || (rule.needsGateway && !this.#d.links.gateway) || !delta) { record.status = 'INCONCLUSIVE'; record.failure_labels.push('missing-evidence'); }
+    else if (!rule || (rule.needsGateway && !this.#gateway) || !delta) { record.status = 'INCONCLUSIVE'; record.failure_labels.push('missing-evidence'); }
     else if (!rule.holds(delta)) { record.status = 'FAIL'; record.failure_labels.push('assertion-failed'); }
     else record.status = 'PASS';
     this.#scenarios.push(record);
@@ -315,11 +349,21 @@ export class LabRun {
 
   close(reason: string): Promise<CloseResult> {
     if (this.#closing) return this.#closing;
+    // Publish the one cached promise FIRST, synchronously, before any reentrant hook or await can observe `null`.
+    let finish!: (r: CloseResult) => void;
+    this.#closing = new Promise<CloseResult>((resolve) => { finish = resolve; });
     this.#phase = 'closing';
     const why = (PROTOCOL.faults as readonly string[]).includes(reason) ? reason : 'completed';
     this.#transitions.push({ state: 'CLOSING', reason: why });
     for (const h of this.#heartbeats) h.stop();
-    this.#closing = (async (): Promise<CloseResult> => {
+    void (async () => {
+      // Give an in-flight setup step a bounded moment to reach its next guard and unwind; a step that never returns does not
+      // block the barrier, which acts on container identities and so covers whatever that step created.
+      if (this.#setupRun) {
+        let timer: NodeJS.Timeout | undefined;
+        await Promise.race([this.#setupRun.then(() => undefined, () => undefined), new Promise<void>((r) => { timer = setTimeout(r, this.#cfg.setupDrainMs); timer.unref(); })]);
+        clearTimeout(timer);
+      }
       let result: CloseResult;
       try {
         const receipt = await this.#d.reset.fenceAll();
@@ -329,11 +373,11 @@ export class LabRun {
         // Could not prove the old generation is gone: stay closed. No retry, no fresh setup permission.
         result = { reason, reset_confirmed: false, error: 'close-unconfirmed' };
       }
-      for (const { link } of this.#links()) link.close();
+      for (const { link } of this.#links()) { try { link.close(); } catch { /* every link is closed even if one throws */ } }
       this.#phase = 'closed';
       this.#transitions.push({ state: 'FENCED', reason: why });
+      finish(result);
       for (const w of this.#closedWaiters.splice(0)) w(result);
-      return result;
     })();
     return this.#closing;
   }
