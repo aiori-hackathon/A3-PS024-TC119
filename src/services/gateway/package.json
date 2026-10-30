@@ -10,7 +10,7 @@
     "start": "node dist/serve.mjs",
     "control": "node dist/control-helper.mjs",
     "typecheck": "tsc --noEmit",
-    "test": "node --test test/contracts.test.ts test/crypto.test.ts test/token-verifier.test.ts test/http-auth.test.ts test/replay-store.test.ts test/worker-lease.test.ts test/flow-admission.test.ts test/fixed-origin.test.ts test/request-coordinator.test.ts test/https-gateway.test.ts test/gateway-supervisor.test.ts",
+    "test": "node --test test/contracts.test.ts test/crypto.test.ts test/token-verifier.test.ts test/http-auth.test.ts test/replay-store.test.ts test/worker-lease.test.ts test/flow-admission.test.ts test/fixed-origin.test.ts test/request-coordinator.test.ts test/https-gateway.test.ts test/gateway-supervisor.test.ts test/replay-bootstrap.test.ts",
     "test:bundle": "node --test test/token-verifier-bundle.test.ts",
     "test:replay": "node --test test/replay-redis.test.ts",
     "test:redis-adapter": "node scripts/test-redis-adapter.mjs",

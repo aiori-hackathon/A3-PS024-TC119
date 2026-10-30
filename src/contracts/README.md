@@ -5,6 +5,7 @@ The gateway and lab consume these shared definitions rather than copying constan
 - `protocol-v1.json`: exact names, limits, profiles, labels, scenarios and histogram bounds.
 - `schemas/`: generated strict JSON Schema draft-07. Update the owned generator and regenerate; CI rejects drift.
 - `lib/`: dependency-free Node 24 TypeScript encodings, configuration/key validation, strict schema subset and typed Redis reply checks. Import from your source with relative paths; bundle shared code through the owner-local build. The root package declares ESM.
+- `lib/replay.ts`: the replay Lua, the controller-only store initializer, the gateway ACL and the readiness check (`replay-bootstrap-1`, additive; see `docs/implementation/REDIS_BOOTSTRAP.md`).
 - `fixtures/policy-golden.json`: independent Python stdlib derivation. Fixed run/key/script hashes are test-only, not usable live setup.
 - `fixtures/rfc9578-public.json`: public-only independent token vector, source commit/URL/hash included. No source private key/blinding secret is retained.
 

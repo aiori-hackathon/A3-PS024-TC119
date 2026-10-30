@@ -15,6 +15,9 @@ import { connect as tlsConnect } from 'node:tls';
 import golden from '../../../contracts/fixtures/policy-golden.json' with { type: 'json' };
 import { PROTOCOL, validateControlResponse, configurationDigest, makeManifest, encodeBase64Url, redemptionContext, spendId, challengeBytes, type Manifest } from '../../../contracts/lib/index.ts';
 import { REPLAY_SCRIPTS } from '../src/replay-scripts.ts';
+import {
+  GATEWAY_ACL_RULES, REPLAY_INITIALIZER, initialStoreState, initializeStore, installGatewayAcl, policyIdentity, loadReplayScripts, parseRedisTime, readRunStart, verifyStoreReady,
+} from '../../../contracts/lib/replay.ts';
 import { openRedisReplayStore } from '../src/redis-adapter.ts';
 import { ReplayStore, type ReplayConnection, type ReplayFault } from '../src/replay-store.ts';
 import { WorkerLease, type LeaseRuntime } from '../src/worker-lease.ts';
@@ -33,31 +36,26 @@ try {
   if (typeof testTls.key !== 'string' || typeof testTls.cert !== 'string') throw Error();
 } catch { throw Error('test-tls-input-invalid'); }
 const endpoint = { host: '127.0.0.1', port: 6379, username: 'gateway', password: randomBytes(32).toString('hex') };
+const io = { call: (command: string, ...args: (string | number)[]) => admin.call(command, ...args) };
 const stores: ReplayStore[] = [];
 const faults: ReplayFault[] = [];
 let m: Manifest;
 const candidate = () => ({ kind: 'claim-candidate', epoch: 0, spend_id: 'a'.repeat(64) });
 before(async () => {
   await admin.connect();
-  await admin.acl('SETUSER', 'gateway', 'reset', 'on', `>${endpoint.password}`,
-    '~pp:policy', '~pp:clock', '~pp:spent:*', '-@all',
-    '+auth', '+type', '+pttl', '+hlen', '+hmget', '+time', '+get', '+pexpiretime', '+hset', '+set',
-    '+evalsha', '+script|exists');
+  await installGatewayAcl(io, endpoint.username, endpoint.password); // the shared artifact, not a private copy
 });
 afterEach(() => { for (const store of stores.splice(0)) store.close(); });
 after(() => admin.disconnect(false));
 async function seed(mutation?: () => Promise<unknown>) {
   faults.length = 0;
   await admin.flushdb(); // This isolated TEST server never hosts an active deployment.
-  for (const script of Object.values(REPLAY_SCRIPTS)) assert.equal(await admin.script('LOAD', script.source), script.sha1);
-  const time = await admin.time();
-  const now = Number(time[0]) * 1000 + Math.floor(Number(time[1]) / 1000);
+  await loadReplayScripts(io);
+  const now = await readRunStart(io);
   m = makeManifest({ run_id: golden.manifest.run_id, run_start_ms: now - 300000,
     token_key_spki_b64url: golden.manifest.token_key_spki_b64url,
     snapshot_script_sha1: REPLAY_SCRIPTS.snapshot.sha1, claim_script_sha1: REPLAY_SCRIPTS.claim.sha1 });
-  await admin.hset('pp:policy', { schema_version: '1', run_id: m.run_id, token_type: '2', token_key_id: m.token_key_id,
-    config_digest: configurationDigest(m), run_start_ms: String(m.run_start_ms), epoch_ms: '600000', guard_ms: '30000' });
-  await admin.hset('pp:clock', { run_id: m.run_id, last_now_ms: String(m.run_start_ms), highest_epoch: '0', closed: '0' });
+  await initializeStore(io, m); // one atomic, empty-store-only initializer
   if (mutation) await mutation();
 }
 async function open() {
@@ -571,4 +569,138 @@ test('production control helper permits reserved FENCE alongside eight ordinary 
   const replies = output.trim().split('\n').map(line => JSON.parse(line) as Record<string, unknown>);
   assert.equal(replies.length, 9); for (const reply of replies) validateControlResponse(reply);
   assert.equal(replies.filter(reply => reply['result'] === 'FENCED').length, 1); assert.equal(g.workers().length, 0);
+});
+
+
+// ---------------------------------------------------------------------------------------------------------------
+// Public Redis bootstrap artifact (replay-bootstrap-1), against a real Redis and the production adapter.
+const bootstrapManifest = async (offset = 300000) => makeManifest({ run_id: golden.manifest.run_id, run_start_ms: (await readRunStart(io)) - offset,
+  token_key_spki_b64url: golden.manifest.token_key_spki_b64url, snapshot_script_sha1: REPLAY_SCRIPTS.snapshot.sha1, claim_script_sha1: REPLAY_SCRIPTS.claim.sha1 });
+const snapshotOfStore = async () => ({ policy: await admin.hgetall('pp:policy'), clock: await admin.hgetall('pp:clock'), size: await admin.dbsize() });
+const readyError = (reason: string) => (e: unknown) => e instanceof Error && e.message === `replay-bootstrap-${reason}`;
+
+test('artifact: the Lua hashes are the reviewed ones and the initializer is a separate controller-only script', () => {
+  assert.equal(REPLAY_SCRIPTS.snapshot.sha1, '20b8aa1866d30e41364acb05826a5617d27f1c72');
+  assert.equal(REPLAY_SCRIPTS.claim.sha1, 'c4a37fc975fe7f68e73c1e0d47b4c1779a182784');
+  assert.notEqual(REPLAY_INITIALIZER.sha1, REPLAY_SCRIPTS.snapshot.sha1);
+  assert.ok(!GATEWAY_ACL_RULES.some((r) => /eval$|script\|load|\+@all|config|acl|flush|keys|del/i.test(r) && r !== '+evalsha'), 'the gateway ACL grants no administration');
+});
+
+test('artifact: a fresh store is initialized atomically, exactly, and passes the field-by-field readiness check', async () => {
+  await admin.flushdb(); await loadReplayScripts(io);
+  const manifest = await bootstrapManifest();
+  await initializeStore(io, manifest);
+  const want = initialStoreState(manifest);
+  assert.deepEqual(await snapshotOfStore(), { policy: want.policy, clock: want.clock, size: 2 });
+  assert.equal(await admin.pttl('pp:policy'), -1); assert.equal(await admin.pttl('pp:clock'), -1);
+  await verifyStoreReady(io, manifest, endpoint.username);
+  const store = await openRedisReplayStore(manifest, endpoint, () => {}); stores.push(store);
+  m = manifest;
+  assert.equal((await store.snapshot()).kind, 'snapshot', 'the production adapter accepts the artifact-initialized store');
+});
+
+test('artifact: run_start_ms comes from Redis TIME; malformed or unsafe time replies are rejected', async () => {
+  const fromRedis = await readRunStart(io);
+  const hostNow = Date.now();
+  assert.ok(Math.abs(fromRedis - hostNow) < 60000, 'sanity: same machine');
+  for (const bad of [null, [], ['1'], ['1', '2', '3'], ['01', '5'], ['-1', '5'], ['1.5', '5'], ['1e3', '5'], [1.5, 5], ['9007199254741', '5'], ['1', '1000000'], ['1', '07'], [{}, '5'], 'x', ['', '5']]) {
+    assert.throws(() => parseRedisTime(bad), readyError('time-invalid'), JSON.stringify(bad));
+  }
+  assert.equal(parseRedisTime(['1793000000', '123456']), 1793000000123);
+  assert.equal(parseRedisTime([1793000000, 5]), 1793000000000);
+  await assert.rejects(readRunStart({ call: async () => { throw Error('connection lost'); } }), readyError('uncertain'));
+  await assert.rejects(readRunStart({ call: async () => ['0', '0'] }), readyError('time-invalid'), 'a zero start is not a run start');
+});
+
+test('artifact: duplicate initialization and a populated store are refused before any write', async () => {
+  await seed();
+  const before = await snapshotOfStore();
+  await assert.rejects(initializeStore(io, m), readyError('store-not-empty'));
+  assert.deepEqual(await snapshotOfStore(), before, 'a second initialization changes nothing');
+  await admin.flushdb(); await loadReplayScripts(io);
+  await admin.set('pp:spent:' + 'b'.repeat(64), '1');
+  await assert.rejects(initializeStore(io, await bootstrapManifest()), readyError('store-not-empty'));
+  assert.equal(await admin.exists('pp:policy'), 0); assert.equal(await admin.exists('pp:clock'), 0);
+  await admin.flushdb(); await admin.set('unrelated', 'x');
+  await assert.rejects(initializeStore(io, await bootstrapManifest()), readyError('store-not-empty'), 'any key at all means the store is not fresh');
+  assert.equal(await admin.exists('pp:policy'), 0);
+});
+
+test('artifact: wrong script hashes, a future start and an invalid manifest write nothing', async () => {
+  await admin.flushdb(); await loadReplayScripts(io);
+  const good = await bootstrapManifest();
+  const wrongHash = { ...good, claim_script_sha1: '3'.repeat(40) };
+  await assert.rejects(initializeStore(io, wrongHash), readyError('script-mismatch'));
+  await assert.rejects(initializeStore(io, { ...good, extra: 1 }), readyError('manifest-invalid'));
+  const future = await bootstrapManifest(-3_600_000);
+  await assert.rejects(initializeStore(io, future), readyError('clock-unsafe'));
+  assert.equal(await admin.dbsize(), 0, 'nothing was written by any refused initialization');
+  // A script that is not loaded is an uncertain outcome for the caller, not silent success.
+  await admin.script('FLUSH');
+  await assert.rejects(initializeStore(io, good), readyError('uncertain'));
+  assert.equal(await admin.dbsize(), 0);
+});
+
+test('artifact: readiness fails for every kind of wrong or tampered store state', async () => {
+  const mutations: [string, string, () => Promise<unknown>][] = [
+    ['policy-invalid', 'altered immutable field', () => admin.hset('pp:policy', 'run_start_ms', String(m.run_start_ms + 1))],
+    ['policy-invalid', 'wrong digest stored', () => admin.hset('pp:policy', 'config_digest', '0'.repeat(64))],
+    ['policy-invalid', 'extra policy field', () => admin.hset('pp:policy', 'extra', '1')],
+    ['policy-invalid', 'missing policy field', () => admin.hdel('pp:policy', 'guard_ms')],
+    ['policy-invalid', 'policy has a TTL', () => admin.pexpire('pp:policy', 600000)],
+    ['policy-invalid', 'policy is not a hash', async () => { await admin.del('pp:policy'); await admin.set('pp:policy', 'x'); }],
+    ['clock-invalid', 'clock closed', () => admin.hset('pp:clock', 'closed', '1')],
+    ['clock-invalid', 'clock advanced', () => admin.hset('pp:clock', 'highest_epoch', '1')],
+    ['clock-invalid', 'clock for another run', () => admin.hset('pp:clock', 'run_id', 'f'.repeat(32))],
+    ['clock-invalid', 'clock missing', () => admin.del('pp:clock')],
+    ['clock-invalid', 'clock has a TTL', () => admin.pexpire('pp:clock', 600000)],
+    ['store-not-fresh', 'a spent key already exists', () => admin.set('pp:spent:' + 'c'.repeat(64), '1')],
+    ['scripts-missing', 'scripts flushed', () => admin.script('FLUSH')],
+  ];
+  for (const [reason, label, mutate] of mutations) {
+    await seed(); await verifyStoreReady(io, m, endpoint.username);
+    await mutate();
+    await assert.rejects(verifyStoreReady(io, m, endpoint.username), readyError(reason), label);
+  }
+  await seed();
+  await assert.rejects(verifyStoreReady(io, { ...m, run_id: 'e'.repeat(32) }, endpoint.username), (e: unknown) => e instanceof Error && /^replay-bootstrap-/.test(e.message), 'a different manifest never matches');
+});
+
+test('artifact: an over-privileged or missing gateway account fails readiness; the real account cannot administer Redis', async () => {
+  await seed();
+  await admin.acl('SETUSER', 'gateway', '+script|load');
+  await assert.rejects(verifyStoreReady(io, m, endpoint.username), readyError('acl-invalid'));
+  await installGatewayAcl(io, endpoint.username, endpoint.password);
+  await admin.acl('SETUSER', 'gateway', '+@all');
+  await assert.rejects(verifyStoreReady(io, m, endpoint.username), readyError('acl-invalid'));
+  await installGatewayAcl(io, endpoint.username, endpoint.password);
+  await verifyStoreReady(io, m, endpoint.username);
+  await assert.rejects(verifyStoreReady(io, m, 'nobody'), readyError('acl-invalid'));
+  await assert.rejects(installGatewayAcl(io, 'default', 'p'.repeat(40)), readyError('acl-invalid'));
+  await assert.rejects(installGatewayAcl(io, 'gateway', 'short'), readyError('acl-invalid'));
+  await assert.rejects(installGatewayAcl(io, 'gate way', 'p'.repeat(40)), readyError('acl-invalid'));
+  const gw = new Redis({ ...endpoint, protocol: 2, lazyConnect: true, enableReadyCheck: false, disableClientInfo: true, retryStrategy: () => null });
+  gw.on('error', () => {}); await gw.connect();
+  try {
+    for (const [cmd, args] of [['EVAL', ['return 1', 0]], ['SCRIPT', ['LOAD', REPLAY_INITIALIZER.source]], ['EVALSHA', [REPLAY_INITIALIZER.sha1, 2, 'pp:policy', 'pp:clock', ...policyIdentity(m), String(m.run_start_ms)]], ['DEL', ['pp:policy']], ['KEYS', ['*']]] as const) {
+      await gw.call(cmd, ...args).then(() => assert.fail(`${cmd} was allowed`), (e: Error) => assert.match(e.message, /NOPERM|ACL failure|no permissions|can't run|permission/i, `${cmd}: ${e.message}`));
+    }
+  } finally { gw.disconnect(false); }
+  assert.equal(await admin.exists('pp:policy'), 1, 'the gateway could not touch the policy');
+});
+
+test('artifact: the password is never part of an error', async () => {
+  const secret = 'S3cretPassw0rd-for-test-only-0123456789';
+  try { await installGatewayAcl({ call: async () => { throw Error(`boom ${secret}`); } }, 'gateway', secret); assert.fail('should throw'); }
+  catch (e) { assert.ok(e instanceof Error); assert.ok(!String(e.message).includes(secret)); assert.ok(!String((e as Error).stack).includes(secret)); }
+});
+
+test('artifact: the initializer cannot be used to reset a live run: it refuses once any key exists, including spent keys', async () => {
+  await seed();
+  const store = await open();
+  assert.equal((await store.claim(candidate())).kind, 'claimed');
+  const sizeBefore = await admin.dbsize();
+  await assert.rejects(initializeStore(io, m), readyError('store-not-empty'));
+  assert.equal(await admin.dbsize(), sizeBefore);
+  assert.equal(await admin.get(`pp:spent:${candidate().spend_id}`), '1', 'the spent token stays spent');
 });
