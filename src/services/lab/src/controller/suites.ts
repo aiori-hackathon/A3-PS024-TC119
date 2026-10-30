@@ -49,6 +49,11 @@ export const SUITES: Record<string, SuiteDefinition> = {
     kind: 'security',
     plans: [{ name: 'redis-failure-script-flush', clientProfile: 'security', gatewayProfile: 'B1', perClient: 2, harnessVouchers: 4, steps: [{ orchestrated: 'redis-failure:script-flush' }] }],
   },
+  // S15 needs real traffic first, so the audit runs after a healthy flow in the same live generation.
+  retention: {
+    kind: 'security',
+    plans: [{ name: 'retention', clientProfile: 'security', gatewayProfile: 'B1', perClient: 2, steps: [one('healthy-flow', 'A'), { orchestrated: 'retention-audit' }] }],
+  },
   'upstream': {
     kind: 'security',
     plans: [{ name: 'upstream-failure', clientProfile: 'security', gatewayProfile: 'B1', perClient: 2, harnessVouchers: 4, steps: [{ orchestrated: 'upstream-failure' }] }],

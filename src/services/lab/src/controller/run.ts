@@ -5,7 +5,7 @@
 import {
   PROTOCOL, makeManifest, configurationDigest, encodeBase64Url, decodeBase64Url, type Manifest, type ClientProfile, type GatewayProfile,
 } from '../../../../contracts/lib/index.ts';
-import { CLIENT_IDS, Vault, type ClientId, type FaultPort, type GatewayLauncher, type HarnessPort, type Json, type RedisPort, type ResetPort, type RoleLink } from './ports.ts';
+import { CLIENT_IDS, Vault, type RetentionCheck, type RetentionPort, type ClientId, type FaultPort, type GatewayLauncher, type HarnessPort, type Json, type RedisPort, type ResetPort, type RoleLink } from './ports.ts';
 import { discovery, newId, request, type Target } from './envelope.ts';
 import { batches, generateCohort } from './cohort.ts';
 import type { RunRecord, ScenarioRecord } from '../report/build.ts';
@@ -21,7 +21,7 @@ export class ControllerError extends Error {
 }
 
 export type RunLinks = { issuer: RoleLink; origin: RoleLink; clients: Record<ClientId, RoleLink> };
-export type RunDeps = { links: RunLinks; redis: RedisPort; reset: ResetPort; gatewayLauncher?: GatewayLauncher; harness?: HarnessPort; faults?: FaultPort; vault?: Vault;
+export type RunDeps = { links: RunLinks; redis: RedisPort; reset: ResetPort; gatewayLauncher?: GatewayLauncher; harness?: HarnessPort; faults?: FaultPort; vault?: Vault; retention?: RetentionPort;
   /** Settled origin counters collected by the reset barrier, used only when supervision closed the run before the scenario could read them itself. */
   finalOriginCounts?: () => Delta | null };
 export type RunConfig = {
@@ -67,6 +67,7 @@ const ORIGIN_RULES: Record<string, Rule> = {
   // The new run: old credentials add nothing; the one fresh credential is the only arrival.
   'restart-and-reset': { needsGateway: true, holds: one },
   'redis-failure': { needsGateway: true, holds: none },
+  'retention-audit': { needsGateway: false, holds: none },
   'clock-rollback': { needsGateway: true, holds: none },
   // The stalled origin may process the buffered request late (one arrival at most); a retry or refund would make it two.
   'upstream-failure': { needsGateway: true, holds: (e) => e.origin.protected_requests_received <= 1 && e.origin.generation_mismatches === 0 },
@@ -89,6 +90,7 @@ export class LabRun {
   #gateway: RoleLink | null = null;
   #manifest: Manifest | null = null;
   #harnessVouchers: string[] = [];
+  #retention: RetentionCheck[] = [];
   #closeReason: string | null = null;
   /** Fixed check names that failed in the most recent scenario (operator output only). */
   lastFailed: string[] = [];
@@ -357,6 +359,17 @@ export class LabRun {
       gatewayStatus: async () => { if (!this.#gateway) return null; try { return await this.#gateway.send(request('STATUS', this.#at('gateway')), this.#cfg.controlTimeoutMs); } catch { return null; } },
       sleep: (ms) => new Promise((r) => setTimeout(r, ms)),
     };
+    if (key === 'retention-audit') {
+      return this.#measure(id, async () => {
+        if (!this.#d.retention) return 'missing-evidence';
+        let checks: RetentionCheck[];
+        try { checks = await this.#d.retention.audit(); } catch { return 'control-lost'; }
+        this.#retention = checks;
+        const bad = checks.filter((c) => c.status !== 'PASS');
+        return [{ status: checks.some((c) => c.status === 'FAIL') ? 'FAIL' : bad.length > 0 ? 'INCONCLUSIVE' : 'PASS', expected: 'retention',
+          counters: { observations: checks.length }, failure_labels: bad.length > 0 ? ['assertion-failed'] : [], failed: bad.map((c) => `${c.check_id}:${c.status}`) }];
+      });
+    }
     return this.#measure(id, async () => {
       if (!handler) return 'missing-evidence';
       try { return [await handler(ctx)]; } catch { return 'control-lost'; }
@@ -420,7 +433,7 @@ export class LabRun {
   }
 
   /** The evidence gathered so far, in the report's run shape. Safe at any phase; an unfinished run is visibly so. */
-  runRecord(retention: RunRecord['retention_checks'] = []): RunRecord | null {
+  runRecord(retention: RunRecord['retention_checks'] = this.#retention): RunRecord | null {
     if (!this.#info) return null;
     const m = this.#info.manifest;
     return {

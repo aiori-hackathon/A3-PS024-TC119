@@ -156,6 +156,8 @@ services:
     tmpfs:
       - /tmp:size=64m,mode=1777,noexec,nosuid
       - /run/redis:uid=999,gid=1000,mode=0700,size=1m,noexec,nosuid
+      # The Redis image declares VOLUME /data, which would silently create a host-persistent anonymous volume. Cover it with tmpfs.
+      - /data:uid=999,gid=1000,mode=0770,size=1m,noexec,nosuid
     volumes:
       - ./redis/redis.conf:/etc/redis/redis.conf:ro
     secrets:

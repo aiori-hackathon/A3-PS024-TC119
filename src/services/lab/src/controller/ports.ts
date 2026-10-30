@@ -71,4 +71,8 @@ export class Vault {
   toJSON(): string { return '[Vault]'; }
 }
 
+export type RetentionCheck = { check_id: 'app-sinks' | 'proxy-sinks' | 'redis-diagnostics' | 'mounts' | 'runtime-files' | 'report-allowlist' | 'host-boundary'; status: 'PASS' | 'FAIL' | 'INCONCLUSIVE' };
+/** Looks at the running deployment for anything that could retain history; implemented against Docker in the CLI. */
+export interface RetentionPort { audit(): Promise<RetentionCheck[]>; }
+
 export type OriginCounts = Readonly<{ protected_requests_received: number; generation_mismatches: number; resources_served: number }>;

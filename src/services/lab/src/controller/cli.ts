@@ -34,6 +34,8 @@ import { CleanupScope, ScopeBarrier, discardRedis, stopRoles } from './scope.ts'
 import { DockerRedis, DockerRedisIo } from './redis-docker.ts';
 import { DockerGatewayLauncher } from './gateway-docker.ts';
 import { DockerFaults, DockerHarness } from './harness-docker.ts';
+import { auditRetention } from './retention.ts';
+import { privacyProblems } from '../report/verify.ts';
 import { SUITES, type RunPlan } from './suites.ts';
 import { buildReport, writeReportAtomic, type RunRecord, type SuiteKind } from '../report/build.ts';
 import { verifyReportFile } from '../report/verify.ts';
@@ -156,7 +158,16 @@ async function executePlan(plan: RunPlan, partial: boolean, project: DockerProje
     const clientInstances = new Map<ClientId, Instance>(CLIENT_IDS.map((c) => [c, instances.get(`client-${c}` as RoleName)!]));
     const harness = new DockerHarness(realDocker, clientInstances);
     const faults = new DockerFaults(io, project, redisId, instances.get('origin')!.container_id);
-    runRef = new LabRun({ links: runLinks, redis, reset, vault, harness, faults, finalOriginCounts: () => adapters.originCounts, ...(launcher ? { gatewayLauncher: launcher } : {}) },
+    const retention = { audit: async () => {
+      const targets = [...instances].map(([role, i]) => ({ service: SERVICE_FOR_ROLE[role], container_id: i.container_id }));
+      const proxyId = (await project.compose(['ps', '-q', 'proxy'], { timeoutMs: 20_000 })).stdout.trim().split('\n')[0];
+      if (proxyId) targets.push({ service: 'proxy', container_id: proxyId });
+      targets.push({ service: 'redis', container_id: redisId! });
+      let problems: string[] | null = null;
+      try { const rec = runRef!.runRecord(); if (rec) problems = privacyProblems(buildReport({ kind: 'demo', runs: [rec] })); } catch { problems = null; }
+      return auditRetention(realDocker, targets, io, join(root, '.runtime'), problems);
+    } };
+    runRef = new LabRun({ links: runLinks, redis, reset, vault, harness, faults, retention, finalOriginCounts: () => adapters.originCounts, ...(launcher ? { gatewayLauncher: launcher } : {}) },
       { perClient: plan.perClient, clientProfile: plan.clientProfile, gatewayProfile: plan.gatewayProfile, harnessVouchers: plan.harnessVouchers ?? 0 });
     const stopWatching = project.watch([...instances.values()], (role) => runRef!.roleLost(role));
     activeStop = () => void runRef!.stop('operator-stop');
