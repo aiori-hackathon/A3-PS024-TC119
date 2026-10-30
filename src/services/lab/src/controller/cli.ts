@@ -215,12 +215,14 @@ async function run(): Promise<number> {
   try {
     for (const plan of plans) {
       const result = await executePlan(plan, partial, project, false, vault);
-      if (result.record) records.push(result.record);
+      // A generation that only quarantined credentials for the next one (S13 part 1) has no scenario row of its own; the suite
+      // continues only because its shutdown was confirmed, and the scenario that uses its credentials is judged in the next run.
+      if (result.record && result.record.scenario_results.length > 0) records.push(result.record);
       if (out && records.length > 0) writeReportAtomic(out, buildReport({ kind, runs: records })); // snapshot after every run
       if (!result.confirmed) { allConfirmed = false; break; } // never start another generation on top of an unconfirmed one
     }
     if (out && records.length > 0) { const v = verifyReportFile(out); say({ event: 'report', ok: v.ok, status: v.status }); }
-    return allConfirmed && records.length === plans.length ? 0 : 1;
+    return allConfirmed && records.length > 0 ? 0 : 1;
   } finally {
     vault.clear(); // quarantined credentials never outlive the suite
     // Release ownership ONLY when everything this controller created was confirmed shut down.
