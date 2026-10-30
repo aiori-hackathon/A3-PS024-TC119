@@ -28,3 +28,23 @@ jobs:
       - run: node scripts/check-g0-image.mjs tokenforge-g0:ci
       - run: docker build -f src/services/lab/Dockerfile -t tokenforge-lab-g0:ci .
       - run: node src/services/lab/scripts/check-image.mjs tokenforge-lab-g0:ci
+  deployed-demo:
+    # The complete system: real issuer, CONNECT proxy, two-worker gateway, Redis and private origin on the planned networks.
+    needs: contracts-and-crypto
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6 resolved 2026-10-24
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6 resolved 2026-10-24
+        with:
+          node-version-file: .node-version
+      - run: npm ci --ignore-scripts --prefix src/services/gateway
+      - run: npm ci --ignore-scripts --prefix src/services/lab
+      - run: node infra/scripts/provision-secrets.ts
+      - run: node src/services/lab/src/controller/cli.ts preflight
+      - run: node infra/scripts/check-network.mjs
+      - run: node src/services/lab/src/controller/cli.ts run --suite demo --out artifacts/demo-report.json
+      - run: node src/services/lab/src/controller/cli.ts verify-report --file artifacts/demo-report.json --require-pass
+
