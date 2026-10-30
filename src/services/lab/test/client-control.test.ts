@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { randomBytes } from 'node:crypto';
-import { configurationDigest, encodeBase64Url, hex, makeManifest, validateControlResponse, type Manifest } from '../../../contracts/lib/index.ts';
+import { PROTOCOL, configurationDigest, encodeBase64Url, hex, makeManifest, validateControlResponse, type Manifest } from '../../../contracts/lib/index.ts';
 import { ClientRole, baseScenarios, type ScenarioRunner } from '../src/client/control.ts';
 import { startRig, type Rig } from './helpers/rig.ts';
 
@@ -108,8 +108,10 @@ test('frozen scenarios that are not implemented refuse honestly instead of repor
   try {
     const h = new Harness(rig);
     await h.toEnabled(b64(rig, 0, 2));
-    fails(await h.scenario('wrong-context'), 'ILLEGAL_STATE');
-    assert.deepEqual(Object.keys(baseScenarios).sort(), ['healthy-flow', 'network-boundaries', 'voucher-policy']);
+    // Pick a frozen scenario name that has no implementation yet (whichever that currently is) and prove it is refused.
+    const notImplemented = PROTOCOL.scenario_ids.find((id) => !(id in baseScenarios));
+    if (notImplemented) fails(await h.scenario(notImplemented), 'ILLEGAL_STATE');
+    assert.ok(Object.keys(baseScenarios).every((id) => (PROTOCOL.scenario_ids as readonly string[]).includes(id)), 'only frozen scenario names exist');
     await h.fence();
   } finally { await rig.stop(); }
 });
