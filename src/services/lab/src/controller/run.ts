@@ -21,7 +21,9 @@ export class ControllerError extends Error {
 }
 
 export type RunLinks = { issuer: RoleLink; origin: RoleLink; clients: Record<ClientId, RoleLink> };
-export type RunDeps = { links: RunLinks; redis: RedisPort; reset: ResetPort; gatewayLauncher?: GatewayLauncher; harness?: HarnessPort; faults?: FaultPort; vault?: Vault };
+export type RunDeps = { links: RunLinks; redis: RedisPort; reset: ResetPort; gatewayLauncher?: GatewayLauncher; harness?: HarnessPort; faults?: FaultPort; vault?: Vault;
+  /** Settled origin counters collected by the reset barrier, used only when supervision closed the run before the scenario could read them itself. */
+  finalOriginCounts?: () => Delta | null };
 export type RunConfig = {
   /** Vouchers (and thus tokens) per client. The issuer inventory is exactly clients x perClient. */
   perClient: number;
@@ -87,6 +89,9 @@ export class LabRun {
   #gateway: RoleLink | null = null;
   #manifest: Manifest | null = null;
   #harnessVouchers: string[] = [];
+  #closeReason: string | null = null;
+  /** Fixed check names that failed in the most recent scenario (operator output only). */
+  lastFailed: string[] = [];
   #setupRun: Promise<unknown> | null = null;
 
   constructor(deps: RunDeps, config: RunConfig) {
@@ -348,6 +353,7 @@ export class LabRun {
     const ctx: OrchestrationContext = {
       manifest: this.#manifest!, harness: this.#d.harness, faults: this.#d.faults, vault: this.#d.vault ?? (this.#d.vault = new Vault()),
       takeVouchers: (n) => this.#takeHarnessVouchers(n),
+      closing: () => ({ closing: this.#closing !== null, reason: this.#closeReason }),
       gatewayStatus: async () => { if (!this.#gateway) return null; try { return await this.#gateway.send(request('STATUS', this.#at('gateway')), this.#cfg.controlTimeoutMs); } catch { return null; } },
       sleep: (ms) => new Promise((r) => setTimeout(r, ms)),
     };
@@ -362,7 +368,7 @@ export class LabRun {
     if (this.#phase !== 'enabled') throw new ControllerError('setup-failed', 'not-enabled');
     const ctx: OrchestrationContext = {
       manifest: this.#manifest!, harness: this.#d.harness, faults: this.#d.faults, vault: this.#d.vault ?? (this.#d.vault = new Vault()),
-      takeVouchers: (n) => this.#takeHarnessVouchers(n), gatewayStatus: async () => null, sleep: (ms) => new Promise((r) => setTimeout(r, ms)),
+      takeVouchers: (n) => this.#takeHarnessVouchers(n), gatewayStatus: async () => null, closing: () => ({ closing: this.#closing !== null, reason: this.#closeReason }), sleep: (ms) => new Promise((r) => setTimeout(r, ms)),
     };
     try { return await captureOldCredentials(ctx); } catch { return false; }
   }
@@ -371,7 +377,10 @@ export class LabRun {
     if (this.#phase !== 'enabled') throw new ControllerError('setup-failed', 'not-enabled');
     const before = await this.#originCounts(), workersBefore = await this.#workerAttempts();
     const outcome = await exec();
-    const after = await this.#originCounts(), workersAfter = await this.#workerAttempts();
+    let after = await this.#originCounts();
+    const workersAfter = await this.#workerAttempts();
+    // A fault scenario can end with supervision closing the run before the live read; the barrier's settled REPORT is then the evidence.
+    if (!after && this.#closing) { await this.#closing; after = this.#d.finalOriginCounts?.() ?? null; }
 
     const record: ScenarioRecord = { scenario_id: scenarioId, status: 'INCONCLUSIVE', expected: 'accepted', counters: {}, origin_counts_available: false, worker_verification_attempts: [], failure_labels: [] };
     if (typeof outcome === 'string') {
@@ -381,6 +390,7 @@ export class LabRun {
       return record;
     }
     const datas = outcome;
+    this.lastFailed = datas.flatMap((d) => d.failed ?? []);
     record.expected = datas[0]!.expected;
     const summed: Record<string, number> = {};
     for (const d of datas) for (const [k, v] of Object.entries(d.counters)) summed[k] = (summed[k] ?? 0) + v;
@@ -401,7 +411,7 @@ export class LabRun {
     const statuses = datas.map((d) => d.status as string);
     if (statuses.includes('FAIL')) record.status = 'FAIL';
     else if (statuses.some((st) => st !== 'PASS')) record.status = 'INCONCLUSIVE';
-    else if (!rule || (rule.needsGateway && !this.#gateway) || !delta || (rule.needsGateway && !workersAfter) || (rule.needsWorkers && record.worker_verification_attempts.length === 0)) { record.status = 'INCONCLUSIVE'; labels.add('missing-evidence'); }
+    else if (!rule || (rule.needsGateway && !this.#gateway) || !delta || (rule.needsWorkers && (!workersAfter || record.worker_verification_attempts.length === 0))) { record.status = 'INCONCLUSIVE'; labels.add('missing-evidence'); }
     else if (!rule.holds({ origin: delta, workers: record.worker_verification_attempts.map((w) => w.attempts), client: clientCounters })) { record.status = 'FAIL'; labels.add('assertion-failed'); }
     else record.status = 'PASS';
     record.failure_labels = [...labels];
@@ -432,6 +442,7 @@ export class LabRun {
     let finish!: (r: CloseResult) => void;
     this.#closing = new Promise<CloseResult>((resolve) => { finish = resolve; });
     this.#phase = 'closing';
+    this.#closeReason = reason;
     const why = (PROTOCOL.faults as readonly string[]).includes(reason) ? reason : 'completed';
     this.#transitions.push({ state: 'CLOSING', reason: why });
     for (const h of this.#heartbeats) h.stop();

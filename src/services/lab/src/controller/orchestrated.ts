@@ -6,11 +6,15 @@
 import { PROTOCOL, type Manifest } from '../../../../contracts/lib/index.ts';
 import type { FaultPort, HarnessPort, Json, RedisFault, Vault } from './ports.ts';
 
-export type ScenarioData = { status: 'PASS' | 'FAIL' | 'INCONCLUSIVE'; expected: string; counters: Record<string, number>; failure_labels: string[] };
+export type ScenarioData = { status: 'PASS' | 'FAIL' | 'INCONCLUSIVE'; expected: string; counters: Record<string, number>; failure_labels: string[];
+  /** Names of the failed checks (fixed strings written in this file; never request, reply or credential content). For operator output only, not the report. */
+  failed?: string[] };
 export type OrchestrationContext = {
   manifest: Manifest; harness: HarnessPort | undefined; faults: FaultPort | undefined; vault: Vault;
   takeVouchers: (n: number) => string[] | null;
   gatewayStatus: () => Promise<Json | null>;
+  /** The controller's own view: has supervision already closed this run, and why. A faulted gateway stops acknowledging heartbeats, so this is expected. */
+  closing: () => { closing: boolean; reason: string | null };
   sleep: (ms: number) => Promise<void>;
 };
 export type Handler = (ctx: OrchestrationContext) => Promise<ScenarioData>;
@@ -18,7 +22,7 @@ export type Handler = (ctx: OrchestrationContext) => Promise<ScenarioData>;
 type Check = { name: string; ok: boolean };
 const done = (checks: Check[], expected: string, counters: Record<string, number> = {}): ScenarioData => {
   const ok = checks.every((c) => c.ok);
-  return { status: ok ? 'PASS' : 'FAIL', expected, counters: { observations: checks.length, ...counters }, failure_labels: ok ? [] : ['assertion-failed'] };
+  return { status: ok ? 'PASS' : 'FAIL', expected, counters: { observations: checks.length, ...counters }, failure_labels: ok ? [] : ['assertion-failed'], failed: checks.filter((c) => !c.ok).map((c) => c.name) };
 };
 const notTested = (expected: string): ScenarioData => ({ status: 'INCONCLUSIVE', expected, counters: {}, failure_labels: ['missing-evidence'] });
 const zero = (tokens: Uint8Array[]) => { for (const t of tokens) t.fill(0); };
@@ -87,20 +91,29 @@ export const redisFault = (kind: RedisFault, expected: string): Handler => async
   try {
     const before = await ctx.gatewayStatus();
     await ctx.faults.redis(kind);
-    const first = (await ctx.harness.present('B', ctx.manifest, [tokens[0]!]))[0]!;
+    // After the fault the gateway must fail CLOSED. Either it answers "unavailable" (503) or, because an unexpected store state
+    // closes the whole run, it drops the connection without authorizing anything. Both are acceptable; what is not acceptable is
+    // any acceptance of a valid, unspent token, or any arrival at the origin (checked independently by the controller).
+    const attempt = (client: 'A' | 'B' | 'C', token: Uint8Array) =>
+      ctx.harness!.present(client, ctx.manifest, [token]).then((r) => r[0]!, () => ({ status: 0, label: null as string | null }));
+    const first = await attempt('B', tokens[0]!);
     await ctx.sleep(300);
-    const second = (await ctx.harness.present('C', ctx.manifest, [tokens[1]!]))[0]!;
-    if (kind !== 'redis-stop') await ctx.faults.reloadScripts(); // an attempted "live repair"
-    const third = (await ctx.harness.present('B', ctx.manifest, [tokens[0]!]))[0]!;
+    const second = await attempt('C', tokens[1]!);
+    if (kind !== 'redis-stop') await ctx.faults.reloadScripts().catch(() => undefined); // an attempted "live repair"
+    const third = await attempt('B', tokens[0]!);
+    // Give supervision its bounded chance to notice; the closure must come from the gateway's own failure signal.
+    for (let i = 0; i < 40 && !ctx.closing().closing; i++) await ctx.sleep(250);
     const after = await ctx.gatewayStatus();
     const unavailable = (r: { status: number; label: string | null }) => r.status === 503 && r.label === 'authorization-unavailable';
+    const never200 = (r: { status: number }) => r.status !== 200;
+    const closing = ctx.closing();
     return done([
       { name: 'the gateway was serving before the fault', ok: !!before && before['ok'] === true && before['state'] === 'ENABLED' },
-      { name: 'a valid unspent token is NOT accepted after the fault (503 authorization-unavailable)', ok: unavailable(first) },
-      { name: 'a second valid token is not accepted either', ok: unavailable(second) },
-      { name: 'reloading scripts or state does not revive the run', ok: unavailable(third) },
-      { name: 'the gateway reports itself closed with a fault latched', ok: closedLike(after) },
-    ], expected, { requests_rejected: [first, second, third].filter(unavailable).length, issuance_successes: 2 });
+      { name: `a valid unspent token is NOT accepted after the fault [observed ${first.status}/${first.label}]`, ok: never200(first) },
+      { name: 'a second valid token is not accepted either', ok: never200(second) },
+      { name: 'reloading scripts or state does not revive the run', ok: never200(third) },
+      { name: 'the run closed because the gateway failed (supervision lost), or the gateway reports itself closed', ok: closedLike(after) || (closing.closing && closing.reason === 'control-lost') },
+    ], expected, { requests_rejected: [first, second, third].filter(unavailable).length, transport_failures: [first, second, third].filter((r) => r.status === 0).length, issuance_successes: 2 });
   } finally { zero(tokens); }
 };
 

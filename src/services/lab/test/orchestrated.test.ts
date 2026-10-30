@@ -48,6 +48,7 @@ function ctx(world = new World(), over: Partial<OrchestrationContext> = {}) {
   const gateway: Json = { ok: true, state: 'ENABLED', data: { ready: true, run_closed: false, fault: null } };
   const c: OrchestrationContext = {
     manifest, harness, faults, vault, takeVouchers: (n) => (vouchers >= n ? (vouchers -= n, Array.from({ length: n }, () => 'v')) : null),
+    closing: () => ({ closing: world.closed, reason: world.closed ? 'control-lost' : null }),
     gatewayStatus: async () => (world.closed ? { ok: true, state: 'FENCED', data: { ready: false, run_closed: true, fault: 'unsafe-state' } } : gateway), sleep: async () => undefined, ...over,
   };
   return { world, harness, faults, vault, c };
@@ -100,16 +101,28 @@ for (const kind of ['script-flush', 'clock-delete', 'policy-corrupt', 'redis-sto
     assert.equal(faults.calls[0], kind);
     assert.equal(faults.calls.includes('reload'), kind !== 'redis-stop', 'a live repair is attempted (except when Redis itself is gone)');
     assert.equal(r.counters['requests_rejected'], 3);
+    assert.equal(r.counters['transport_failures'], 0);
   });
 }
+
+test('S12 also passes when the gateway fails closed by dropping connections instead of answering 503', async () => {
+  const x = ctx();
+  x.harness.present = async (client: string, _m: unknown, tokens: Uint8Array[]) => tokens.map(() => (x.world.closed ? { status: 0, label: null } : x.world.respond(tokens[0]!)));
+  const r = await redisFault('script-flush', 'fail-closed')(x.c);
+  assert.equal(r.status, 'PASS', JSON.stringify(r));
+  assert.equal(r.counters['transport_failures'], 3);
+});
 
 test('S12 fails for a gateway that keeps serving, one that a reload revives, or one that does not report closure', async () => {
   for (const [name, bend] of [['keeps serving', (w: World) => { w.ignoreFaults = true; }], ['revived by reload', (w: World) => { w.reviveOnReload = true; }]] as [string, (w: World) => void][]) {
     const x = ctx(); bend(x.world);
     assert.equal((await redisFault('script-flush', 'fail-closed')(x.c)).status, 'FAIL', name);
   }
-  const silent = ctx(new World(), { gatewayStatus: async () => ({ ok: true, state: 'ENABLED', data: { ready: true, run_closed: false, fault: null } }) });
-  assert.equal((await redisFault('script-flush', 'fail-closed')(silent.c)).status, 'FAIL', 'closure must be reported by the gateway itself');
+  const silent = ctx(new World(), { closing: () => ({ closing: false, reason: null }), gatewayStatus: async () => ({ ok: true, state: 'ENABLED', data: { ready: true, run_closed: false, fault: null } }) });
+  assert.equal((await redisFault('script-flush', 'fail-closed')(silent.c)).status, 'FAIL', 'neither the gateway nor supervision reported a closure');
+  // Supervision closing for a reason other than the gateway failing does not count as evidence of fail-closed behavior.
+  const unrelated = ctx(new World(), { closing: () => ({ closing: true, reason: 'operator-stop' }), gatewayStatus: async () => null });
+  assert.equal((await redisFault('script-flush', 'fail-closed')(unrelated.c)).status, 'FAIL');
   assert.equal((await redisFault('script-flush', 'fail-closed')(ctx(new World(), { faults: undefined }).c)).status, 'INCONCLUSIVE');
 });
 

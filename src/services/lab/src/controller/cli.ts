@@ -156,7 +156,7 @@ async function executePlan(plan: RunPlan, partial: boolean, project: DockerProje
     const clientInstances = new Map<ClientId, Instance>(CLIENT_IDS.map((c) => [c, instances.get(`client-${c}` as RoleName)!]));
     const harness = new DockerHarness(realDocker, clientInstances);
     const faults = new DockerFaults(io, project, redisId, instances.get('origin')!.container_id);
-    runRef = new LabRun({ links: runLinks, redis, reset, vault, harness, faults, ...(launcher ? { gatewayLauncher: launcher } : {}) },
+    runRef = new LabRun({ links: runLinks, redis, reset, vault, harness, faults, finalOriginCounts: () => adapters.originCounts, ...(launcher ? { gatewayLauncher: launcher } : {}) },
       { perClient: plan.perClient, clientProfile: plan.clientProfile, gatewayProfile: plan.gatewayProfile, harnessVouchers: plan.harnessVouchers ?? 0 });
     const stopWatching = project.watch([...instances.values()], (role) => runRef!.roleLost(role));
     activeStop = () => void runRef!.stop('operator-stop');
@@ -167,7 +167,7 @@ async function executePlan(plan: RunPlan, partial: boolean, project: DockerProje
       if ('capture' in step) { say({ event: 'captured', plan: plan.name, ok: await runRef.captureForReset() }); continue; }
       const rec = 'orchestrated' in step ? await runRef.runOrchestrated(step.orchestrated)
         : await runRef.runScenario(step.clients.length === 1 ? step.clients[0]! : step.clients, step.scenario);
-      say({ event: 'scenario', plan: plan.name, scenario_id: rec.scenario_id, status: rec.status, origin_counts_available: rec.origin_counts_available });
+      say({ event: 'scenario', plan: plan.name, scenario_id: rec.scenario_id, status: rec.status, origin_counts_available: rec.origin_counts_available, ...(rec.status === 'PASS' ? {} : { failed_checks: runRef.lastFailed, labels: rec.failure_labels }) });
     }
     if (plan.steps.length > 0 || adHocEvents) await runRef.stop('completed');
     const closed = await runRef.closed();

@@ -38,6 +38,21 @@ export const SUITES: Record<string, SuiteDefinition> = {
       ] },
     ],
   },
+  // Real replay-store faults, one per fresh run (each fault closes its run), plus the recorded-highwater regression.
+  'redis-faults': {
+    kind: 'security',
+    plans: ['redis-failure:script-flush', 'redis-failure:clock-delete', 'redis-failure:policy-corrupt', 'redis-failure:redis-stop', 'clock-rollback:clock-regress'].map((key) => ({
+      name: key.replace(':', '-'), clientProfile: 'security' as const, gatewayProfile: 'B1' as const, perClient: 2, harnessVouchers: 4, steps: [{ orchestrated: key }],
+    })),
+  },
+  'redis-one': {
+    kind: 'security',
+    plans: [{ name: 'redis-failure-script-flush', clientProfile: 'security', gatewayProfile: 'B1', perClient: 2, harnessVouchers: 4, steps: [{ orchestrated: 'redis-failure:script-flush' }] }],
+  },
+  'upstream': {
+    kind: 'security',
+    plans: [{ name: 'upstream-failure', clientProfile: 'security', gatewayProfile: 'B1', perClient: 2, harnessVouchers: 4, steps: [{ orchestrated: 'upstream-failure' }] }],
+  },
   // The demonstration: every scenario the frozen protocol requires for a complete demo, each against the real deployment.
   demo: {
     kind: 'demo',
