@@ -112,6 +112,9 @@ export class DockerProject {
     return new HelperLink(instance.role, this.#cli.spawn(['exec', '-i', instance.container_id, ...HELPER]));
   }
   async kill(containerId: string, signal?: AbortSignal): Promise<void> { await this.#cli.run(['kill', containerId], { timeoutMs: 15_000, ...(signal ? { signal } : {}) }); }
+  async pause(containerId: string): Promise<void> { const r = await this.#cli.run(['pause', containerId], { timeoutMs: 15_000 }); if (r.status !== 0) throw new Error('pause-failed'); }
+  async unpause(containerId: string): Promise<void> { const r = await this.#cli.run(['unpause', containerId], { timeoutMs: 15_000 }); if (r.status !== 0) throw new Error('unpause-failed'); }
+  async stop(containerId: string): Promise<void> { const r = await this.#cli.run(['stop', '-t', '1', containerId], { timeoutMs: 30_000 }); if (r.status !== 0) throw new Error('stop-failed'); }
   async remove(containerId: string, signal?: AbortSignal): Promise<void> { await this.#cli.run(['rm', '-f', containerId], { timeoutMs: 30_000, ...(signal ? { signal } : {}) }); }
 
   /**

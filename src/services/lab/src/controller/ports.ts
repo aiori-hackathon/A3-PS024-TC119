@@ -40,4 +40,35 @@ export interface ResetPort {
   discardOldRedis(receipt: unknown): Promise<void>;
 }
 
+/**
+ * The controller's own security harness: one-shot processes run INSIDE a client container (so they use the real proxy path, CA
+ * and network position) that issue or present tokens for the theft, old-run and fault scenarios. Tokens cross this boundary only
+ * on private pipes into controller memory ("quarantined fixtures"); no role exposes an export command, and nothing is logged.
+ */
+export interface HarnessPort {
+  /** Issues one real token per voucher (base64url vouchers) from inside the client container. */
+  issue(client: ClientId, manifest: Manifest, vouchers: string[]): Promise<Uint8Array[]>;
+  /** Presents each token once, in order, from inside the client container, and reports what the gateway answered. */
+  present(client: ClientId, manifest: Manifest, tokens: Uint8Array[]): Promise<{ status: number; label: string | null }[]>;
+}
+
+/** Real faults the controller can inject to exercise fail-closed behavior. Each affects the live deployment, nothing is simulated. */
+export type RedisFault = 'script-flush' | 'clock-delete' | 'policy-corrupt' | 'clock-regress' | 'redis-stop';
+export interface FaultPort {
+  redis(kind: RedisFault): Promise<void>;
+  /** Re-loads the replay scripts after a fault, to prove that live repair does not revive a closed run. */
+  reloadScripts(): Promise<void>;
+  pauseOrigin(): Promise<void>;
+  unpauseOrigin(): Promise<void>;
+}
+
+/** In-memory store for credentials that deliberately survive a reset inside the controller (S13 only). Never serialized. */
+export class Vault {
+  readonly #items = new Map<string, Uint8Array[]>();
+  put(key: string, tokens: Uint8Array[]): void { this.#items.set(key, tokens.map((t) => Uint8Array.from(t))); }
+  take(key: string): Uint8Array[] | undefined { const v = this.#items.get(key); this.#items.delete(key); return v; }
+  clear(): void { for (const list of this.#items.values()) for (const t of list) t.fill(0); this.#items.clear(); }
+  toJSON(): string { return '[Vault]'; }
+}
+
 export type OriginCounts = Readonly<{ protected_requests_received: number; generation_mismatches: number; resources_served: number }>;

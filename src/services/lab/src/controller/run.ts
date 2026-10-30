@@ -5,10 +5,11 @@
 import {
   PROTOCOL, makeManifest, configurationDigest, encodeBase64Url, decodeBase64Url, type Manifest, type ClientProfile, type GatewayProfile,
 } from '../../../../contracts/lib/index.ts';
-import { CLIENT_IDS, type ClientId, type GatewayLauncher, type Json, type RedisPort, type ResetPort, type RoleLink } from './ports.ts';
+import { CLIENT_IDS, Vault, type ClientId, type FaultPort, type GatewayLauncher, type HarnessPort, type Json, type RedisPort, type ResetPort, type RoleLink } from './ports.ts';
 import { discovery, newId, request, type Target } from './envelope.ts';
 import { batches, generateCohort } from './cohort.ts';
 import type { RunRecord, ScenarioRecord } from '../report/build.ts';
+import { ORCHESTRATED, REDIS_FAULT_SCENARIOS, captureOldCredentials, type OrchestrationContext, type ScenarioData } from './orchestrated.ts';
 
 export type ControllerErrorCode =
   | 'discovery-failed' | 'role-not-fresh' | 'setup-failed' | 'readiness-failed' | 'enable-failed' | 'supervision-lost' | 'close-unconfirmed';
@@ -20,7 +21,7 @@ export class ControllerError extends Error {
 }
 
 export type RunLinks = { issuer: RoleLink; origin: RoleLink; clients: Record<ClientId, RoleLink> };
-export type RunDeps = { links: RunLinks; redis: RedisPort; reset: ResetPort; gatewayLauncher?: GatewayLauncher };
+export type RunDeps = { links: RunLinks; redis: RedisPort; reset: ResetPort; gatewayLauncher?: GatewayLauncher; harness?: HarnessPort; faults?: FaultPort; vault?: Vault };
 export type RunConfig = {
   /** Vouchers (and thus tokens) per client. The issuer inventory is exactly clients x perClient. */
   perClient: number;
@@ -32,6 +33,8 @@ export type RunConfig = {
   controlTimeoutMs?: number;
   /** After a close request, how long to wait for an in-flight setup step to notice the latch before the barrier runs anyway. */
   setupDrainMs?: number;
+  /** Extra plaintext vouchers kept in controller memory for the security harness (theft, old-run and fault fixtures). */
+  harnessVouchers?: number;
 };
 export type RunInfo = { run_id: string; config_digest: string; manifest: Manifest; incarnations: Record<string, string> };
 export type CloseResult = { reason: string; reset_confirmed: boolean; error: ControllerErrorCode | null };
@@ -58,6 +61,13 @@ const ORIGIN_RULES: Record<string, Rule> = {
       && e.workers.length > 0 && e.workers.every((attempts) => attempts > 0);
   } },
   // Five clients x two tokens: ten distinct first spends reached the origin, and nothing else did.
+  'stolen-unused-token': { needsGateway: true, holds: one },
+  // The new run: old credentials add nothing; the one fresh credential is the only arrival.
+  'restart-and-reset': { needsGateway: true, holds: one },
+  'redis-failure': { needsGateway: true, holds: none },
+  'clock-rollback': { needsGateway: true, holds: none },
+  // The stalled origin may process the buffered request late (one arrival at most); a retry or refund would make it two.
+  'upstream-failure': { needsGateway: true, holds: (e) => e.origin.protected_requests_received <= 1 && e.origin.generation_mismatches === 0 },
   'shared-egress': { needsGateway: true, holds: (e) => e.origin.protected_requests_received === 10 && e.origin.resources_served === 10 && e.origin.generation_mismatches === 0 },
 };
 
@@ -76,13 +86,14 @@ export class LabRun {
   readonly #scenarios: ScenarioRecord[] = [];
   #gateway: RoleLink | null = null;
   #manifest: Manifest | null = null;
+  #harnessVouchers: string[] = [];
   #setupRun: Promise<unknown> | null = null;
 
   constructor(deps: RunDeps, config: RunConfig) {
     this.#d = deps;
     this.#cfg = {
       gatewayProfile: 'B1', clientProfile: 'demo', heartbeatMs: PROTOCOL.gateway_common.controller_heartbeat_ms, ackDeadlineMs: 1500,
-      controlTimeoutMs: 10_000, setupDrainMs: 5_000, ...config,
+      controlTimeoutMs: 10_000, setupDrainMs: 5_000, harnessVouchers: 0, ...config,
     };
     if (this.#cfg.ackDeadlineMs >= PROTOCOL.gateway_common.controller_lease_ms) throw new Error('ack deadline must be below the lease');
   }
@@ -163,7 +174,7 @@ export class LabRun {
     this.#guard();
 
     // 4. Public manifest and its digest, from the real key, scripts and clock.
-    const total = cfg.perClient * CLIENT_IDS.length;
+    const total = cfg.perClient * CLIENT_IDS.length + cfg.harnessVouchers;
     let manifest: Manifest;
     try {
       manifest = makeManifest({ run_id: runId, run_start_ms: store.run_start_ms, token_key_spki_b64url: key['data'].token_key_spki_b64url,
@@ -211,11 +222,12 @@ export class LabRun {
     this.#transitions.push({ state: 'PREPARED', reason: 'startup' });
 
     // 7. Provision the whole cohort now: bounded frames, explicit final seal, never again after ENABLE.
-    const cohort = generateCohort(cfg.perClient);
+    const cohort = generateCohort(cfg.perClient, CLIENT_IDS, cfg.harnessVouchers);
+    this.#harnessVouchers = [...cohort.harness];
     await this.#provision(d.links.issuer, 'issuer', 'PROVISION_VOUCHERS', cohort.issuerDigests, total);
     for (const id of CLIENT_IDS) await this.#provision(d.links.clients[id], `client-${id}`, 'PROVISION_CLIENT', cohort.clientItems[id], cfg.perClient);
     for (const id of CLIENT_IDS) cohort.clientItems[id].length = 0; // drop plaintext references; JS gives no stronger erasure guarantee
-    cohort.issuerDigests.length = 0;
+    cohort.issuerDigests.length = 0; cohort.harness.length = 0;
 
     // 8. READY everywhere. The gateway must report exactly the profile's worker count.
     const ready = async (name: string, link: RoleLink, workers: number) => {
@@ -308,28 +320,71 @@ export class LabRun {
    * gateway cannot PASS in a gatewayless run.
    */
   async runScenario(clients: ClientId | readonly ClientId[], scenarioId: string, seed = 1): Promise<ScenarioRecord> {
-    if (this.#phase !== 'enabled') throw new ControllerError('setup-failed', 'not-enabled');
     const ids = typeof clients === 'string' ? [clients] : [...clients];
+    return this.#measure(scenarioId, async () => {
+      const replies = await Promise.all(ids.map(async (id): Promise<Json | null> => {
+        try { return await this.#d.links.clients[id].send(request('RUN_SCENARIO', this.#at(`client-${id}`), { scenario_id: scenarioId, schedule_seed: seed }), 180_000); }
+        catch { return null; }
+      }));
+      if (replies.some((r) => r === null)) return 'control-lost';
+      if (replies.some((r) => r!['ok'] !== true || r!['result'] !== 'SCENARIO_COMPLETE')) return 'missing-evidence';
+      return replies.map((r) => r!['data'] as ScenarioData);
+    });
+  }
+
+  /** Vouchers for the security harness, removed from controller memory as they are handed out. */
+  #takeHarnessVouchers(n: number): string[] | null {
+    if (this.#harnessVouchers.length < n) return null;
+    return this.#harnessVouchers.splice(0, n);
+  }
+
+  /**
+   * Controller-orchestrated scenarios (real faults, credentials crossing processes). `key` is a scenario id, or
+   * `id:variant` for fault families. The report row carries the scenario id; the same independent origin evidence applies.
+   */
+  async runOrchestrated(key: string): Promise<ScenarioRecord> {
+    const handler = ORCHESTRATED[key];
+    const id = REDIS_FAULT_SCENARIOS[key]?.id ?? key;
+    const ctx: OrchestrationContext = {
+      manifest: this.#manifest!, harness: this.#d.harness, faults: this.#d.faults, vault: this.#d.vault ?? (this.#d.vault = new Vault()),
+      takeVouchers: (n) => this.#takeHarnessVouchers(n),
+      gatewayStatus: async () => { if (!this.#gateway) return null; try { return await this.#gateway.send(request('STATUS', this.#at('gateway')), this.#cfg.controlTimeoutMs); } catch { return null; } },
+      sleep: (ms) => new Promise((r) => setTimeout(r, ms)),
+    };
+    return this.#measure(id, async () => {
+      if (!handler) return 'missing-evidence';
+      try { return [await handler(ctx)]; } catch { return 'control-lost'; }
+    });
+  }
+
+  /** Hidden S13 part 1: quarantine one spent and one unused credential across the coming reset. Produces no report row. */
+  async captureForReset(): Promise<boolean> {
+    if (this.#phase !== 'enabled') throw new ControllerError('setup-failed', 'not-enabled');
+    const ctx: OrchestrationContext = {
+      manifest: this.#manifest!, harness: this.#d.harness, faults: this.#d.faults, vault: this.#d.vault ?? (this.#d.vault = new Vault()),
+      takeVouchers: (n) => this.#takeHarnessVouchers(n), gatewayStatus: async () => null, sleep: (ms) => new Promise((r) => setTimeout(r, ms)),
+    };
+    try { return await captureOldCredentials(ctx); } catch { return false; }
+  }
+
+  async #measure(scenarioId: string, exec: () => Promise<ScenarioData[] | 'control-lost' | 'missing-evidence'>): Promise<ScenarioRecord> {
+    if (this.#phase !== 'enabled') throw new ControllerError('setup-failed', 'not-enabled');
     const before = await this.#originCounts(), workersBefore = await this.#workerAttempts();
-    const replies = await Promise.all(ids.map(async (id): Promise<Json | null> => {
-      try { return await this.#d.links.clients[id].send(request('RUN_SCENARIO', this.#at(`client-${id}`), { scenario_id: scenarioId, schedule_seed: seed }), 180_000); }
-      catch { return null; }
-    }));
+    const outcome = await exec();
     const after = await this.#originCounts(), workersAfter = await this.#workerAttempts();
 
     const record: ScenarioRecord = { scenario_id: scenarioId, status: 'INCONCLUSIVE', expected: 'accepted', counters: {}, origin_counts_available: false, worker_verification_attempts: [], failure_labels: [] };
-    if (replies.some((r) => !r || r['ok'] !== true || r['result'] !== 'SCENARIO_COMPLETE')) {
-      // A scenario the client refuses (not implemented here) or could not be reached is NOT TESTED, never a failure or a pass.
-      record.failure_labels = [replies.some((r) => r === null) ? 'control-lost' : 'missing-evidence'];
-      record.status = 'INCONCLUSIVE';
+    if (typeof outcome === 'string') {
+      // A scenario that is not implemented or could not be reached is NOT TESTED, never a failure or a pass.
+      record.failure_labels = [outcome];
       this.#scenarios.push(record);
       return record;
     }
-    const datas = replies.map((r) => r!['data']);
-    record.expected = datas[0].expected;
+    const datas = outcome;
+    record.expected = datas[0]!.expected;
     const summed: Record<string, number> = {};
-    for (const d of datas) for (const [k, v] of Object.entries(d.counters as Record<string, number>)) summed[k] = (summed[k] ?? 0) + v;
-    const labels = new Set<string>(datas.flatMap((d) => d.failure_labels as string[]));
+    for (const d of datas) for (const [k, v] of Object.entries(d.counters)) summed[k] = (summed[k] ?? 0) + v;
+    const labels = new Set<string>(datas.flatMap((d) => d.failure_labels));
     const delta: Delta | null = before && after ? {
       protected_requests_received: after.protected_requests_received - before.protected_requests_received,
       generation_mismatches: after.generation_mismatches - before.generation_mismatches,

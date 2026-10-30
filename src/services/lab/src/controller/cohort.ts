@@ -9,10 +9,13 @@ export type Cohort = {
   issuerDigests: string[];
   /** Each client's own plaintext inventory (43-char base64url). No client sees another's. */
   clientItems: Record<ClientId, string[]>;
+  /** Extra plaintext vouchers for the controller's own security harness (theft, old-run and fault fixtures). Memory only. */
+  harness: string[];
 };
 
-export function generateCohort(perClient: number, clients: readonly ClientId[] = CLIENT_IDS): Cohort {
-  if (!Number.isSafeInteger(perClient) || perClient < 1 || perClient * clients.length > PROTOCOL.client_profiles.benchmark.inventory_max) throw new Error('cohort-size');
+export function generateCohort(perClient: number, clients: readonly ClientId[] = CLIENT_IDS, harnessCount = 0): Cohort {
+  if (!Number.isSafeInteger(perClient) || perClient < 1 || !Number.isSafeInteger(harnessCount) || harnessCount < 0
+    || perClient * clients.length + harnessCount > PROTOCOL.client_profiles.benchmark.inventory_max) throw new Error('cohort-size');
   const clientItems = {} as Record<ClientId, string[]>;
   const issuerDigests: string[] = [];
   for (const id of clients) {
@@ -22,7 +25,12 @@ export function generateCohort(perClient: number, clients: readonly ClientId[] =
       return encodeBase64Url(v, false);
     });
   }
-  return { issuerDigests, clientItems };
+  const harness = Array.from({ length: harnessCount }, () => {
+    const v = randomBytes(32);
+    issuerDigests.push(voucherDigest(v));
+    return encodeBase64Url(v, false);
+  });
+  return { issuerDigests, clientItems, harness };
 }
 
 /** Splits into provisioning frames of at most 128 items (the frozen per-message bound). */

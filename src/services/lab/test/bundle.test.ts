@@ -21,7 +21,7 @@ const dist = new URL('../dist/', import.meta.url);
 const bundle = (name: string) => fileURLToPath(new URL(name, dist));
 
 test('dist holds only the five role bundles and no gateway/fixture/test source', () => {
-  assert.deepEqual(readdirSync(dist).sort(), ['bootstrap.mjs', 'client.mjs', 'control-helper.mjs', 'issuer.mjs', 'origin.mjs']);
+  assert.deepEqual(readdirSync(dist).sort(), ['bootstrap.mjs', 'client.mjs', 'control-helper.mjs', 'harness.mjs', 'issuer.mjs', 'origin.mjs']);
   for (const name of readdirSync(dist)) {
     const text = readFileSync(new URL(name, dist), 'utf8');
     assert.match(text, /PS024-context-v1|control_socket/, `${name}: shared contract is bundled`);

@@ -5,6 +5,7 @@ const entries = {
   issuer: 'src/roles/issuer.ts',
   client: 'src/roles/client.ts',
   origin: 'src/roles/origin.ts',
+  harness: 'src/roles/harness.ts',
   'control-helper': 'src/roles/control-helper.ts',
 };
 const { metafile } = await build({

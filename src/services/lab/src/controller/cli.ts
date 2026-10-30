@@ -23,7 +23,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { PROTOCOL } from '../../../../contracts/lib/index.ts';
 import { ResetBarrier, type ResetTarget } from '../../../../security/reset-barrier.ts';
-import { CLIENT_IDS, type ClientId, type ResetPort, type RoleLink, type RoleName } from './ports.ts';
+import { CLIENT_IDS, Vault, type ClientId, type ResetPort, type RoleLink, type RoleName } from './ports.ts';
 import { DockerAdapters, DockerProject, ROLE_NAMES, SERVICE_FOR_ROLE, realDocker, type Instance, type Target } from './docker.ts';
 import { LabRun, ControllerError, type RunLinks } from './run.ts';
 import { PartialResetBarrier } from './partial-barrier.ts';
@@ -33,6 +33,7 @@ import { LinkError } from './link.ts';
 import { CleanupScope, ScopeBarrier, discardRedis, stopRoles } from './scope.ts';
 import { DockerRedis, DockerRedisIo } from './redis-docker.ts';
 import { DockerGatewayLauncher } from './gateway-docker.ts';
+import { DockerFaults, DockerHarness } from './harness-docker.ts';
 import { SUITES, type RunPlan } from './suites.ts';
 import { buildReport, writeReportAtomic, type RunRecord, type SuiteKind } from '../report/build.ts';
 import { verifyReportFile } from '../report/verify.ts';
@@ -93,7 +94,7 @@ type PlanResult = { record: RunRecord | null; confirmed: boolean };
 let activeStop: (() => void) | null = null;
 
 /** One fresh run: confirm the previous generation is gone, recreate, bootstrap, enable, execute the plan's steps, close. */
-async function executePlan(plan: RunPlan, partial: boolean, project: DockerProject, adHocEvents: boolean): Promise<PlanResult> {
+async function executePlan(plan: RunPlan, partial: boolean, project: DockerProject, adHocEvents: boolean, vault: Vault): Promise<PlanResult> {
   const scope = new CleanupScope();
   const links = new Map<RoleName, RoleLink>();
   const adapters = new DockerAdapters(project, links);
@@ -152,16 +153,21 @@ async function executePlan(plan: RunPlan, partial: boolean, project: DockerProje
     };
     const reset: ResetPort = { fenceAll: () => build().fenceAll(), discardOldRedis: (r) => build().discardOldRedis(r) };
 
-    runRef = new LabRun({ links: runLinks, redis, reset, ...(launcher ? { gatewayLauncher: launcher } : {}) },
-      { perClient: plan.perClient, clientProfile: plan.clientProfile, gatewayProfile: plan.gatewayProfile });
+    const clientInstances = new Map<ClientId, Instance>(CLIENT_IDS.map((c) => [c, instances.get(`client-${c}` as RoleName)!]));
+    const harness = new DockerHarness(realDocker, clientInstances);
+    const faults = new DockerFaults(io, project, redisId, instances.get('origin')!.container_id);
+    runRef = new LabRun({ links: runLinks, redis, reset, vault, harness, faults, ...(launcher ? { gatewayLauncher: launcher } : {}) },
+      { perClient: plan.perClient, clientProfile: plan.clientProfile, gatewayProfile: plan.gatewayProfile, harnessVouchers: plan.harnessVouchers ?? 0 });
     const stopWatching = project.watch([...instances.values()], (role) => runRef!.roleLost(role));
     activeStop = () => void runRef!.stop('operator-stop');
 
     const info = await runRef.start();
     say({ event: 'enabled', plan: plan.name, run_id: info.run_id, config_digest: info.config_digest, roles: Object.keys(info.incarnations).length });
     for (const step of plan.steps) {
-      const rec = await runRef.runScenario(step.clients.length === 1 ? step.clients[0]! : step.clients, step.scenario);
-      say({ event: 'scenario', plan: plan.name, scenario_id: step.scenario, status: rec.status, origin_counts_available: rec.origin_counts_available });
+      if ('capture' in step) { say({ event: 'captured', plan: plan.name, ok: await runRef.captureForReset() }); continue; }
+      const rec = 'orchestrated' in step ? await runRef.runOrchestrated(step.orchestrated)
+        : await runRef.runScenario(step.clients.length === 1 ? step.clients[0]! : step.clients, step.scenario);
+      say({ event: 'scenario', plan: plan.name, scenario_id: rec.scenario_id, status: rec.status, origin_counts_available: rec.origin_counts_available });
     }
     if (plan.steps.length > 0 || adHocEvents) await runRef.stop('completed');
     const closed = await runRef.closed();
@@ -204,10 +210,11 @@ async function run(): Promise<number> {
   const project = new DockerProject(realDocker, composeFile);
   process.once('SIGINT', () => activeStop?.()); process.once('SIGTERM', () => activeStop?.());
   const records: RunRecord[] = [];
+  const vault = new Vault();
   let allConfirmed = true;
   try {
     for (const plan of plans) {
-      const result = await executePlan(plan, partial, project, false);
+      const result = await executePlan(plan, partial, project, false, vault);
       if (result.record) records.push(result.record);
       if (out && records.length > 0) writeReportAtomic(out, buildReport({ kind, runs: records })); // snapshot after every run
       if (!result.confirmed) { allConfirmed = false; break; } // never start another generation on top of an unconfirmed one
@@ -215,6 +222,7 @@ async function run(): Promise<number> {
     if (out && records.length > 0) { const v = verifyReportFile(out); say({ event: 'report', ok: v.ok, status: v.status }); }
     return allConfirmed && records.length === plans.length ? 0 : 1;
   } finally {
+    vault.clear(); // quarantined credentials never outlive the suite
     // Release ownership ONLY when everything this controller created was confirmed shut down.
     if (allConfirmed) lock.release(); else say({ event: 'lock-retained', reason: 'shutdown-unconfirmed' });
   }
