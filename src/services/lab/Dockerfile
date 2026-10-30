@@ -9,6 +9,8 @@ COPY config/tsconfig.base.json ./config/tsconfig.base.json
 COPY src/contracts/protocol-v1.json ./src/contracts/protocol-v1.json
 COPY src/contracts/lib ./src/contracts/lib
 COPY src/contracts/schemas ./src/contracts/schemas
+# The host controller (type-checked here, never bundled into a role) imports the public reset barrier utility.
+COPY src/security/reset-barrier.ts ./src/security/reset-barrier.ts
 COPY src/services/lab/package.json src/services/lab/package-lock.json src/services/lab/.npmrc ./src/services/lab/
 WORKDIR /build/src/services/lab
 RUN npm ci --ignore-scripts --no-audit --no-fund

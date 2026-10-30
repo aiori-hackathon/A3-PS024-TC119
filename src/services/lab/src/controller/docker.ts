@@ -104,7 +104,8 @@ export class DockerProject {
     }
     // Absence only on the daemon's explicit statement naming this exact ID. Permission errors, daemon-down messages,
     // empty output and anything else stay unknown.
-    return r.status === 1 && new RegExp(`No such (object|container): ${containerId}\\s*$`).test(r.stderr.trim()) ? 'absent' : 'unknown';
+    // Observed wordings: "error: no such object: <id>" (current CLI) and "Error response from daemon: No such container: <id>".
+    return r.status === 1 && new RegExp(`^(?:error(?: response from daemon)?: )?no such (?:object|container): ${containerId}$`, 'i').test(r.stderr.trim()) ? 'absent' : 'unknown';
   }
   /** Opens a persistent control link inside exactly this container. stdin stays open for the whole run. */
   openLink(instance: Instance): RoleLink {

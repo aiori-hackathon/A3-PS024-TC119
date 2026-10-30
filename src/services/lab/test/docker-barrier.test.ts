@@ -17,6 +17,7 @@ type Mode = 'ok' | 'daemon-down' | 'permission' | 'timeout' | 'garbled' | 'wrong
 class FakeDocker implements DockerCli {
   containers = new Map<string, { running: boolean; service: string }>();
   stubborn = new Set<string>(); sticky = new Set<string>(); calls: string[] = [];
+  absentWording: 'cli' | 'daemon' = 'daemon';
   mode: Mode = 'ok'; modeFor: Set<string> | null = null; removals = 0;
   add(service: string): string { const id = hex(randomBytes(32)); this.containers.set(id, { running: true, service }); return id; }
   async run(args: string[]): Promise<RunResult> {
@@ -43,7 +44,7 @@ class FakeDocker implements DockerCli {
         }
       }
       const c = this.containers.get(id);
-      if (!c) return err(`Error response from daemon: No such object: ${id}`);
+      if (!c) return err(this.absentWording === 'cli' ? `error: no such object: ${id}\n` : `Error response from daemon: No such object: ${id}`);
       return ok(args.includes('{{.Id}}') ? id : `${id} ${c.running} ${c.running ? 'running' : 'exited'}`);
     }
     if (args[0] === 'kill') { const c = this.containers.get(id); if (c && !this.stubborn.has(id)) c.running = false; return ok(); }
@@ -75,7 +76,16 @@ test('instance state: running and stopped need a well-formed answer for THAT id;
   assert.equal(await p.state(id), 'stopped');
   d.containers.delete(id);
   assert.equal(await p.state(id), 'absent');
+  d.absentWording = 'cli'; // the wording the current docker CLI actually prints
+  assert.equal(await p.state(id), 'absent');
+  d.absentWording = 'daemon';
   assert.equal(await p.state('not-a-container-id'), 'unknown');
+  // A "no such object" answer about a DIFFERENT id proves nothing about this one.
+  const other = hex(randomBytes(32));
+  const real = d.run.bind(d);
+  d.run = async () => ({ status: 1, stdout: '', stderr: `error: no such object: ${other}\n`, timedOut: false, failed: false });
+  assert.equal(await p.state(id), 'unknown');
+  d.run = real;
   for (const mode of ['daemon-down', 'permission', 'timeout', 'garbled', 'empty', 'wrong-id', 'inspect-error'] as Mode[]) {
     d.mode = mode; d.containers.delete(id);
     assert.equal(await p.state(id), 'unknown', `${mode} must be unknown, never absent or stopped`);
