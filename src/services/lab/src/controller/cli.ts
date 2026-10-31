@@ -7,6 +7,7 @@
 //                                 enable one run, supervise it, and close it through the strong reset barrier
 //   lab fence                     emergency stop: strong FENCE (else kill-and-confirm) for every role, no run knowledge needed
 //   lab verify-report --file F    schema, evidence-rule and privacy check of a report file ([--require-pass])
+//   lab serve-report --file F [--host 127.0.0.1] [--port 4173]   read-only viewer of one validated report, loopback only
 // Output is fixed single-line JSON with ids and states only. No token, voucher, key, password or reply body is printed.
 //
 // Ownership rules this file enforces:
@@ -18,6 +19,7 @@
 //    before a run exists, is cleaned up by immutable identity.
 // `--partial` is a development mode without the gateway. It uses a partial reset barrier that refuses eight-role runs and it
 // never reports a complete suite as PASS; a full run uses the real ResetBarrier.
+import { startViewer, ViewerError } from '../report/serve.ts';
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -249,7 +251,20 @@ function verify(): number {
   return v.ok && (!flag('--require-pass') || v.status === 'PASS') ? 0 : 1;
 }
 
+async function serve(): Promise<number> {
+  const file = option('--file', '');
+  if (!file) { say({ error: 'usage', detail: 'serve-report --file <path> [--host 127.0.0.1] [--port 4173]' }); return 2; }
+  try {
+    const { server, host, port } = await startViewer(file, option('--host', '127.0.0.1'), Number(option('--port', '4173')));
+    say({ event: 'listening', host, port });
+    await new Promise<void>((resolve) => { process.once('SIGINT', resolve); process.once('SIGTERM', resolve); });
+    server.close();
+    return 0;
+  } catch (e) { say({ error: 'serve-failed', reason: e instanceof ViewerError ? e.code : 'listen-failed' }); return 1; }
+}
+
 const command = process.argv[2];
 const code = command === 'preflight' ? await preflight() : command === 'run' ? await run() : command === 'fence' ? await fence() : command === 'verify-report' ? verify()
-  : (say({ error: 'usage', commands: ['preflight', 'run', 'fence', 'verify-report'] }), 2);
+  : command === 'serve-report' ? await serve()
+  : (say({ error: 'usage', commands: ['preflight', 'run', 'fence', 'verify-report', 'serve-report'] }), 2);
 process.exit(code);

@@ -25,7 +25,26 @@ export type SuiteDefinition = { kind: SuiteKind; plans: RunPlan[] };
 const one = (scenario: string, client: ClientId): Step => ({ scenario, clients: [client] });
 const sharedEgress: RunPlan = { name: 'shared-egress', clientProfile: 'demo', gatewayProfile: 'B1', perClient: 2, steps: [{ scenario: 'shared-egress', clients: ALL }] };
 
+const corePlan: RunPlan = { name: 'core', clientProfile: 'security', gatewayProfile: 'B1', perClient: 10, harnessVouchers: 4, steps: [
+  one('healthy-flow', 'A'), one('voucher-policy', 'B'), one('wrong-context', 'C'), one('sequential-replay', 'D'), one('concurrent-replay', 'E'), { orchestrated: 'stolen-unused-token' },
+  one('malformed-token', 'A'), one('signature-and-key', 'B'), one('network-boundaries', 'C'),
+] };
+const resetPlans: RunPlan[] = [
+  { name: 'reset-old-generation', clientProfile: 'security', gatewayProfile: 'B1', perClient: 2, harnessVouchers: 4, steps: [{ capture: 'old-run' }] },
+  { name: 'reset-new-generation', clientProfile: 'security', gatewayProfile: 'B1', perClient: 2, harnessVouchers: 4, steps: [{ orchestrated: 'restart-and-reset' }] },
+];
+const faultPlans: RunPlan[] = ['redis-failure:script-flush', 'redis-failure:clock-delete', 'redis-failure:policy-corrupt', 'redis-failure:redis-stop', 'clock-rollback:clock-regress'].map((key) => ({
+  name: key.replace(':', '-'), clientProfile: 'security' as const, gatewayProfile: 'B1' as const, perClient: 2, harnessVouchers: 4, steps: [{ orchestrated: key }],
+}));
+const epochPlan: RunPlan = { name: 'epoch-boundary', clientProfile: 'security', gatewayProfile: 'B1', perClient: 4, epochOffsetMs: 600_000 - 80_000, steps: [one('epoch-boundary', 'A')] };
+const admissionPlan: RunPlan = { name: 'admission-limits', clientProfile: 'security', gatewayProfile: 'B1', perClient: 24, steps: [{ scenario: 'admission-limits', clients: ALL }] };
+const upstreamPlan: RunPlan = { name: 'upstream-failure', clientProfile: 'security', gatewayProfile: 'B1', perClient: 2, harnessVouchers: 4, steps: [{ orchestrated: 'upstream-failure' }] };
+// S15 needs real traffic first, so the audit runs after a healthy flow in the same live generation.
+const retentionPlan: RunPlan = { name: 'retention', clientProfile: 'security', gatewayProfile: 'B1', perClient: 2, steps: [one('healthy-flow', 'A'), { orchestrated: 'retention-audit' }] };
+
 export const SUITES: Record<string, SuiteDefinition> = {
+  // Every scenario the frozen protocol requires for the security suite, each in its own fresh run where it needs one.
+  security: { kind: 'security', plans: [sharedEgress, corePlan, epochPlan, admissionPlan, ...resetPlans, ...faultPlans, upstreamPlan, retentionPlan] },
   // Scenarios that need the gateway and the real issuer but no fault injection. S02 uses the demo client profile on purpose
   // (two vouchers per client, ordinary two-socket clients); S08 needs the bounded security profile (24 gateway sockets).
   'gateway-core': {
