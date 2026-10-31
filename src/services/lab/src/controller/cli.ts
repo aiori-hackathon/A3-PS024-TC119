@@ -186,7 +186,7 @@ async function executePlan(plan: RunPlan, partial: boolean, project: DockerProje
     const closed = await runRef.closed();
     stopWatching();
     confirmed = closed.reset_confirmed;
-    say({ event: 'closed', plan: plan.name, reason: closed.reason, reset_confirmed: closed.reset_confirmed, origin_counts: adapters.originCounts });
+    say({ event: 'closed', plan: plan.name, reason: closed.reason, reset_confirmed: closed.reset_confirmed, ...(runRef?.lostRole ? { lost_role: runRef.lostRole } : {}), origin_counts: adapters.originCounts });
     return { record: runRef.runRecord(), confirmed };
   } catch (e) {
     say({ error: e instanceof ControllerError ? e.code : 'controller-failed', step: e instanceof ControllerError ? e.step : undefined });

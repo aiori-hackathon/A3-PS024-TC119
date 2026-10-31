@@ -69,6 +69,13 @@ test('a report that fails validation or carries address or token-like material i
   } finally { await v.close(); }
 });
 
+test('measurements are shown with throughput and bucket-bound quantiles', () => {
+  const rep = JSON.parse(goodReport());
+  rep.runs[0].measurements = [{ metric: 'protected_response_ms', count: 400, failures: 2, elapsed_ms: 200, p50_ms: 10, p95_ms: 25, p99_ms: null, histogram_counts: [0, 0, 0, 0, 0, 400, 0, 0, 0, 0, 0, 0, 0, 0, 0] }];
+  const html = renderReport(rep);
+  assert.match(html, /protected_response_ms/); assert.match(html, /2000\.0/); assert.match(html, /beyond 5000/);
+});
+
 test('everything rendered from the report is escaped', () => {
   assert.equal(esc(`<img src=x onerror="a()">&'\``), '&#60;img src=x onerror=&#34;a()&#34;&#62;&#38;&#39;&#96;');
   const rep = JSON.parse(goodReport()); rep.runs[0].scenario_results[0].scenario_id = '<script>alert(1)</script>'; rep.runs[0].scenario_results[0].failure_labels = ['"><b>x'];

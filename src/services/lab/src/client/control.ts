@@ -13,6 +13,8 @@ import type { Counters as ReportCounters } from '../report/build.ts';
 import { networkBoundaries, voucherPolicy } from './scenarios.ts';
 import { epochBoundary } from './epoch-scenario.ts';
 import { admissionLimits } from './admission-scenario.ts';
+import { performance_ } from './performance-scenario.ts';
+import type { Measurement } from '../report/histogram.ts';
 import { concurrentReplay, malformedToken, sequentialReplay, sharedEgress, signatureAndKey, wrongContext } from './security-scenarios.ts';
 
 type State = 'FENCED' | 'PREPARED' | 'READY' | 'ENABLED' | 'CLOSING' | 'FAULTED';
@@ -25,6 +27,8 @@ export type ScenarioOutcome = {
   expected: string;
   counters?: ReportCounters;
   failure_labels?: string[];
+  /** Aggregates only (fixed-bucket histograms); delivered to the controller through REPORT, never through the scenario reply. */
+  measurements?: Measurement[];
 };
 export type ScenarioContext = {
   client: LabClient; manifest: Manifest; seed: number; signal: AbortSignal;
@@ -48,6 +52,7 @@ export const baseScenarios: Record<string, ScenarioRunner> = {
   'shared-egress': sharedEgress,
   'epoch-boundary': epochBoundary,
   'admission-limits': admissionLimits,
+  performance: performance_,
   'network-boundaries': networkBoundaries,
   'healthy-flow': async ({ client }) => {
     const challenge = await client.fetchChallenge();
@@ -84,6 +89,7 @@ export class ClientRole {
   #vouchers: ClientVouchers | null = null;
   #client: LabClient | null = null;
   #running: { promise: Promise<unknown>; abort: AbortController } | null = null;
+  #measurements: Measurement[] = [];
   #counters: Counters = { issuance_successes: 0, issuance_failures: 0, observations: 0 };
   #chain: Promise<unknown> = Promise.resolve();
 
@@ -199,6 +205,7 @@ export class ClientRole {
     try { outcome = await settled; } finally { this.#running = null; }
     if (abort.signal.aborted || this.#state !== 'ENABLED') throw new LabError('FAULTED'); // fenced mid-scenario: no result
     for (const k of Object.keys(this.#counters) as (keyof Counters)[]) this.#counters[k] += outcome.counters?.[k] ?? 0;
+    if (outcome.measurements) this.#measurements = [...this.#measurements.filter((m) => !outcome.measurements!.some((n) => n.metric === m.metric)), ...outcome.measurements];
     return this.#ok(requestId, 'SCENARIO_COMPLETE', {
       scenario_id: scenarioId, status: outcome.status, expected: outcome.expected,
       counters: { ...outcome.counters }, origin_counts_available: false, worker_verification_attempts: [],
@@ -233,7 +240,7 @@ export class ClientRole {
 
   #report(requestId: string): Json {
     return this.#ok(requestId, 'REPORT', {
-      counters: { ...this.#counters }, measurements: [], same_source_observed: null, origin_counts_available: false, worker_verification_attempts: [],
+      counters: { ...this.#counters }, measurements: this.#measurements.map((m) => ({ ...m, histogram_counts: [...m.histogram_counts] })), same_source_observed: null, origin_counts_available: false, worker_verification_attempts: [],
     });
   }
 

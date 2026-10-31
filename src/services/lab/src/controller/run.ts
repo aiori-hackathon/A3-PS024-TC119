@@ -9,6 +9,7 @@ import { CLIENT_IDS, Vault, type RetentionCheck, type RetentionPort, type Client
 import { discovery, newId, request, type Target } from './envelope.ts';
 import { batches, generateCohort } from './cohort.ts';
 import type { RunRecord, ScenarioRecord } from '../report/build.ts';
+import { mergeMeasurements, type Measurement } from '../report/histogram.ts';
 import { ORCHESTRATED, REDIS_FAULT_SCENARIOS, captureOldCredentials, type OrchestrationContext, type ScenarioData } from './orchestrated.ts';
 
 export type ControllerErrorCode =
@@ -75,6 +76,12 @@ const ORIGIN_RULES: Record<string, Rule> = {
     return e.origin.protected_requests_received >= wins && e.origin.protected_requests_received <= wins + lost && e.origin.resources_served === e.origin.protected_requests_received
       && e.origin.generation_mismatches === 0 && (e.client['queue_rejected'] ?? 0) >= 1;
   } },
+  // Declared load: every success is exactly one origin arrival (a lost connection may hide at most one more each), on every worker.
+  performance: { needsGateway: true, needsWorkers: true, holds: (e) => {
+    const wins = e.client['claims_successful'] ?? 0, lost = e.client['transport_failures'] ?? 0;
+    return wins > 0 && e.origin.protected_requests_received >= wins && e.origin.protected_requests_received <= wins + lost
+      && e.origin.resources_served === e.origin.protected_requests_received && e.origin.generation_mismatches === 0 && e.workers.length > 0 && e.workers.every((a) => a > 0);
+  } },
   'redis-failure': { needsGateway: true, holds: none },
   'retention-audit': { needsGateway: false, holds: none },
   'clock-rollback': { needsGateway: true, holds: none },
@@ -100,9 +107,12 @@ export class LabRun {
   #manifest: Manifest | null = null;
   #harnessVouchers: string[] = [];
   #retention: RetentionCheck[] = [];
+  #measurements: Measurement[] = [];
   #closeReason: string | null = null;
   /** Fixed check names that failed in the most recent scenario (operator output only). */
   lastFailed: string[] = [];
+  /** Fixed role name whose heartbeat acknowledgement was missing, late or wrong when supervision closed the run (diagnostics only). */
+  lostRole: string | null = null;
   #setupRun: Promise<unknown> | null = null;
 
   constructor(deps: RunDeps, config: RunConfig) {
@@ -299,7 +309,7 @@ export class LabRun {
         if (stopped) return;
         if (reply['ok'] !== true || reply['result'] !== 'HEARTBEAT_ACK' || reply['data'].seq !== seq) throw new Error('bad-ack');
       } catch {
-        if (!stopped) void this.close('control-lost');
+        if (!stopped) { this.lostRole ??= name; void this.close('control-lost'); }
         return;
       }
       if (stopped) return;
@@ -337,7 +347,7 @@ export class LabRun {
    */
   async runScenario(clients: ClientId | readonly ClientId[], scenarioId: string, seed = 1): Promise<ScenarioRecord> {
     const ids = typeof clients === 'string' ? [clients] : [...clients];
-    return this.#measure(scenarioId, async () => {
+    const record = await this.#measure(scenarioId, async () => {
       const replies = await Promise.all(ids.map(async (id): Promise<Json | null> => {
         try { return await this.#d.links.clients[id].send(request('RUN_SCENARIO', this.#at(`client-${id}`), { scenario_id: scenarioId, schedule_seed: seed }), 180_000); }
         catch { return null; }
@@ -346,6 +356,22 @@ export class LabRun {
       if (replies.some((r) => r!['ok'] !== true || r!['result'] !== 'SCENARIO_COMPLETE')) return 'missing-evidence';
       return replies.map((r) => r!['data'] as ScenarioData);
     });
+    if (scenarioId === 'performance') await this.#collectMeasurements(ids, record);
+    return record;
+  }
+
+  /** Measurements travel in each client's REPORT (aggregates only). Without them a performance row is not evidence: INCONCLUSIVE. */
+  async #collectMeasurements(ids: readonly ClientId[], record: ScenarioRecord): Promise<void> {
+    const groups: Measurement[][] = [];
+    for (const id of ids) {
+      try {
+        const r = await this.#d.links.clients[id].send(request('REPORT', this.#at(`client-${id}`)), this.#cfg.controlTimeoutMs);
+        if (r['ok'] === true && Array.isArray(r['data'].measurements)) groups.push(r['data'].measurements as Measurement[]);
+      } catch { /* reported below as missing evidence */ }
+    }
+    const merged = mergeMeasurements(groups);
+    if (groups.length !== ids.length || merged.length === 0) { if (record.status === 'PASS') record.status = 'INCONCLUSIVE'; if (!record.failure_labels.includes('missing-evidence')) record.failure_labels.push('missing-evidence'); return; }
+    this.#measurements = merged;
   }
 
   /** Vouchers for the security harness, removed from controller memory as they are handed out. */
@@ -448,7 +474,7 @@ export class LabRun {
     return {
       run_id: this.#info.run_id, config_digest: this.#info.config_digest, token_key_id: m.token_key_id, gateway_profile: m.gateway_profile,
       client_profile: m.client_profile, origin_incarnation: this.#targets.get('origin')?.incarnation ?? null, scenario_results: [...this.#scenarios],
-      measurements: [], state_transitions: [...this.#transitions], retention_checks: retention,
+      measurements: this.#measurements.map((m) => ({ ...m })), state_transitions: [...this.#transitions], retention_checks: retention,
     };
   }
 

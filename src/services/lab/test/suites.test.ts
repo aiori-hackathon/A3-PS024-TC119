@@ -15,10 +15,11 @@ function ids(plan: RunPlan): string[] {
   });
 }
 
-for (const suite of ['demo', 'security'] as const) {
-  test(`the ${suite} suite covers exactly the scenarios the frozen protocol requires for it`, () => {
-    const covered = new Set(SUITES[suite]!.plans.flatMap(ids));
-    const required = new Set(protocol.suite_required_scenarios[suite]!);
+for (const [kind, name] of [['demo', 'demo'], ['security', 'security'], ['benchmark', 'performance']] as const) {
+  test(`the ${name} suite covers exactly the scenarios the frozen protocol requires for ${kind}`, () => {
+    assert.equal(SUITES[name]!.kind, kind);
+    const covered = new Set(SUITES[name]!.plans.flatMap(ids));
+    const required = new Set(protocol.suite_required_scenarios[kind]!);
     assert.deepEqual([...required].filter((r) => !covered.has(r)), [], 'missing');
     assert.deepEqual([...covered].filter((c) => !required.has(c)), [], 'extra');
   });
@@ -27,7 +28,7 @@ for (const suite of ['demo', 'security'] as const) {
 test('every scenario a suite names is a frozen scenario id; every plan stays inside the security client inventory', () => {
   for (const [name, def] of Object.entries(SUITES)) for (const plan of def.plans) {
     for (const id of ids(plan)) assert.ok(protocol.scenario_ids.includes(id), `${name}/${plan.name}: ${id}`);
-    const limit = plan.clientProfile === 'security' ? 128 : 10;
+    const limit = { demo: 10, security: 128, benchmark: 16384 }[plan.clientProfile];
     assert.ok(plan.perClient <= limit && plan.perClient * 5 + (plan.harnessVouchers ?? 0) <= 128 * 5, `${name}/${plan.name} vouchers`);
     if (plan.clientProfile === 'security') assert.ok(plan.perClient * 5 + (plan.harnessVouchers ?? 0) <= 128, `${name}/${plan.name} total inventory`);
   }

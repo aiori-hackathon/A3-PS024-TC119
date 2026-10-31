@@ -11,7 +11,7 @@ export type Step =
   | { capture: 'old-run' };                        // hidden half of S13: quarantine one spent and one unused credential across the reset
 export type RunPlan = {
   name: string;
-  clientProfile: 'demo' | 'security';
+  clientProfile: 'demo' | 'security' | 'benchmark';
   gatewayProfile: 'B0' | 'B1';
   perClient: number;
   /** Extra vouchers kept in controller memory for the security harness. */
@@ -42,7 +42,11 @@ const upstreamPlan: RunPlan = { name: 'upstream-failure', clientProfile: 'securi
 // S15 needs real traffic first, so the audit runs after a healthy flow in the same live generation.
 const retentionPlan: RunPlan = { name: 'retention', clientProfile: 'security', gatewayProfile: 'B1', perClient: 2, steps: [one('healthy-flow', 'A'), { orchestrated: 'retention-audit' }] };
 
+// S18: the same declared load against the one-worker (B0) and the two-worker (B1) gateway, each in its own fresh run.
+const perfPlan = (gatewayProfile: 'B0' | 'B1'): RunPlan => ({ name: `performance-${gatewayProfile.toLowerCase()}`, clientProfile: 'benchmark', gatewayProfile, perClient: 80, steps: [{ scenario: 'performance', clients: ALL }] });
+
 export const SUITES: Record<string, SuiteDefinition> = {
+  performance: { kind: 'benchmark', plans: [perfPlan('B0'), perfPlan('B1')] },
   // Every scenario the frozen protocol requires for the security suite, each in its own fresh run where it needs one.
   security: { kind: 'security', plans: [sharedEgress, corePlan, epochPlan, admissionPlan, ...resetPlans, ...faultPlans, upstreamPlan, retentionPlan] },
   // Scenarios that need the gateway and the real issuer but no fault injection. S02 uses the demo client profile on purpose
