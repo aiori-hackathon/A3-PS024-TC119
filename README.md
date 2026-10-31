@@ -13,6 +13,74 @@ The organizer-owned repository and submitted assets above are preserved. All imp
 
 Read the [technical design](docs/implementation/TECHNICAL_DESIGN.md), [shared contract reference](src/contracts/README.md), and [dependency review](docs/security/DEPENDENCY_REVIEW.md). Executable contract schemas and fixtures define the interfaces shared by the gateway and lab components.
 
+### Architecture
+
+Eight containers on five internal Docker networks. Nothing is published to the host. Clients reach the issuer and the gateway only through one allow-listed CONNECT proxy, and only the gateway can reach Redis and the private origin. A controller on the host drives every role through `docker exec` and private control sockets.
+
+```mermaid
+flowchart LR
+  CTRL["Controller (on the host)<br/>starts, supervises and attacks every role<br/>through docker exec and private control sockets<br/>writes the evidence report"]
+
+  subgraph LAB["Docker lab"]
+    direction LR
+    subgraph N1["client_proxy"]
+      C["Clients A to E<br/>hold vouchers<br/>blind and redeem tokens"]
+    end
+    P["Proxy (tinyproxy)<br/>CONNECT only to<br/>issuer.lab.test:443 and<br/>origin.lab.test:443"]
+    subgraph N2["proxy_issuer"]
+      I["Issuer<br/>blind RSA signing<br/>one signing per voucher"]
+    end
+    subgraph N3["proxy_gateway"]
+      G["Gateway (1 or 2 workers)<br/>verifies token, key, context<br/>single-spend claim"]
+    end
+    subgraph N4["gateway_replay"]
+      R[("Redis<br/>spent tokens, policy, clock<br/>no persistence")]
+    end
+    subgraph N5["gateway_origin"]
+      O["Private origin<br/>counts every request<br/>on its own"]
+    end
+    C -->|"1 obtain token"| P
+    C -->|"2 present token"| P
+    P --> I
+    P --> G
+    G -->|"3 atomic claim"| R
+    G -->|"4 forward only if unspent"| O
+  end
+
+  CTRL -.->|"drives every role"| LAB
+  O -.->|"origin counters decide PASS"| CTRL
+```
+
+How one request is judged:
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant C as Client
+  participant I as Issuer
+  participant G as Gateway
+  participant R as Redis
+  participant O as Origin
+  C->>G: GET /resource (no token)
+  G-->>C: 401 challenge (run, epoch, context)
+  C->>I: blinded request + one-time voucher
+  I-->>C: blind signature (voucher now spent)
+  C->>G: GET /resource with finalized token
+  G->>G: check signature, key, context, epoch
+  G->>R: atomic claim of the token
+  alt first use
+    R-->>G: claimed
+    G->>O: forward request
+    O-->>G: resource
+    G-->>C: 200
+  else replay, wrong context, expired or store fault
+    R-->>G: already spent / refused / unavailable
+    G-->>C: 401 or 503 (origin receives nothing)
+  end
+```
+
+The controller never trusts a client: a scenario passes only if the private origin's own counters (received, served, generation mismatches) and the gateway workers' verification counts agree with what the scenario expects.
+
 ### Local bootstrap checks
 
 Use Node **24.22.1**. On Windows PowerShell use `npm.cmd` if script policy blocks `npm.ps1`; do not weaken execution policy. Other shells use `npm`.
