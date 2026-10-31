@@ -15,6 +15,10 @@ Read the [technical design](docs/implementation/TECHNICAL_DESIGN.md), [shared co
 
 ### Architecture
 
+![TokenForge system design: clients reach an issuer and a gateway through one allow-listed proxy; the gateway claims each token once in Redis and forwards only unspent tokens to a private origin; a host controller drives every role and turns the origin's counters into a validated report.](docs/images/system-design.png)
+
+*System design sketch of the deployed lab. The two diagrams below show the same system as network topology and as one request's path.*
+
 Eight containers on five internal Docker networks. Nothing is published to the host. Clients reach the issuer and the gateway only through one allow-listed CONNECT proxy, and only the gateway can reach Redis and the private origin. A controller on the host drives every role through `docker exec` and private control sockets.
 
 ```mermaid
