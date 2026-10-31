@@ -4,7 +4,7 @@ import { admissionLimitsWith, BURST, STALLED } from '../src/client/admission-sce
 import type { ScenarioContext } from '../src/client/control.ts';
 
 type R = { status: number; label: string | null };
-function rig(over: { busy?: number; retry?: (n: number) => R; stall?: { closed: boolean; ms: number }; challenge?: boolean; vouchers?: number; odd?: boolean } = {}) {
+function rig(over: { busy?: number; retry?: (n: number) => R; stall?: { closed: boolean; ms: number; connected?: boolean }; challenge?: boolean; vouchers?: number; odd?: boolean; wrongBusyLabel?: boolean; lostFirst?: number; abort?: AbortController } = {}) {
   let t = 1_000, seen = 0, redeems = 0;
   const busyIdx = new Set(Array.from({ length: over.busy ?? 5 }, (_, i) => i));
   const client = {
@@ -12,12 +12,12 @@ function rig(over: { busy?: number; retry?: (n: number) => R; stall?: { closed: 
     async issueWire() { return Uint8Array.of(seen++); },
     async redeemWire(w: Uint8Array) {
       redeems++;
-      if (redeems <= BURST) return over.odd && w[0] === 0 ? { status: 418, label: null } : busyIdx.has(w[0]!) ? { status: 503, label: 'gateway-busy' } : { status: 200, label: null };
+      if (redeems <= BURST) return over.odd && w[0] === 0 ? { status: 418, label: null } : (over.lostFirst ?? 0) > w[0]! ? (() => { throw new Error('reset'); })() : busyIdx.has(w[0]!) ? { status: 503, label: over.wrongBusyLabel ? 'authorization-unavailable' : 'gateway-busy' } : { status: 200, label: null };
       return over.retry ? over.retry(redeems) : { status: 200, label: null };
     },
-    async rawGateway() { const s = over.stall ?? { closed: true, ms: 2000 }; const s0 = t; await Promise.resolve(); t = Math.max(t, s0 + s.ms); return { status: null, label: null, closed: s.closed }; },
+    async rawGateway() { const s = over.stall ?? { closed: true, ms: 2000 }; const s0 = t; await Promise.resolve(); t = Math.max(t, s0 + s.ms); return { status: null, label: null, closed: s.closed, connected: s.connected ?? true }; },
   };
-  const ctx = { client, hasVoucher: (n: number) => (over.vouchers ?? 99) >= n, signal: new AbortController().signal } as unknown as ScenarioContext;
+  const ctx = { client, hasVoucher: (n: number) => (over.vouchers ?? 99) >= n, signal: (over.abort ?? new AbortController()).signal } as unknown as ScenarioContext;
   return { ctx, deps: { sleep: async (ms: number) => { t += ms; }, now: () => t } };
 }
 
@@ -44,4 +44,25 @@ test('an answer that is neither success, busy nor a lost connection is a FAIL; t
   const odd = rig({ odd: true });
   assert.equal((await admissionLimitsWith(odd.ctx, odd.deps)).status, 'FAIL');
   assert.equal((await admissionLimitsWith(rig({ vouchers: BURST - 1 }).ctx, rig().deps)).status, 'INCONCLUSIVE');
+});
+
+test('a 503 that is not gateway-busy is not an admission refusal: FAIL', async () => {
+  const x = rig({ wrongBusyLabel: true });
+  assert.equal((await admissionLimitsWith(x.ctx, x.deps)).status, 'FAIL');
+});
+
+test('stalls that never connected prove nothing: INCONCLUSIVE', async () => {
+  const none = rig({ stall: { closed: true, ms: 100, connected: false } });
+  assert.equal((await admissionLimitsWith(none.ctx, none.deps)).status, 'INCONCLUSIVE');
+});
+
+test('connections lost in the burst are retried; their unresolved outcome is reported, not hidden', async () => {
+  const x = rig({ busy: 0, lostFirst: 3 });
+  const o = await admissionLimitsWith(x.ctx, x.deps);
+  assert.equal(o.status, 'PASS'); assert.equal(o.counters?.claims_successful, BURST); assert.equal(o.counters?.transport_failures, 0, 'each retry succeeded');
+});
+
+test('a fence mid-scenario stops it before anything more is presented', async () => {
+  const abort = new AbortController(); const x = rig({ abort }); abort.abort();
+  assert.equal((await admissionLimitsWith(x.ctx, x.deps)).status, 'INCONCLUSIVE');
 });

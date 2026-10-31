@@ -17,7 +17,7 @@ import type { ClientVouchers } from './vouchers.ts';
 
 export type ClientErrorCode =
   | 'transport' | 'redirect-refused' | 'response-too-large' | 'unexpected-response' | 'challenge-unavailable'
-  | 'no-voucher' | 'no-token' | 'issuance-refused' | 'issuance-invalid' | 'directory-mismatch';
+  | 'no-voucher' | 'no-token' | 'issuance-refused' | 'issuance-invalid' | 'directory-mismatch' | 'client-closed';
 /** Fixed code plus (for refusals) the HTTP status. Never carries bodies, vouchers, tokens or exception text. */
 export class LabClientError extends Error {
   readonly code: ClientErrorCode;
@@ -83,7 +83,9 @@ export class LabClient {
     this.#gates.set(this.#gatewayAgent, new Gate(cfg.manifest.limits.client.gateway_sockets));
   }
 
-  close(): void { this.#issuerAgent.destroy(); this.#gatewayAgent.destroy(); this.tokens.clear(); this.#vouchers.clear(); }
+  #closed = false;
+  /** After close() no new connection is opened: a scenario still running when the role is fenced cannot present anything. */
+  close(): void { this.#closed = true; this.#issuerAgent.destroy(); this.#gatewayAgent.destroy(); this.tokens.clear(); this.#vouchers.clear(); }
 
   /** Public directory must be exactly what the manifest pinned; a different key or URI is refused, not adopted. */
   async checkDirectory(): Promise<void> {
@@ -173,13 +175,14 @@ export class LabClient {
    * headers, bad framing and oversize inputs are exercised; it is fixed harness code, reachable only from allowlisted
    * scenarios, never from a control message. The socket count obeys the same manifest bound as ordinary requests.
    */
-  async rawGateway(bytes: Uint8Array, options: { timeoutMs?: number; maxResponse?: number } = {}): Promise<{ status: number | null; label: string | null; closed: boolean }> {
+  async rawGateway(bytes: Uint8Array, options: { timeoutMs?: number; maxResponse?: number } = {}): Promise<{ status: number | null; label: string | null; closed: boolean; connected: boolean }> {
+    if (this.#closed) return { status: null, label: null, closed: true, connected: false };
     const gate = this.#gates.get(this.#gatewayAgent)!;
     const leave = await gate.enter();
     const timeoutMs = options.timeoutMs ?? 5000, max = options.maxResponse ?? 32768;
     try {
       let socket: import('node:tls').TLSSocket;
-      try { socket = await connectTls(this.#tunnel, this.#m.origin_name); } catch { return { status: null, label: null, closed: true }; }
+      try { socket = await connectTls(this.#tunnel, this.#m.origin_name); } catch { return { status: null, label: null, closed: true, connected: false }; }
       return await new Promise((resolve) => {
         let data = Buffer.alloc(0), done = false;
         const finish = (closed: boolean) => {
@@ -187,7 +190,7 @@ export class LabClient {
           const text = data.toString('latin1');
           const m = /^HTTP\/1\.1 (\d{3}) /.exec(text);
           const body = data.subarray(Math.max(0, data.indexOf('\r\n\r\n') + 4));
-          resolve({ status: m ? Number(m[1]) : null, label: errorLabel(body), closed });
+          resolve({ status: m ? Number(m[1]) : null, label: errorLabel(body), closed, connected: true });
         };
         const timer = setTimeout(() => finish(false), timeoutMs);
         socket.on('data', (c: Buffer) => {
@@ -206,6 +209,7 @@ export class LabClient {
   }
 
   async #exchange(agent: Agent, host: string, o: { method: string; path: string; headers?: Record<string, string>; body?: Uint8Array }, maxBody: number): Promise<Reply> {
+    if (this.#closed) throw new LabClientError('client-closed');
     const leave = await this.#gates.get(agent)!.enter();
     try { return await this.#send(agent, host, o, maxBody); } finally { leave(); }
   }
