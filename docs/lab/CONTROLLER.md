@@ -7,12 +7,12 @@
 | Command | Behavior |
 |---|---|
 | `lab preflight` | Read-only: Docker reachable, Compose file valid, secrets provisioned, Node 24 |
-| `lab run --suite NAME --out F` | Fixed multi-generation suites (`demo`, `gateway-core`, `redis-faults`, `upstream`); writes a validated atomic report after every generation |
+| `lab run --suite NAME --out F` | Fixed multi-generation suites (`demo`, `security`, `performance`, and smaller ones: `gateway-core`, `redis-faults`, `retention`, `upstream`, `epoch-boundary`, `admission-limits`); writes a validated atomic report after every generation |
 | `lab run [--profile demo\|security] [--per-client N] [--scenarios a,b --out F]` | One ad-hoc generation running named client scenarios |
 | `lab run --partial` | Development mode without the gateway; uses a partial reset barrier that refuses eight-role runs. Never reports a complete suite as PASS |
 | `lab fence` | Emergency stop for every role: strong FENCE, else kill-and-confirm by container ID. Never claims a clean stop it could not confirm |
 | `lab verify-report --file F [--require-pass]` | Schema, evidence-rule and privacy check |
-| `lab serve-report` | Not implemented |
+| `lab serve-report --file F [--host 127.0.0.1] [--port 4173]` | Loopback-only, read-only viewer of one validated report (`docs/lab/SCENARIOS_AND_REPORTS.md`) |
 
 Output is single-line JSON with ids, states and fixed check names only. No voucher, token, key, password or reply body is printed.
 
@@ -48,4 +48,4 @@ If setup fails before a complete snapshot exists (no manifest or no gateway inca
 
 ## Not done
 
-`serve-report`; scenarios S09, S10, S15 and S18; measurement histograms; a Linux host and a fresh-checkout rehearsal; the deployment scripts for a separate host. Windows cannot deliver a graceful SIGINT to the controller; stopping it abruptly is exactly the case the issuer and gateway leases cover.
+A native Linux run of the security and performance suites; a fresh-checkout rehearsal on a second machine; the deployment scripts for a separate host. Windows cannot deliver a graceful SIGINT to the controller; stopping it abruptly is exactly the case the issuer and gateway leases cover.
