@@ -1,7 +1,8 @@
 # AIORI-3-HACKATHON-PROJECTS
-This repository will contain the code and resources for the AIORI-3 hackathon that will be developed during the AIORI-3
+TokenForge is a Privacy Pass-based authorization prototype for reducing the impact of shared-IP rate limiting, with one-time token redemption and replay protection. This repository contains the implementation, test lab, and demonstration materials for problem statement PS-024.
 
-Video Link: https://youtu.be/4pnofXzmptA
+- **Team introduction video:** https://youtu.be/4pnofXzmptA
+- **System demonstration:** https://youtu.be/SlHhNhLCCNw
 
 ## TokenForge — PS-024
 
