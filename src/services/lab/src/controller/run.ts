@@ -68,6 +68,13 @@ const ORIGIN_RULES: Record<string, Rule> = {
   'restart-and-reset': { needsGateway: true, holds: one },
   // Two accepted tokens (one per side of the boundary); the stale one must never arrive.
   'epoch-boundary': { needsGateway: true, holds: (e) => e.origin.protected_requests_received === 2 && e.origin.resources_served === 2 && e.origin.generation_mismatches === 0 && (e.client['claims_successful'] ?? 0) === 2 },
+  // Bursts and stalls: every success is exactly one origin arrival (a lost connection may hide at most one more each), a busy refusal
+  // consumed nothing, and some refusal really happened. Without pressure nothing was shown to be bounded.
+  'admission-limits': { needsGateway: true, holds: (e) => {
+    const wins = e.client['claims_successful'] ?? 0, lost = e.client['transport_failures'] ?? 0;
+    return e.origin.protected_requests_received >= wins && e.origin.protected_requests_received <= wins + lost && e.origin.resources_served === e.origin.protected_requests_received
+      && e.origin.generation_mismatches === 0 && (e.client['queue_rejected'] ?? 0) >= 1;
+  } },
   'redis-failure': { needsGateway: true, holds: none },
   'retention-audit': { needsGateway: false, holds: none },
   'clock-rollback': { needsGateway: true, holds: none },

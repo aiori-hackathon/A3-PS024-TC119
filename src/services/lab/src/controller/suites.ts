@@ -59,6 +59,11 @@ export const SUITES: Record<string, SuiteDefinition> = {
     kind: 'security',
     plans: [{ name: 'epoch-boundary', clientProfile: 'security', gatewayProfile: 'B1', perClient: 4, epochOffsetMs: 600_000 - 80_000, steps: [one('epoch-boundary', 'A')] }],
   },
+  // S10: all five clients burst and stall together so the load arrives at the gateway at once.
+  'admission-limits': {
+    kind: 'security',
+    plans: [{ name: 'admission-limits', clientProfile: 'security', gatewayProfile: 'B1', perClient: 24, steps: [{ scenario: 'admission-limits', clients: ALL }] }],
+  },
   'upstream': {
     kind: 'security',
     plans: [{ name: 'upstream-failure', clientProfile: 'security', gatewayProfile: 'B1', perClient: 2, harnessVouchers: 4, steps: [{ orchestrated: 'upstream-failure' }] }],

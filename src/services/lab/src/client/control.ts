@@ -12,6 +12,7 @@ import { LabClient } from './client.ts';
 import type { Counters as ReportCounters } from '../report/build.ts';
 import { networkBoundaries, voucherPolicy } from './scenarios.ts';
 import { epochBoundary } from './epoch-scenario.ts';
+import { admissionLimits } from './admission-scenario.ts';
 import { concurrentReplay, malformedToken, sequentialReplay, sharedEgress, signatureAndKey, wrongContext } from './security-scenarios.ts';
 
 type State = 'FENCED' | 'PREPARED' | 'READY' | 'ENABLED' | 'CLOSING' | 'FAULTED';
@@ -46,6 +47,7 @@ export const baseScenarios: Record<string, ScenarioRunner> = {
   'concurrent-replay': concurrentReplay,
   'shared-egress': sharedEgress,
   'epoch-boundary': epochBoundary,
+  'admission-limits': admissionLimits,
   'network-boundaries': networkBoundaries,
   'healthy-flow': async ({ client }) => {
     const challenge = await client.fetchChallenge();
