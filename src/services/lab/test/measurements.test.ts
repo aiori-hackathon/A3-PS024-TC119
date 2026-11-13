@@ -72,16 +72,16 @@ test('the controller merges every client\'s REPORT measurements into the run rec
 });
 
 test('the performance controller waits for every mint acknowledgement before any redemption phase',async()=>{
-  let minted=0,early=false;
+  let minted=0,early=false,activeMint=0,maxMint=0,activeRedemption=0,maxRedemption=0;
   const phases:number[]=[];
   const runner:ScenarioRunner=async ctx=>{
     phases.push(ctx.seed);
-    if(ctx.seed>=10000){await new Promise(r=>setTimeout(r,10));minted++;}
-    else if(minted!==2)early=true;
+    if(ctx.seed>=10000){activeMint++;maxMint=Math.max(maxMint,activeMint);await new Promise(r=>setTimeout(r,10));minted++;activeMint--;}
+    else {if(minted!==2)early=true;activeRedemption++;maxRedemption=Math.max(maxRedemption,activeRedemption);await new Promise(r=>setTimeout(r,10));activeRedemption--;}
     const h=new Histogram();h.add(1);
     return {status:'PASS',expected:'measured',measurements:[h.summary(ctx.seed>=10000?'token_acquisition_ms':'protected_response_ms',1)]};
   };
   const rig=controllerRig({scenarios:{performance:runner}});
   const run=new LabRun({links:rig.links,redis:rig.redis,reset:rig.reset,gatewayLauncher:rig.launcher},{perClient:2,heartbeatMs:40,ackDeadlineMs:150,controlTimeoutMs:3000});
-  await run.start();try {await run.runScenario(['A','B'],'performance',10);assert.equal(early,false);assert.deepEqual(phases,[10010,10010,10,10]);}finally{await run.stop();}
+  await run.start();try {await run.runScenario(['A','B'],'performance',10);assert.equal(early,false);assert.equal(maxMint,1);assert.equal(maxRedemption,2);assert.deepEqual(phases,[10010,10010,10,10]);}finally{await run.stop();}
 });

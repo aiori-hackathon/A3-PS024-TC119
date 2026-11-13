@@ -20,8 +20,8 @@ import { createServer } from 'node:https';
 const dist = new URL('../dist/', import.meta.url);
 const bundle = (name: string) => fileURLToPath(new URL(name, dist));
 
-test('dist holds only the five role bundles and no gateway/fixture/test source', () => {
-  assert.deepEqual(readdirSync(dist).sort(), ['bootstrap.mjs', 'client.mjs', 'control-helper.mjs', 'harness.mjs', 'issuer.mjs', 'origin.mjs']);
+test('dist holds only the role and signing worker bundles with no gateway/fixture/test source', () => {
+  assert.deepEqual(readdirSync(dist).sort(), ['bootstrap.mjs', 'client.mjs', 'control-helper.mjs', 'harness.mjs', 'issuer.mjs', 'origin.mjs', 'signing-worker.mjs']);
   for (const name of readdirSync(dist)) {
     const text = readFileSync(new URL(name, dist), 'utf8');
     assert.match(text, /PS024-context-v1|control_socket/, `${name}: shared contract is bundled`);
@@ -101,11 +101,16 @@ test('built issuer process: full lifecycle through the built control helper, rea
     assert.equal((await at('ENABLE')).result, 'ENABLED');
     const spki = Buffer.from(key.data.token_key_spki_b64url, 'base64url');
     const issuance = await LabIssuance.begin(challengeFor(manifest, 0), spki);
-    const res = await https(port, pki.caPem, { method: 'POST', path: '/issue', body: issuance.requestWire,
+    const response = https(port, pki.caPem, { method: 'POST', path: '/issue', body: issuance.requestWire,
       headers: { 'Content-Type': 'application/private-token-request', 'X-Lab-Voucher': encodeBase64Url(vouchers[0]!, false) } });
+    await sleep(10);
+    const heartbeatStart = performance.now();
+    assert.equal((await at('HEARTBEAT', { seq: 1 })).result, 'HEARTBEAT_ACK');
+    assert.ok(performance.now() - heartbeatStart < 1500, 'real control heartbeat stays responsive during worker signing');
+    const res = await response;
     assert.equal(res.status, 200);
     assert.equal(await verifyTokenSignature(spki, await issuance.finalize(res.body)), true);
-    assert.equal((await at('HEARTBEAT', { seq: 1 })).result, 'HEARTBEAT_ACK');
+    assert.equal((await at('HEARTBEAT', { seq: 2 })).result, 'HEARTBEAT_ACK');
     assert.equal((await at('FENCE', { reason: 'operator-stop' })).result, 'FENCED');
     await assert.rejects(https(port, pki.caPem, { path: '/.well-known/private-token-issuer-directory' }));
     // Nothing secret was written to the process output streams.

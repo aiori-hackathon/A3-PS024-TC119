@@ -53,8 +53,8 @@ async function serviceWith(live: { value: boolean }, active = 2) {
   const service = new IssuanceService(issuer, store, { ...manifest.limits.issuer, active_signings: active }, () => live.value);
   service.setOpen(true);
   const body = async () => (await LabIssuance.begin(challengeFor(manifest, 0), issuer.publicKeySpki)).requestWire;
-  const send = async (v: Buffer) => service.handle({ contentType: REQUEST_TYPE, voucherHeaders: [encodeBase64Url(v, false)], body: await body() });
-  return { service, store, vouchers, send, issuer };
+  const send = async (v: Buffer, requestBody?: Uint8Array) => service.handle({ contentType: REQUEST_TYPE, voucherHeaders: [encodeBase64Url(v, false)], body: requestBody ?? await body() });
+  return { service, store, vouchers, send, issuer, body };
 }
 
 test('issuance checks the live lease at admission: an expired lease is 503 and the voucher is not consumed, even though the service is still "open"', async () => {
@@ -70,22 +70,24 @@ test('issuance checks the live lease at admission: an expired lease is 503 and t
 
 test('issuance re-checks the lease after queue promotion: work that waited while the lease lapsed is refused and spends nothing', async () => {
   const live = { value: true };
-  const { service, store, vouchers, send, issuer } = await serviceWith(live, 1);
+  const { service, store, vouchers, send, issuer, body } = await serviceWith(live, 1);
   // Occupy the single signing slot with a slow signer, queue a second request, then let the lease lapse before promotion.
   let finishFirst!: () => void; const slow = new Promise<void>((r) => { finishFirst = r; });
+  let markStarted!: () => void; const started = new Promise<void>(resolve => { markStarted = resolve; });
+  const bodies = [await body(), await body()];
   const realSign = issuer.sign.bind(issuer);
-  issuer.sign = async (w) => { await slow; return realSign(w); };
-  const first = send(vouchers[0]!);
-  await sleep(40);
-  const queued = send(vouchers[1]!);
-  await sleep(10);
+  issuer.sign = async (w) => { markStarted(); await slow; return realSign(w); };
+  const first = send(vouchers[0]!, bodies[0]);
+  await started;
+  const queued = send(vouchers[1]!, bodies[1]);
+  await new Promise(resolve => setImmediate(resolve));
   live.value = false;
   finishFirst();
   const [a, b] = await Promise.all([first, queued]);
-  assert.equal(a.status, 200, 'the already-signing request settles on its own');
+  assert.equal(a.status, 503, 'a signature completed after lease expiry is suppressed');
   assert.equal(b.status, 503, 'the queued request is refused at promotion');
   assert.equal(store.remaining, 3, 'only the voucher that actually reached signing was consumed');
-  assert.equal(service.counters.issuance_successes, 1);
+  assert.equal(service.counters.issuance_successes, 0);
 });
 
 test('role level: with the lease expired and no timer firing, an issuance over the wire is refused and the role faults', async () => {

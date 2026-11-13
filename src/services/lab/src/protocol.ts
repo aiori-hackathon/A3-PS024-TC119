@@ -8,6 +8,12 @@ import {
 const { BlindRSAMode, Client, Issuer, Origin, TokenRequest, TokenResponse, getPublicKeyBytes, convertRSASSAPSSToEnc } = publicVerif;
 const MODE = BlindRSAMode.PSS;
 
+export interface IssuerSigner {
+  readonly publicKeySpki: Uint8Array<ArrayBuffer>;
+  sign(requestWire: Uint8Array): Promise<Uint8Array<ArrayBuffer>>;
+  close?(): Promise<void>;
+}
+
 export function challengeFor(m: Manifest, epoch: number): TokenChallenge {
   return new TokenChallenge(PROTOCOL.token_type, m.issuer_name, redemptionContext(m, epoch), [m.origin_name]);
 }

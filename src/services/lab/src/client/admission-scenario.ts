@@ -29,7 +29,8 @@ const inconclusive = (label: string): ScenarioOutcome => ({ status: 'INCONCLUSIV
 
 export async function admissionLimitsWith(ctx: ScenarioContext, d: AdmissionDeps = real): Promise<ScenarioOutcome> {
   const { client, signal } = ctx;
-  if (!ctx.hasVoucher(BURST)) return inconclusive('missing-evidence');
+  const phase = ctx.seed === 10001 ? 'mint' : ctx.seed === 1 ? 'redeem' : 'full';
+  if (phase !== 'redeem' && !ctx.hasVoucher(BURST)) return inconclusive('missing-evidence');
 
   // Mint first, so the burst consists of ready tokens and nothing else.
   const parsed = await client.fetchChallenge();
@@ -37,9 +38,22 @@ export async function admissionLimitsWith(ctx: ScenarioContext, d: AdmissionDeps
   try {
     // Paced: five clients minting 24 tokens each at full speed starve the issuer's control heartbeat on a small host, and the
     // supervision deadline (never lengthened) would then close the run. The burst below is the load under test, not this.
-    for (let i = 0; i < BURST; i++) {
-      if (signal.aborted) return inconclusive('missing-evidence');
-      wires.push(await client.issueWire(parsed.challenge)); await d.sleep(MINT_PACE_MS, signal);
+    if (phase === 'redeem') {
+      for (let i = 0; i < BURST; i++) {
+        const wire = client.tokens.take(parsed.epoch);
+        if (!wire) return inconclusive('missing-evidence');
+        wires.push(wire);
+      }
+    } else {
+      for (let i = 0; i < BURST; i++) {
+        if (signal.aborted) return inconclusive('missing-evidence');
+        wires.push(await client.issueWire(parsed.challenge)); await d.sleep(MINT_PACE_MS, signal);
+      }
+      if (phase === 'mint') {
+        if (signal.aborted) return inconclusive('missing-evidence');
+        for (const wire of wires) client.tokens.add(parsed.epoch, wire);
+        return { status: 'PASS', expected: 'bounded', counters: { issuance_successes: BURST }, failure_labels: [] };
+      }
     }
 
     // Phase 1: slow clients, while a legitimate challenge request is made in the middle of it.
@@ -88,7 +102,7 @@ export async function admissionLimitsWith(ctx: ScenarioContext, d: AdmissionDeps
     ];
     const ok = checks.every((c) => c.ok);
     return { status: ok ? 'PASS' : 'FAIL', expected: 'bounded',
-      counters: { observations: checks.length + BURST, issuance_successes: BURST, claims_successful: wins, queue_rejected: busy.length, transport_failures: unknownOutcome, requests_rejected: connected.filter((s) => s.closed).length },
+      counters: { observations: checks.length + BURST, ...(phase === 'full' ? { issuance_successes: BURST } : {}), claims_successful: wins, queue_rejected: busy.length, transport_failures: unknownOutcome, requests_rejected: connected.filter((s) => s.closed).length },
       failure_labels: ok ? [] : ['assertion-failed'] };
   } finally { for (const w of wires) w.fill(0); }
 }

@@ -3,7 +3,10 @@
 import { IssuerRole } from '../issuer/control.ts';
 import { serveControl } from '../control-server.ts';
 import { controlSocketPath, exitOnSignal, fenceRequest, listenConfig, readSecret } from './common.ts';
+import { WorkerSigner } from '../issuer/worker-signer.ts';
 
-const role = new IssuerRole({ readSecret, listen: listenConfig() });
+const role = new IssuerRole({ readSecret, listen: listenConfig(),
+  createSigner: (name, failed) => WorkerSigner.create(new URL(import.meta.url.endsWith('.ts')
+    ? '../issuer/signing-worker.ts' : './signing-worker.mjs', import.meta.url), name, failed) });
 await serveControl(controlSocketPath(), (raw) => role.handle(raw));
 exitOnSignal(() => role.handle(fenceRequest()));

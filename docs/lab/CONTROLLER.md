@@ -46,6 +46,12 @@ If setup fails before a complete snapshot exists (no manifest or no gateway inca
 4. The lab image build must also type-check the host controller, which imports the public reset utility.
 5. A faulted gateway stops acknowledging heartbeats, so supervision legitimately closes the run mid-scenario; the fault scenarios treat that as evidence instead of fighting it, and take origin counts from the barrier's settled report when the live read is gone.
 
+## Issuer signing and control responsiveness
+
+The admission-limit scenario prepares each client's 24 tokens in a separate controller phase. Once all five inventories are ready, it launches their slow-request and synchronized redemption phases together. Preparation failures remain failed evidence. The benchmark uses the same inventory barrier with its declared conditions.
+
+The deployed issuer runs the pinned library's synchronous blind RSA operation in a dedicated worker thread. Its private key is generated and retained in that thread. Voucher admission and lease/control decisions run on the issuer's main thread, with the existing deadlines. Worker failure closes admission, and FENCE waits for signing to settle and for worker termination, including a key that finishes generation after fencing begins. A signature completed after lease expiry is suppressed and its voucher stays consumed.
+
 ## Not done
 
 A native Linux run outside CI and a fresh-checkout/venue rehearsal on a second physical machine remain environment-dependent. The [separate-host scripts and runbook](../../infra/deploy/README.md) are implemented. See [benchmark conditions](BENCHMARK.md). Existing report output paths are refused to preserve failed trials. Windows cannot deliver a graceful SIGINT to the controller; stopping it abruptly is exactly the case the issuer and gateway leases cover.

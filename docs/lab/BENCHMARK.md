@@ -1,5 +1,7 @@
 # Repeated B0/B1 experiment
 
+The controller prepares one participating client's inventory at a time, then starts all redemption phases concurrently after every inventory is ready. This keeps setup within the issuer's independent signing queue limits. Acquisition/HTTP timers cover each operation inside its client, while waiting for that client's turn happens outside those samples. Preparation throughput describes this paced schedule. The configured gateway redemption concurrency remains 1, 10 or 50.
+
 Run `node src/services/lab/src/controller/cli.ts run --suite performance --out artifacts/benchmark-<unique-name>.json`, then `verify-report --file ... --require-pass`, `summarize-benchmark --file ...` and `serve-report --file ...`. Existing output files are refused, so a retry cannot erase a failed trial. Every generation writes a validated snapshot; setup failures remain fixed diagnostics in the console log and missing runs prevent benchmark PASS.
 
 There are 24 fresh supervised generations: for each concurrency 1, 10 and 50, two warmups followed by three paired repetitions ordered B0/B1, B1/B0, B0/B1. Each has its own key, store, manifest, counters and confirmed reset boundary. These fresh generations warm host/image caches; measured processes still start cold, so this is not a steady-state process/JIT warmup. Warmup samples remain in separately labelled runs and are never merged into measured distributions or gain calculations.

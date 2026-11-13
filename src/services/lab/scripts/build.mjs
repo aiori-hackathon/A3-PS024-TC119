@@ -3,6 +3,7 @@ import { build } from 'esbuild';
 const entries = {
   bootstrap: 'src/bootstrap.ts',
   issuer: 'src/roles/issuer.ts',
+  'signing-worker': 'src/issuer/signing-worker.ts',
   client: 'src/roles/client.ts',
   origin: 'src/roles/origin.ts',
   harness: 'src/roles/harness.ts',

@@ -357,8 +357,21 @@ export class LabRun {
     const ids = typeof clients === 'string' ? [clients] : [...clients];
     const record = await this.#measure(scenarioId, async () => {
       let issuance: Json[] = [];
-      if(scenarioId === 'performance') {
-        const minted = await Promise.all(ids.map(async id => {try{return await this.#d.links.clients[id].send(request('RUN_SCENARIO',this.#at(`client-${id}`),{scenario_id:scenarioId,schedule_seed:10000+seed}),540_000);}catch{return null;}}));
+      if(scenarioId === 'performance' || scenarioId === 'admission-limits') {
+        // Token preparation is serialized by client so the gateway experiment cannot
+        // accidentally saturate the issuer's independent signing queue.
+        const minted: (Json | null)[] = [];
+        for (const id of ids) {
+          try {
+            minted.push(await this.#d.links.clients[id].send(request('RUN_SCENARIO', this.#at(`client-${id}`),
+              { scenario_id: scenarioId, schedule_seed: 10000 + seed }), 540_000));
+          } catch { minted.push(null); }
+          const last = minted.at(-1);
+          if (last === null) return 'control-lost';
+          if (last?.['ok'] !== true) return 'missing-evidence';
+          if (last['data'].status !== 'PASS') return minted.map(r => r!['data']) as ScenarioData[];
+        }
+        if (minted.length !== ids.length) return 'missing-evidence';
         if(minted.some(r=>r===null))return 'control-lost';
         if(minted.some(r=>r!['ok']!==true))return 'missing-evidence';
         issuance=minted.map(r=>r!['data']);

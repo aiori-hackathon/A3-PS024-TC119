@@ -2,7 +2,7 @@
 // Order is fixed: content type, protocol validity (422, before any voucher is consumed), voucher (403),
 // then signing. Framing errors (400/413/405) are the transport's job; see server.ts.
 import { PROTOCOL, ContractError, decodeBase64Url, voucherDigest, sha256 } from '../../../../contracts/lib/index.ts';
-import type { LabIssuer } from '../protocol.ts';
+import type { IssuerSigner } from '../protocol.ts';
 import { AdmissionGate } from './admission.ts';
 import type { VoucherStore } from './vouchers.ts';
 
@@ -15,7 +15,7 @@ const fixed = (status: number, error: string): IssueOutput =>
   ({ status, contentType: 'application/json', body: new TextEncoder().encode(JSON.stringify({ error })) });
 
 export class IssuanceService {
-  readonly #issuer: LabIssuer;
+  readonly #issuer: IssuerSigner;
   readonly #vouchers: VoucherStore;
   readonly #gate: AdmissionGate;
   readonly #truncatedKeyId: number;
@@ -30,7 +30,7 @@ export class IssuanceService {
    * immediately before a voucher is consumed and signing starts. `#open` alone is not enough, because a delayed watchdog timer
    * must not extend authorization.
    */
-  constructor(issuer: LabIssuer, vouchers: VoucherStore, limits: typeof PROTOCOL.issuer_limits, isLive: () => boolean = () => true) {
+  constructor(issuer: IssuerSigner, vouchers: VoucherStore, limits: typeof PROTOCOL.issuer_limits, isLive: () => boolean = () => true) {
     this.#live = isLive;
     this.#issuer = issuer;
     this.#vouchers = vouchers;
@@ -62,6 +62,7 @@ export class IssuanceService {
       if (voucher === null || !this.#vouchers.consume(voucherDigest(voucher))) return this.#fail(403, 'issuance-not-authorized');
       try {
         const response = await this.#issuer.sign(b);
+        if (!this.#open || !this.#live()) return this.#fail(503, 'issuance-unavailable');
         this.#successes += 1;
         return { status: 200, contentType: RESPONSE_TYPE, body: response };
       } catch {

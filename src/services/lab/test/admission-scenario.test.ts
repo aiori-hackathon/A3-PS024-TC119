@@ -8,6 +8,11 @@ function rig(over: { busy?: number; retry?: (n: number) => R; stall?: { closed: 
   let t = 1_000, seen = 0, redeems = 0;
   const busyIdx = new Set(Array.from({ length: over.busy ?? 5 }, (_, i) => i));
   const client = {
+    tokens: {
+      stored: [] as Uint8Array[],
+      add(_epoch: number, wire: Uint8Array) { this.stored.push(Uint8Array.from(wire)); },
+      take(_epoch: number) { return this.stored.shift(); },
+    },
     async fetchChallenge() { if (over.challenge === false) throw new Error('down'); return { epoch: 0, challenge: {} }; },
     async issueWire() { return Uint8Array.of(seen++); },
     async redeemWire(w: Uint8Array) {
@@ -18,8 +23,19 @@ function rig(over: { busy?: number; retry?: (n: number) => R; stall?: { closed: 
     async rawGateway() { const s = over.stall ?? { closed: true, ms: 2000 }; const s0 = t; await Promise.resolve(); t = Math.max(t, s0 + s.ms); return { status: null, label: null, closed: s.closed, connected: s.connected ?? true }; },
   };
   const ctx = { client, hasVoucher: (n: number) => (over.vouchers ?? 99) >= n, signal: (over.abort ?? new AbortController()).signal } as unknown as ScenarioContext;
-  return { ctx, deps: { sleep: async (ms: number) => { t += ms; }, now: () => t } };
+  return { ctx, counts: () => ({ minted: seen, redeemed: redeems }), deps: { sleep: async (ms: number) => { t += ms; }, now: () => t } };
 }
+
+test('the mint phase retains bounded inventory and the gateway phase redeems without issuing again', async () => {
+  const x = rig(); x.ctx.seed = 10001;
+  assert.equal((await admissionLimitsWith(x.ctx, x.deps)).status, 'PASS');
+  assert.deepEqual(x.counts(), { minted: BURST, redeemed: 0 });
+  x.ctx.seed = 1;
+  const result = await admissionLimitsWith(x.ctx, x.deps);
+  assert.equal(result.status, 'PASS');
+  assert.equal(x.counts().minted, BURST);
+  assert.equal(result.counters?.claims_successful, BURST);
+});
 
 test('stalls are closed in time, busy refusals are retried to success: PASS with the refusals counted', async () => {
   const x = rig(); const o = await admissionLimitsWith(x.ctx, x.deps);

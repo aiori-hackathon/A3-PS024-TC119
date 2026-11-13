@@ -10,7 +10,7 @@ import {
   PROTOCOL, ContractError, encodeBase64Url, hex, sha256, validateControlRequest, validateControlResponse, type Manifest,
 } from '../../../../contracts/lib/index.ts';
 import { LabError, type ControlErrorResult } from '../errors.ts';
-import { LabIssuer } from '../protocol.ts';
+import { LabIssuer, type IssuerSigner } from '../protocol.ts';
 import { VoucherStore } from './vouchers.ts';
 import { IssuanceService } from './issuance.ts';
 import { createIssuerServer, type IssuerTls } from './server.ts';
@@ -20,6 +20,7 @@ type Fault = (typeof PROTOCOL.faults)[number] | null;
 type Json = Record<string, unknown>;
 
 export type IssuerRoleOptions = {
+  createSigner?: (name: string, failed: () => void) => Promise<IssuerSigner>;
   /** Reads a path under /run/secrets. Injected for tests. */
   readSecret?: (path: string) => Buffer;
   /** Monotonic milliseconds. Injected for tests. */
@@ -44,7 +45,8 @@ export class IssuerRole {
   #runId: string | null = null;
   #digest: string | null = null;
   #manifest: Manifest | null = null;
-  #issuer: LabIssuer | null = null;
+  #issuer: IssuerSigner | null = null;
+  readonly #createSigner: NonNullable<IssuerRoleOptions['createSigner']>;
   #keyReply: { request_id: string; data: Json } | null = null;
   #tls: IssuerTls | null = null;
   #vouchers: VoucherStore | null = null;
@@ -58,6 +60,7 @@ export class IssuerRole {
   #chain: Promise<unknown> = Promise.resolve();
 
   constructor(options: IssuerRoleOptions = {}) {
+    this.#createSigner = options.createSigner ?? ((name) => LabIssuer.generate(name));
     this.#readSecret = options.readSecret ?? ((p) => readFileSync(p));
     this.#now = options.clock ?? (() => performance.now());
     this.#listen = options.listen ?? { host: '0.0.0.0', port: 443 };
@@ -125,17 +128,23 @@ export class IssuerRole {
     // The run identity is claimed BEFORE the await, so a FENCE that arrives while the key is being generated sees a run and
     // latches it closed. A key that completes after that is discarded, never installed.
     this.#runId = runId;
-    const pending = LabIssuer.generate(PROTOCOL.issuer_name);
+    const pending = (async () => {
+      let issuer: IssuerSigner;
+      try { issuer = await this.#createSigner(PROTOCOL.issuer_name, () => this.#faultNow('dependency-lost')); }
+      catch { this.#runId = null; throw new LabError('DEPENDENCY_UNAVAILABLE'); }
+      if (this.#state !== 'FENCED' || this.#runClosed) {
+        // Key creation remains pending until the discarded worker has actually exited.
+        await issuer.close?.();
+        throw new LabError('FAULTED');
+      }
+      this.#issuer = issuer;
+      const data = { token_key_spki_b64url: encodeBase64Url(issuer.publicKeySpki, true), token_key_id: hex(sha256(issuer.publicKeySpki)) };
+      this.#keyReply = { request_id: requestId, data };
+      return this.#ok(requestId, 'KEY_CREATED', data);
+    })();
     this.#keyPending = pending.then(() => undefined, () => undefined);
-    let issuer: LabIssuer;
-    try { issuer = await pending; }
-    catch { this.#runId = null; throw new LabError('DEPENDENCY_UNAVAILABLE'); }
+    try { return await pending; }
     finally { this.#keyPending = null; }
-    if (this.#state !== 'FENCED' || this.#runClosed) throw new LabError('FAULTED'); // fenced or faulted meanwhile: suppress the late result
-    this.#issuer = issuer;
-    const data = { token_key_spki_b64url: encodeBase64Url(this.#issuer.publicKeySpki, true), token_key_id: hex(sha256(this.#issuer.publicKeySpki)) };
-    this.#keyReply = { request_id: requestId, data };
-    return this.#ok(requestId, 'KEY_CREATED', data);
   }
 
   #prepare(requestId: string, payload: Json): Json {
@@ -248,6 +257,7 @@ export class IssuerRole {
       if (!settled) return this.#error(requestId, 'FAULTED');
     }
     if (this.#service && !(await this.#service.drain(this.#drainMs))) return this.#error(requestId, 'FAULTED');
+    await this.#issuer?.close?.();
     if (this.#server?.listening) await new Promise<void>((resolve) => this.#server!.close(() => resolve()));
     if (hadRun) { this.#runClosed = true; this.#fault = this.#fault ?? reason; }
     this.#state = 'FENCED';
