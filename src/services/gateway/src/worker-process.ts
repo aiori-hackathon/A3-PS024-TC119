@@ -42,14 +42,14 @@ process.on('message', (raw: unknown) => {
         if (!config || !isIP(config.listen_host) || !Number.isInteger(config.listen_port) || config.listen_port < 1 || config.listen_port > 65535 ||
           typeof message['supervisor'] !== 'string') throw Error();
         listenHost = config.listen_host; listenPort = config.listen_port;
-        host = WorkerHost.prepare(message['manifest'], incarnation, message['supervisor'], config.endpoint, config.tls, fault);
+        host = WorkerHost.prepare(message['manifest'], incarnation, message['supervisor'], config.endpoint, config.tls, fault, message['source_key'] as string);
         await host.ready();
       } else if (!host) throw Error();
       else if (message['command'] === 'ENABLE') { if (!host.enable(message['grant'] as WorkerLeaseGrant)) throw Error(); }
       else if (message['command'] === 'HEARTBEAT') { if (!host.heartbeat(message['grant'] as WorkerLeaseGrant)) throw Error(); }
       else if (message['command'] === 'LISTEN') await host.listen(listenHost, listenPort);
       else if (message['command'] === 'REPORT') {
-        send({ kind: 'reply', id, ok: true, attempts: host.attempts }); return;
+        send({ kind: 'reply', id, ok: true, attempts: host.attempts, measurements: host.measurements, source: host.source, resources: host.resources, rpc_outcomes: host.rpcOutcomes }); return;
       } else throw Error();
       if (stopping) return;
       send({ kind: 'reply', id, ok: true });

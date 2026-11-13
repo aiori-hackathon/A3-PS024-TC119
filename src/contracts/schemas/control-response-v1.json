@@ -986,6 +986,109 @@
               },
               "minItems": 0,
               "maxItems": 2
+            },
+            "resources": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "scope": {
+                    "enum": [
+                      "gateway-worker",
+                      "gateway-supervisor",
+                      "controller",
+                      "issuer",
+                      "origin",
+                      "client"
+                    ]
+                  },
+                  "worker_index": {
+                    "oneOf": [
+                      {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 1
+                      },
+                      {
+                        "const": null
+                      }
+                    ]
+                  },
+                  "elapsed_ms": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "cpu_user_us": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "cpu_system_us": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "peak_rss_bytes": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "memory_scope": {
+                    "const": "process-lifetime-highwater"
+                  }
+                },
+                "required": [
+                  "scope",
+                  "worker_index",
+                  "elapsed_ms",
+                  "cpu_user_us",
+                  "cpu_system_us",
+                  "peak_rss_bytes",
+                  "memory_scope"
+                ],
+                "additionalProperties": false
+              },
+              "minItems": 0,
+              "maxItems": 16
+            },
+            "rpc_outcomes": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "operation": {
+                    "enum": [
+                      "snapshot",
+                      "claim"
+                    ]
+                  },
+                  "failures": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "timeouts": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "uncertain": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  }
+                },
+                "required": [
+                  "operation",
+                  "failures",
+                  "timeouts",
+                  "uncertain"
+                ],
+                "additionalProperties": false
+              },
+              "minItems": 0,
+              "maxItems": 2
             }
           },
           "required": [

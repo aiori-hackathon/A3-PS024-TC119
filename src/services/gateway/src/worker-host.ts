@@ -1,3 +1,5 @@
+import { ResourceProbe } from '../../../contracts/lib/resources.ts';
+import { SourceObservation } from './source-observation.ts';
 import { ContractError, validateManifest, type Manifest } from '../../../contracts/lib/index.ts';
 import { WorkerLease, type WorkerCloseReason, type WorkerLeaseGrant } from './worker-lease.ts';
 import { openRedisReplayStore, type RedisEndpoint } from './redis-adapter.ts';
@@ -9,6 +11,9 @@ import { HttpsGateway, type GatewayTls } from './https-gateway.ts';
 /** One immutable run in one serving process. No retry, replacement pool or same-run recovery. */
 export class WorkerHost {
   readonly lease: WorkerLease;
+  readonly #resources = new ResourceProbe('gateway-worker');
+  get resources() { return [this.#resources.summary()]; }
+  get rpcOutcomes() { return this.#store?.rpcOutcomes ?? []; }
   readonly #manifest: Manifest;
   #store: ReplayStore | null = null;
   #origin: FixedOrigin | null = null;
@@ -17,6 +22,8 @@ export class WorkerHost {
   #preparation: Promise<void> = Promise.resolve();
   #drain: Promise<void> | null = null;
   #closed = false;
+  #source: SourceObservation | undefined;
+  get source() { return this.#source?.summary() ?? { observations: 0, consistent: null, tag: null }; }
 
   private constructor(m: Manifest, worker: string, supervisor: string, onFault: (reason: WorkerCloseReason) => void) {
     this.#manifest = m;
@@ -26,8 +33,9 @@ export class WorkerHost {
     });
   }
   static prepare(manifest: unknown, worker: string, supervisor: string, endpoint: RedisEndpoint, tls: GatewayTls,
-    onFault: (reason: WorkerCloseReason) => void): WorkerHost {
+    onFault: (reason: WorkerCloseReason) => void, sourceKey?: string): WorkerHost {
     const host = new WorkerHost(validateManifest(structuredClone(manifest)), worker, supervisor, onFault);
+    if (sourceKey) host.#source = new SourceObservation(sourceKey);
     host.#preparation = host.#prepare(endpoint, tls);
     host.#preparation.catch(() => { host.lease.requestClose('dependency-lost'); });
     return host;
@@ -38,7 +46,7 @@ export class WorkerHost {
     this.#origin = FixedOrigin.prepare(this.#manifest, this.lease);
     this.#coordinator = await RequestCoordinator.prepare(this.#manifest, this.lease, this.#store, this.#origin);
     if (this.#closed) throw new ContractError('worker-closed');
-    this.#https = HttpsGateway.prepare(this.#manifest, this.lease, this.#coordinator, tls);
+    this.#https = HttpsGateway.prepare(this.#manifest, this.lease, this.#coordinator, tls, undefined, this.#source);
   }
   async ready(): Promise<void> {
     await this.#preparation;
@@ -51,6 +59,7 @@ export class WorkerHost {
     await this.#https.listen(host, port);
     if (!this.lease.checkActive() || this.#closed) throw new ContractError('worker-not-enabled');
   }
+  get measurements() { return [...(this.#coordinator?.measurements ?? []), ...(this.#store?.measurements ?? [])]; }
   get attempts(): number { return this.#coordinator?.verificationAttempts ?? 0; }
   close(): Promise<void> {
     if (this.#drain) return this.#drain;

@@ -1,3 +1,6 @@
+import { ResourceProbe, type ResourceMeasurement, type RpcOutcome } from '../../../contracts/lib/resources.ts';
+import { combineSources, type SourceSummary } from './source-observation.ts';
+import { mergeMeasurements, type Measurement } from '../../../contracts/lib/measurements.ts';
 import { randomBytes } from 'node:crypto';
 import { configurationDigest, validateControlRequest, validateControlResponse, validateManifest, type Manifest } from '../../../contracts/lib/index.ts';
 import { WorkerLease, monotonicRuntime, type LeaseRuntime, type WorkerCloseReason, type WorkerLeaseGrant } from './worker-lease.ts';
@@ -5,11 +8,15 @@ import { WorkerLease, monotonicRuntime, type LeaseRuntime, type WorkerCloseReaso
 /** Private same-container worker channel. close resolves only after confirmed process exit. */
 export interface SupervisorWorker {
   incarnation: string;
-  prepare(manifest: Manifest, supervisor: string): Promise<void>;
+  prepare(manifest: Manifest, supervisor: string, sourceKey?: string): Promise<void>;
   enable(grant: WorkerLeaseGrant): Promise<void>;
   listen(): Promise<void>;
   heartbeat(grant: WorkerLeaseGrant): Promise<void>;
   attempts(): Promise<number>;
+  measurements?(): Measurement[];
+  source?(): SourceSummary;
+  resources?(): ResourceMeasurement[];
+  rpcOutcomes?(): RpcOutcome[];
   close(): Promise<void>;
 }
 export type WorkerFactory = (index: number, fault: (reason: WorkerCloseReason) => void) => Promise<SupervisorWorker>;
@@ -30,6 +37,8 @@ export class GatewaySupervisor {
   #busy = false;
   #initial: WorkerLeaseGrant | null = null;
   #lastSequence = 0;
+  readonly #resources = new ResourceProbe('gateway-supervisor');
+  readonly #sourceKey = randomBytes(32).toString('hex');
   #preparation: Promise<void> = Promise.resolve();
   #drain: Promise<void> | null = null;
 
@@ -126,8 +135,11 @@ export class GatewaySupervisor {
       if (command === 'REPORT') {
         const attempts = await Promise.all(this.#workers.map(worker => worker.attempts()));
         if (this.#closed || attempts.some(n => !Number.isSafeInteger(n) || n < 0) || !Number.isSafeInteger(attempts.reduce((a, b) => a + b, 0))) throw Error();
-        return this.#reply(id, true, 'REPORT', { counters: { verification_attempts: attempts.reduce((a, b) => a + b, 0) },
-          measurements: [], same_source_observed: null, origin_counts_available: false,
+        const source = combineSources(this.#workers.map(w => w.source?.() ?? { observations: 0, consistent: null, tag: null }));
+        return this.#reply(id, true, 'REPORT', { counters: { observations: source.observations, verification_attempts: attempts.reduce((a, b) => a + b, 0) },
+          resources: [this.#resources.summary(), ...this.#workers.flatMap((w,i) => (w.resources?.() ?? []).map(r => ({...r, worker_index:i})))],
+          rpc_outcomes: ['snapshot','claim'].map(operation => { const rows = this.#workers.flatMap(w => w.rpcOutcomes?.() ?? []).filter(r => r.operation === operation); return { operation, failures: rows.reduce((n,r)=>n+r.failures,0), timeouts: rows.reduce((n,r)=>n+r.timeouts,0), uncertain: rows.reduce((n,r)=>n+r.uncertain,0) }; }),
+          measurements: mergeMeasurements(this.#workers.map(w => w.measurements?.() ?? [])), same_source_observed: source.same, origin_counts_available: false,
           worker_verification_attempts: attempts.map((n, i) => ({ worker_index: i, attempts: n })) });
       }
       return this.#reply(id, false, 'ILLEGAL_STATE');
@@ -141,7 +153,7 @@ export class GatewaySupervisor {
       this.#workers[index] = worker;
       if (this.#closed) { await worker.close(); throw Error(); }
       if (!/^[0-9a-f]{32}$/.test(worker.incarnation) || this.#workers.some(other => other !== worker && other.incarnation === worker.incarnation)) throw Error();
-      await worker.prepare(this.#manifest!, this.incarnation);
+      await worker.prepare(this.#manifest!, this.incarnation, this.#sourceKey);
       if (this.#closed) throw Error();
     }));
     if (results.some(result => result.status === 'rejected')) throw Error();

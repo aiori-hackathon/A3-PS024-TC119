@@ -6,6 +6,20 @@ import golden from '../../../contracts/fixtures/policy-golden.json' with { type:
 import { configurationDigest, makeManifest, validateManifest } from '../../../contracts/lib/index.ts';
 import { GatewaySupervisor, type SupervisorWorker } from '../src/gateway-supervisor.ts';
 import type { LeaseRuntime, WorkerCloseReason, WorkerLeaseGrant } from '../src/worker-lease.ts';
+import { SourceObservation, combineSources } from '../src/source-observation.ts';
+
+test('source equality combines both workers, detects distinct singleton sources and never exports an address', () => {
+  const a = new SourceObservation('a'.repeat(64)), b = new SourceObservation('a'.repeat(64));
+  assert.equal(combineSources([a.summary(), b.summary()]).same, null);
+  a.observe('192.0.2.1'); assert.equal(combineSources([a.summary(), b.summary()]).same, null);
+  b.observe('192.0.2.2'); assert.equal(combineSources([a.summary(), b.summary()]).same, false);
+  const c = new SourceObservation('a'.repeat(64)); c.observe('192.0.2.1');
+  assert.deepEqual(combineSources([a.summary(), c.summary()]), { same: true, observations: 2 });
+  assert.equal(JSON.stringify(a.summary()).includes('192.0.2.1'), false);
+  const d = new SourceObservation('b'.repeat(64)); d.observe('192.0.2.1');
+  assert.notEqual(d.summary().tag, a.summary().tag, 'fresh generations cannot correlate tags');
+  c.observe(undefined); assert.equal(combineSources([a.summary(), c.summary()]).same, null);
+});
 
 function deferred() { let resolve!: () => void; const promise = new Promise<void>(done => { resolve = done; }); return { promise, resolve }; }
 function fixture(profile: 'B0' | 'B1' = 'B1') {
@@ -105,7 +119,11 @@ test('control binding/schema errors disclose no payload and do not mutate prepar
 
 test('reports contain only aggregate verification attempts and no invented measurements/origin evidence', async () => {
   const f = fixture(); await f.ready(); const reply = await f.supervisor.handle(f.message('REPORT'));
-  assert.deepEqual(reply['data'], { counters: { verification_attempts: 3 }, measurements: [], same_source_observed: null,
+  const data = reply['data'] as Record<string, unknown>;
+  assert.equal((data['resources'] as unknown[]).length, 1);
+  assert.ok((data['resources'] as {cpu_user_us:number}[])[0]!.cpu_user_us >= 0);
+  const {resources, rpc_outcomes, ...aggregate} = data;
+  assert.deepEqual(aggregate, { counters: { observations: 0, verification_attempts: 3 }, measurements: [], same_source_observed: null,
     origin_counts_available: false, worker_verification_attempts: [{ worker_index: 0, attempts: 1 }, { worker_index: 1, attempts: 2 }] });
   await f.supervisor.fence();
 });

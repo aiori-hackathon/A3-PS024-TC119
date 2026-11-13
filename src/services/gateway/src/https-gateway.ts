@@ -1,3 +1,4 @@
+import type { SourceObservation } from './source-observation.ts';
 import { createServer, type Server } from 'node:https';
 import { createSecureContext, TLSSocket } from 'node:tls';
 import { X509Certificate, createPrivateKey } from 'node:crypto';
@@ -22,6 +23,7 @@ export class HttpsGateway {
   readonly #lease: WorkerLease;
   readonly #coordinator: Coordinator;
   readonly #runtime: LeaseRuntime;
+  readonly #source: SourceObservation | undefined;
   readonly #server: Server;
   readonly #connections = new Map<Socket, Connection>();
   readonly #tasks = new Set<Promise<void>>();
@@ -38,7 +40,8 @@ export class HttpsGateway {
   #coordinatorClosed = false;
   #cleanupFailed = false;
 
-  private constructor(m: Manifest, lease: WorkerLease, coordinator: Coordinator, tls: GatewayTls, runtime: LeaseRuntime) {
+  private constructor(m: Manifest, lease: WorkerLease, coordinator: Coordinator, tls: GatewayTls, runtime: LeaseRuntime, source?: SourceObservation) {
+    this.#source = source;
     this.#manifest = m; this.#lease = lease; this.#coordinator = coordinator; this.#runtime = runtime;
     const context = createSecureContext({ key: tls.key, cert: tls.cert, minVersion: 'TLSv1.3', maxVersion: 'TLSv1.3' });
     this.#server = createServer({
@@ -68,7 +71,7 @@ export class HttpsGateway {
   }
 
   static prepare(configuration: unknown, lease: WorkerLease, coordinator: Coordinator, material: GatewayTls,
-    runtime: LeaseRuntime = monotonicRuntime): HttpsGateway {
+    runtime: LeaseRuntime = monotonicRuntime, source?: SourceObservation): HttpsGateway {
     try {
       const m = validateManifest(structuredClone(configuration)), digest = configurationDigest(m);
       for (const binding of [lease.status, coordinator.binding]) {
@@ -78,7 +81,7 @@ export class HttpsGateway {
         typeof material.key !== 'string' || material.key.length > 16384 || typeof material.cert !== 'string' || material.cert.length > 65536) throw Error('material');
       const cert = new X509Certificate(material.cert);
       if (!cert.checkHost(m.origin_name, { wildcards: false }) || !cert.checkPrivateKey(createPrivateKey(material.key))) throw Error('certificate');
-      return new HttpsGateway(m, lease, coordinator, { key: material.key, cert: material.cert }, runtime);
+      return new HttpsGateway(m, lease, coordinator, { key: material.key, cert: material.cert }, runtime, source);
     } catch { throw new ContractError('https-configuration-invalid'); }
   }
 
@@ -171,6 +174,7 @@ export class HttpsGateway {
   #request(req: IncomingMessage, res: ServerResponse): void {
     const record = this.#find(req.socket);
     if (!record || !record.tls || record.tls !== req.socket || record.tlsClosed || record.started || this.#closed || req.httpVersion !== '1.1') { req.socket.destroy(); return; }
+    if (req.rawHeaders.some((v, i) => i % 2 === 0 && v.toLowerCase() === 'authorization')) this.#source?.observe(record.raw.remoteAddress);
     record.started = true; res.shouldKeepAlive = false; res.sendDate = false;
     const now = this.#now();
     if (now === null || now >= record.headerDeadline || !this.#lease.checkActive()) { this.#destroy(record); return; }

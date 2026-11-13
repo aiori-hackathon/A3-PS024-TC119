@@ -1,3 +1,5 @@
+import { performance } from 'node:perf_hooks';
+import { Histogram } from '../../../contracts/lib/measurements.ts';
 import { ContractError, PROTOCOL, configurationDigest, validateManifest, type Manifest } from '../../../contracts/lib/index.ts';
 import { FlowAdmission, type FlowPermit } from './flow-admission.ts';
 import { GatewayResponses, copyRawHeaders, parseAuthorization, type GatewayError, type HttpRejection } from './http-auth.ts';
@@ -45,6 +47,11 @@ export class RequestCoordinator {
   readonly #onReplayClosed: () => void;
   #closed = false;
   #verificationAttempts = 0;
+  readonly #verification = new Histogram();
+  readonly #queue = new Histogram();
+  readonly #authorization = new Histogram();
+  readonly #started = performance.now();
+  get measurements() { const ms = performance.now() - this.#started; return [this.#verification.summary('verification_ms', ms), this.#queue.summary('queue_wait_ms', ms), this.#authorization.summary('authorization_ms', ms)]; }
   #drain: Promise<void> | null = null;
 
   private constructor(m: Manifest, lease: WorkerLease, replay: Replay, origin: Origin, verifier: TokenVerifier) {
@@ -80,6 +87,7 @@ export class RequestCoordinator {
   #live(permit: FlowPermit): boolean { return !this.#closed && permit.checkActive() && !this.#closed; }
 
   async handle(view: RequestView, deliver: ResponseSink): Promise<void> {
+    const authorizationStart = performance.now(); let authorized = false;
     // Bounded, owned primitives before first await: callers cannot alter queued requests.
     const method = view.method, target = view.target, hasBody = view.hasBody, client = view.signal, checkActive = view.checkActive;
     const transportLive = () => !client.aborted && (checkActive ? checkActive() : true) && !client.aborted;
@@ -109,7 +117,9 @@ export class RequestCoordinator {
     try {
       if (!transportLive()) return;
       if (this.#closed || !this.#lease.checkActive()) { await inactive(); return; }
+      const queueStart = performance.now();
       const admission = await this.#admission.acquire(client);
+      if (admission.kind === 'admitted') this.#queue.add(performance.now() - queueStart); else this.#queue.fail();
       if (admission.kind === 'canceled') return;
       if (admission.kind === 'rejected') { await send(this.#responses.rejection(admission.reason)); return; }
       const admitted = admission.permit;
@@ -123,9 +133,11 @@ export class RequestCoordinator {
       if (auth.kind === 'rejected') { await rejection(auth.reason); return; }
       if (this.#verificationAttempts >= Number.MAX_SAFE_INTEGER) { this.#fault(); return; }
       this.#verificationAttempts++;
+      const verificationStart = performance.now();
       const verification = this.#verifier.verifySignature(auth.wire);
       auth.wire.fill(0); // Verifier owns its standalone copy before its first await.
       const signature = await verification;
+      if (signature.kind === 'rejected') this.#verification.fail(); else this.#verification.add(performance.now() - verificationStart);
       if (!this.#live(permit)) { await inactive(); return; }
       if (signature.kind === 'rejected') {
         if (signature.reason === 'authorization-unavailable') this.#fault();
@@ -150,6 +162,7 @@ export class RequestCoordinator {
         await rejection(claim.kind === 'rejected' ? claim.reason : claim.kind === 'busy' ? 'gateway-busy' : 'authorization-unavailable'); return;
       }
       if (!this.#live(permit)) { await inactive(); return; }
+      authorized = true; this.#authorization.add(performance.now() - authorizationStart);
       const result = await this.#origin.forwardAfterClaim(permit);
       if (!this.#live(permit)) { await inactive(); return; }
       if (result.kind === 'response' || result.kind === 'upstream-error') await send(result);
@@ -160,6 +173,7 @@ export class RequestCoordinator {
     } catch {
       if (!delivered) { this.#fault(); try { await inactive(); } catch { /* one attempted response only */ } }
     } finally {
+      if (!authorized) this.#authorization.fail();
       fields?.fill('');
       permit?.release(); // All awaited crypto/Redis/origin AND actual downstream cleanup have settled.
     }

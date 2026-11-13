@@ -41,8 +41,10 @@ const scenario = obj({scenario_id:choice(p.scenario_ids),status:choice(['PASS','
   worker_verification_attempts:arr(obj({worker_index:int(1),attempts:int()}),2),
   failure_labels:arr(choice([...Object.keys(p.gateway_results),...p.faults,'missing-evidence','assertion-failed','overload','transport-failure']),32)
 });
+const resource = obj({scope:choice(['gateway-worker','gateway-supervisor','controller','issuer','origin','client']),worker_index:either(int(1),nil),elapsed_ms:number,cpu_user_us:int(),cpu_system_us:int(),peak_rss_bytes:int(),memory_scope:c('process-lifetime-highwater')});
+const rpcOutcome = obj({operation:choice(['snapshot','claim']),failures:int(),timeouts:int(),uncertain:int()});
 const roleReport = obj({counters, measurements:arr(measurement,16),same_source_observed:either(bool,nil),origin_counts_available:bool,
-  worker_verification_attempts:arr(obj({worker_index:int(1),attempts:int()}),2)});
+  worker_verification_attempts:arr(obj({worker_index:int(1),attempts:int()}),2),resources:arr(resource,16),rpc_outcomes:arr(rpcOutcome,2)}, ['counters','measurements','same_source_observed','origin_counts_available','worker_verification_attempts']);
 const batchBase={batch_id:hex(32),batch_index:int(65535),expected_total:int(16384),final_batch:bool};
 const refPath=str(128,'^/run/secrets/[A-Za-z0-9_.-]+$');
 const roleConfig=obj({client_id:choice(['A','B','C','D','E']),tls_cert_path:refPath,tls_key_path:refPath,ca_cert_path:refPath,redis_credential_path:refPath},[]);
@@ -81,7 +83,15 @@ const report=obj({schema_version:c(1),contract_version:c(p.contract_version),sui
     state_transitions:arr(obj({state:choice(p.states),reason:either(choice(p.faults),c('startup'),c('ready'),c('enabled'),c('completed'))}),256),
     retention_checks:arr(obj({check_id:choice(['app-sinks','proxy-sinks','redis-diagnostics','mounts','runtime-files','report-allowlist','host-boundary']),status:choice(['PASS','FAIL','INCONCLUSIVE'])}),32)
   }),128),overall_status:choice(['PASS','FAIL','INCONCLUSIVE'])});
-const schemas={'run-manifest-v1.json':manifest,'control-request-v1.json':requests,'control-response-v1.json':replies,'report-v1.schema.json':report,'scenario-result-v1.json':scenario};
+const reportV2 = structuredClone(report);
+reportV2.properties.schema_version = c(2);
+const runV2 = reportV2.properties.runs.items;
+Object.assign(runV2.properties, {resources:arr(resource,16),rpc_outcomes:arr(rpcOutcome,2),experiment:either(nil,obj({condition:choice([1,10,50]),stage:choice(['warmup','measured']),repetition:int(3,1),target_successes:c(1000)}))});
+runV2.required.push('resources','rpc_outcomes','experiment');
+const scenarioV2 = runV2.properties.scenario_results.items;
+Object.assign(scenarioV2.properties,{same_source_observed:either(bool,nil),source_observations:int(131070)});
+scenarioV2.required.push('same_source_observed','source_observations');
+const schemas={'report-v2.schema.json':reportV2,'run-manifest-v1.json':manifest,'control-request-v1.json':requests,'control-response-v1.json':replies,'report-v1.schema.json':report,'scenario-result-v1.json':scenario};
 mkdirSync(root+'src/contracts/schemas',{recursive:true});
 for (const [name,schema] of Object.entries(schemas)) {
   const text=JSON.stringify({$schema:'http://json-schema.org/draft-07/schema#',$id:'https://tokenforge.invalid/contracts/'+name,...schema},null,2)+'\n';

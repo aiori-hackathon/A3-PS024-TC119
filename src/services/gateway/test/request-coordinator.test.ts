@@ -59,6 +59,24 @@ test('missing credentials obtain a valid current challenge; malformed credential
   assert.equal(bad.status, 400); assert.deepEqual(f.counts(), { snapshots: 1, forwards: 0 }); await f.coordinator.close();
 });
 
+test('queue timer ends at admission, authorization excludes response cleanup and rejected operations are separate', async () => {
+  const f = await fixture();
+  let release!: () => void;
+  const held = new Promise<void>(r => { release = r; });
+  const first = f.coordinator.handle(f.view(), async () => held);
+  const second = f.coordinator.handle(f.view(), async () => held);
+  await turn();
+  const queued = f.response();
+  await new Promise(r => setTimeout(r, 30));
+  release(); await Promise.all([first, second, queued]);
+  const queue = f.coordinator.measurements.find(m => m.metric === 'queue_wait_ms')!;
+  const auth = f.coordinator.measurements.find(m => m.metric === 'authorization_ms')!;
+  assert.equal(queue.count, 3); assert.ok(queue.p99_ms! >= 25);
+  assert.equal(auth.count, 0); assert.equal(auth.failures, 3, 'challenges are not successful authorizations');
+  assert.equal(f.coordinator.measurements.find(m => m.metric === 'verification_ms')!.count, 0);
+  await f.coordinator.close();
+});
+
 test('response sink settlement retains permits, and queued metadata is owned before the first await', async () => {
   const f = await fixture(); const releases: (() => void)[] = [];
   const hold = async () => new Promise<void>(resolve => releases.push(resolve));

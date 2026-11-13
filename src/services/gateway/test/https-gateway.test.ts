@@ -119,14 +119,20 @@ test('coalesced and fragmented pipelining never dispatch a second request', asyn
 
 test('raw pre-TLS sockets are capped at64 and stalled handshakes expire at the absolute header deadline', async t => {
   const f = await fixture(t); const peers: Socket[] = [];
-  for (let i = 0; i < 65; i++) { const peer = tcpConnect({ host: '127.0.0.1', port: f.port }); peer.on('error', () => {}); peers.push(peer); f.clients.add(peer); }
+  for (let i = 0; i < 64; i++) { const peer = tcpConnect({ host: '127.0.0.1', port: f.port }); peer.on('error', () => {}); peers.push(peer); f.clients.add(peer); }
   await Promise.all(peers.map(p => once(p, 'connect'))); await turn();
-  assert.ok(f.server.status.sockets <= 64); assert.equal(f.handled(), 0);
+  for(let i=0;i<100 && f.server.status.sockets<64;i++) await delay(5);
+  assert.equal(f.server.status.sockets, 64, 'positive control fills the production per-worker cap');
+  const extra = tcpConnect({ host:'127.0.0.1',port:f.port }); extra.on('error',()=>{}); f.clients.add(extra);
+  await Promise.race([new Promise<void>(resolve=>extra.once('close',()=>resolve())),delay(1000).then(()=>{throw Error('socket-cap-refusal-deadline');})]);
+  assert.equal(f.server.status.sockets,64); assert.equal(f.handled(), 0);
   await delay(2200); assert.equal(f.server.status.sockets, 0);
+  assert.match(await f.exchange(request), /^HTTP\/1.1 401/, 'fresh TLS/HTTP remains available after overload cleanup');
 });
 
 test('slow fragmented HTTP headers do not refresh the TCP-accept deadline', async t => {
-  const f = await fixture(t), socket = await f.tls(); const closed = once(socket, 'close'); socket.write('GET /resource HTTP/1.1\r\nHost: ');
+  const f = await fixture(t), socket = await f.tls(); const closed = new Promise<void>(resolve => socket.once('close', () => resolve())); socket.write('GET /resource HTTP/1.1\r\nHost: ');
+  socket.on('error', () => {}); // A deadline may close with ECONNRESET on Windows; close is the required evidence.
   const timer = setInterval(() => { if (!socket.destroyed) socket.write('a'); }, 100);
   try { await closed; } finally { clearInterval(timer); }
   for (let i = 0; f.server.status.sockets && i < 50; i++) await delay(5);

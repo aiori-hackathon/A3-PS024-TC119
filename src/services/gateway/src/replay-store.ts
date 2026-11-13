@@ -1,3 +1,6 @@
+import type { RpcOutcome } from '../../../contracts/lib/resources.ts';
+import { performance } from 'node:perf_hooks';
+import { Histogram } from '../../../contracts/lib/measurements.ts';
 import {
   ContractError, configurationDigest, epochBounds, parseClaimReply, parseSnapshotReply,
   validateManifest, type Manifest,
@@ -33,6 +36,12 @@ export class ReplayStore {
   readonly #abort = new AbortController();
   #state: 'preparing' | 'ready' | 'closed' = 'preparing';
   #fault: ReplayFault | null = null;
+  readonly #snapshotRpc = new Histogram();
+  readonly #claimRpc = new Histogram();
+  readonly #started = performance.now();
+  readonly #outcomes: RpcOutcome[] = ['snapshot', 'claim'].map(operation => ({ operation: operation as 'snapshot'|'claim', failures: 0, timeouts: 0, uncertain: 0 }));
+  get rpcOutcomes() { return this.#outcomes.map(o => ({...o})); }
+  get measurements() { const ms = performance.now() - this.#started; return [this.#snapshotRpc.summary('snapshot_rpc_ms', ms), this.#claimRpc.summary('claim_rpc_ms', ms)]; }
 
   private constructor(manifest: Manifest, connections: ReplayConnection[], onFault: (reason: ReplayFault) => void) {
     this.#manifest = manifest;
@@ -104,17 +113,20 @@ export class ReplayStore {
     try { this.#onFault(reason); } catch { /* latch and disconnect precede external notification */ }
   }
 
-  async #bounded<T>(operation: () => Promise<T>, ms: number): Promise<T> {
+  async #bounded<T>(operation: () => Promise<T>, ms: number, onTimeout?: () => void): Promise<T> {
     if (this.status.state === 'closed') throw Error('closed');
     const deadline = performance.now() + ms;
+    let timedOut = false;
+    const timeoutObserved = () => { if (!timedOut) { timedOut = true; onTimeout?.(); } };
     let timer: ReturnType<typeof setTimeout> | undefined;
     try {
       const timeout = new Promise<never>((_, reject) => {
-        timer = setTimeout(() => { this.#fail('dependency-lost'); reject(Error('deadline')); }, ms);
+        timer = setTimeout(() => { timeoutObserved(); this.#fail('dependency-lost'); reject(Error('deadline')); }, ms);
       });
       const value = await Promise.race([operation(), timeout]);
       // Timer callbacks can run late: a late fulfilled promise is NOT success.
-      if (this.#state === 'closed' || performance.now() >= deadline) throw Error('deadline');
+      if (performance.now() >= deadline) { timeoutObserved(); throw Error('deadline'); }
+      if (this.#state === 'closed') throw Error('closed');
       return value;
     } catch {
       this.#fail('dependency-lost');
@@ -122,8 +134,13 @@ export class ReplayStore {
     } finally { clearTimeout(timer); }
   }
 
-  #read(slot: Slot, command: string, ...args: (string | number)[]): Promise<unknown> {
-    return this.#bounded(() => slot.connection.call(command, ...args), this.#manifest.limits.gateway.redis_command_timeout_ms);
+  async #read(slot: Slot, command: string, ...args: (string | number)[]): Promise<unknown> {
+    const histogram = this.#state === 'ready' && command === 'EVALSHA' ? (args[0] === this.#manifest.snapshot_script_sha1 ? this.#snapshotRpc : this.#claimRpc) : null;
+    const outcome = histogram ? this.#outcomes[args[0] === this.#manifest.snapshot_script_sha1 ? 0 : 1]! : null;
+    const bump = (key: 'failures'|'timeouts'|'uncertain') => { if(outcome) outcome[key] = Math.min(1_000_000_000, outcome[key] + 1); };
+    const start = performance.now();
+    try { const result = await this.#bounded(() => slot.connection.call(command, ...args), this.#manifest.limits.gateway.redis_command_timeout_ms, () => bump('timeouts')); histogram?.add(performance.now() - start); return result; }
+    catch (error) { histogram?.fail(); bump('failures'); bump('uncertain'); throw error; }
   }
 
   #snapshot(raw: unknown): Exclude<ReplaySnapshot, NotAvailable> | null {

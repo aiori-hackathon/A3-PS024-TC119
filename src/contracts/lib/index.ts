@@ -3,6 +3,7 @@ import protocol from '../protocol-v1.json' with { type: 'json' };
 import manifestSchema from '../schemas/run-manifest-v1.json' with { type: 'json' };
 import requestSchema from '../schemas/control-request-v1.json' with { type: 'json' };
 import responseSchema from '../schemas/control-response-v1.json' with { type: 'json' };
+import reportSchemaV2 from '../schemas/report-v2.schema.json' with { type: 'json' };
 import reportSchema from '../schemas/report-v1.schema.json' with { type: 'json' };
 import { assertSchema, ContractError, deepFreeze, type Schema } from './schema.ts';
 export { assertSchema, conforms, ContractError } from './schema.ts';
@@ -171,17 +172,23 @@ export function validateControlRequest(value:unknown):Record<string,unknown> {
 }
 export function validateControlResponse(value:unknown):void {assertSchema(responseSchema as Schema,value);}
 export function validateReport(value:unknown):void {
-  assertSchema(reportSchema as Schema,value);
+  const version = (value as {schema_version?: unknown} | null)?.schema_version;
+  assertSchema((version === 2 ? reportSchemaV2 : reportSchema) as Schema,value);
   const r=value as {overall_status:string;suite_kind:'demo'|'security'|'benchmark';runs:{scenario_results:{scenario_id:string;status:string;origin_counts_available:boolean}[];measurements:{count:number;histogram_counts:number[];p50_ms:number|null;p95_ms:number|null;p99_ms:number|null}[]}[]};
   if(r.overall_status==='PASS' && (r.runs.length===0||r.runs.some(x=>x.scenario_results.length===0||x.scenario_results.some(s=>s.status!=='PASS'||!s.origin_counts_available))))throw new ContractError('missing-evidence');
   if(r.overall_status==='PASS') {
     const observed=new Set(r.runs.flatMap(run=>run.scenario_results.map(s=>s.scenario_id)));
     if(protocol.suite_required_scenarios[r.suite_kind].some(id=>!observed.has(id)))throw new ContractError('missing-evidence');
   }
+  if(version===2) for(const run of r.runs) for(const raw of run.scenario_results) {
+    const s = raw as typeof raw & {same_source_observed:boolean|null;source_observations:number;counters:Record<string,number>};
+    if(s.scenario_id==='shared-egress' && s.status==='PASS' && (s.same_source_observed!==true || s.source_observations<15 || s.counters['claims_successful']!==10 || (s.counters['replays_rejected']??0)<1 || s.counters['protected_requests_received']!==10 || s.counters['resources_served']!==10 || s.counters['generation_mismatches']!==0)) throw new ContractError('missing-source-evidence');
+  }
   for(const run of r.runs)for(const m of run.measurements) {
     if(m.histogram_counts.reduce((a,b)=>a+b,0)!==m.count)throw new ContractError('histogram-count');
     const qs=[m.p50_ms,m.p95_ms,m.p99_ms];
-    if(m.count===0?qs.some(q=>q!==null):qs.some(q=>q===null)||m.p50_ms!>m.p95_ms!||m.p95_ms!>m.p99_ms!)throw new ContractError('quantiles-invalid');
+    const expected = [0.5,0.95,0.99].map(q => { let seen = 0; const rank = Math.ceil(m.count * q); if (!rank) return null; for (let i=0;i<m.histogram_counts.length;i++) { seen += m.histogram_counts[i]!; if(seen>=rank) return protocol.histogram_bounds_ms[i] ?? null; } return null; });
+    if(qs.some((q,i)=>q!==expected[i]))throw new ContractError('quantiles-invalid');
   }
 }
 const safe=(n:unknown):n is number=>typeof n==='number'&&Number.isSafeInteger(n)&&n>=0;

@@ -1,3 +1,6 @@
+import type { ResourceMeasurement, RpcOutcome } from '../../../contracts/lib/resources.ts';
+import type { SourceSummary } from './source-observation.ts';
+import type { Measurement } from '../../../contracts/lib/measurements.ts';
 import cluster, { type Worker } from 'node:cluster';
 import { randomBytes } from 'node:crypto';
 import type { Manifest } from '../../../contracts/lib/index.ts';
@@ -19,6 +22,14 @@ class ClusterWorker implements SupervisorWorker {
   readonly #ready: Promise<void>;
   #pending: { id: string; resolve: (value: Record<string, unknown>) => void; reject: () => void; cancel: () => void } | null = null;
   #stopping = false;
+  #measurements: Measurement[] = [];
+  #resources: ResourceMeasurement[] = [];
+  #rpc: RpcOutcome[] = [];
+  resources() { return this.#resources; }
+  rpcOutcomes() { return this.#rpc; }
+  #source: SourceSummary = { observations: 0, consistent: null, tag: null };
+  source(): SourceSummary { return this.#source; }
+  measurements(): Measurement[] { return this.#measurements; }
   #drain: Promise<void> | null = null;
 
   constructor(configuration: WorkerConfiguration, fault: (reason: WorkerCloseReason) => void) {
@@ -36,7 +47,7 @@ class ClusterWorker implements SupervisorWorker {
       this.#worker.once('exit', () => { clearTimeout(timer); reject(Error('worker-start-failed')); });
       this.#worker.on('message', (raw: unknown) => {
         const m = raw as Record<string, unknown>;
-        if (!m || typeof m !== 'object' || Array.isArray(m) || Buffer.byteLength(JSON.stringify(m)) > 1024) { fault('unsafe-state'); return; }
+        if (!m || typeof m !== 'object' || Array.isArray(m) || Buffer.byteLength(JSON.stringify(m)) > 16384) { fault('unsafe-state'); return; }
         if (m['kind'] === 'hello' && !this.incarnation) {
           const stamp = m['stamp'];
           if (Object.keys(m).length !== 3 || typeof m['incarnation'] !== 'string' || !/^[0-9a-f]{32}$/.test(m['incarnation']) ||
@@ -46,7 +57,7 @@ class ClusterWorker implements SupervisorWorker {
         if (m['kind'] === 'fault' && Object.keys(m).length === 2 && reasons.has(m['reason'] as string)) { fault(m['reason'] as WorkerCloseReason); return; }
         const pending = this.#pending;
         if (m['kind'] !== 'reply' || !pending || m['id'] !== pending.id || m['ok'] !== true ||
-          Object.keys(m).some(key => !['kind', 'id', 'ok', 'attempts'].includes(key))) { if (!this.#stopping) fault('unsafe-state'); return; }
+          Object.keys(m).some(key => !['kind', 'id', 'ok', 'attempts', 'measurements', 'source', 'resources', 'rpc_outcomes'].includes(key))) { if (!this.#stopping) fault('unsafe-state'); return; }
         this.#pending = null; pending.cancel(); pending.resolve(m);
       });
     });
@@ -67,11 +78,11 @@ class ClusterWorker implements SupervisorWorker {
       } catch { clearTimeout(timer); failed(); this.#fault('control-lost'); }
     });
   }
-  async prepare(manifest: Manifest, supervisor: string): Promise<void> { await this.#call('PREPARE', { manifest, supervisor, configuration: this.#configuration }); }
+  async prepare(manifest: Manifest, supervisor: string, sourceKey?: string): Promise<void> { await this.#call('PREPARE', { manifest, supervisor, source_key: sourceKey, configuration: this.#configuration }); }
   async enable(grant: WorkerLeaseGrant): Promise<void> { await this.#call('ENABLE', { grant }); }
   async listen(): Promise<void> { await this.#call('LISTEN'); }
   async heartbeat(grant: WorkerLeaseGrant): Promise<void> { await this.#call('HEARTBEAT', { grant }); }
-  async attempts(): Promise<number> { return (await this.#call('REPORT'))['attempts'] as number; }
+  async attempts(): Promise<number> { const r = await this.#call('REPORT'); this.#measurements = r['measurements'] as Measurement[]; this.#source = r['source'] as SourceSummary; this.#resources = r['resources'] as ResourceMeasurement[]; this.#rpc = r['rpc_outcomes'] as RpcOutcome[]; return r['attempts'] as number; }
   close(): Promise<void> {
     if (this.#drain) return this.#drain;
     let resolve!: () => void;
