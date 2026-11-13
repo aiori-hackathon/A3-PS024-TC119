@@ -1,0 +1,11 @@
+{
+  "name": "@tokenforge/portal",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=24 <25" },
+  "scripts": {
+    "preview": "node src/serve.mjs",
+    "test": "node --test test/serve.test.mjs"
+  }
+}

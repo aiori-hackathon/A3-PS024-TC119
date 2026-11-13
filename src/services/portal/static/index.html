@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>TokenForge — Research access</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <div class="preview">Layout preview <span>Live client controls await integration</span></div>
+  <header class="masthead">
+    <a class="brand" href="/" aria-label="TokenForge home"><span class="brand-mark" aria-hidden="true">T</span>TokenForge</a>
+    <nav aria-label="Page sections"><a href="#resource">Research</a><a href="#clients">Lab clients</a><a href="#evidence">Evidence</a></nav>
+    <span class="private-label">Private laboratory</span>
+  </header>
+  <main>
+    <section class="intro" aria-labelledby="page-title">
+      <div><p class="eyebrow">Research access laboratory</p><h1 id="page-title">A shared connection.<br>Each client's own allowance.</h1></div>
+      <p class="intro-note">Explore admission, access and replay protection through five controlled lab clients and a protected research resource.</p>
+    </section>
+    <div class="workspace">
+      <article class="resource panel" id="resource" aria-labelledby="resource-title">
+        <div class="panel-heading"><span class="eyebrow">Protected research brief</span><span class="locked">Access required</span></div>
+        <h2 id="resource-title">Shared egress<br>and fair access</h2>
+        <p class="resource-description">A short research brief examining access budgets for clients behind a shared proxy.</p>
+        <div class="resource-sheet"><span class="sheet-rule"></span><p>The full brief appears after an authorized access.</p><span class="sheet-rule short"></span></div>
+        <dl class="resource-meta"><div><dt>Resource</dt><dd>Research brief 01</dd></div><div><dt>Route</dt><dd>/resource</dd></div><div><dt>Delivery</dt><dd>Through the verification gateway</dd></div></dl>
+      </article>
+      <section class="controls panel" aria-labelledby="access-title">
+        <div class="panel-heading"><h2 id="access-title">Access controls</h2><span class="status-dot">No active run</span></div>
+        <label for="client">Laboratory client</label>
+        <select id="client" disabled><option>Client A</option><option>Client B</option><option>Client C</option><option>Client D</option><option>Client E</option></select>
+        <fieldset disabled>
+          <legend>Run profile</legend>
+          <label class="profile"><input type="radio" name="profile" value="ip"><span><strong>IP baseline</strong><small>Shared-egress policy</small></span></label>
+          <label class="profile"><input type="radio" name="profile" value="type2"><span><strong>Ordinary Type2</strong><small>Single-use tokens</small></span></label>
+          <label class="profile"><input type="radio" name="profile" value="arc"><span><strong>ARC</strong><small>Multi-use credential</small></span></label>
+          <label class="profile"><input type="radio" name="profile" value="holder"><span><strong>Holder-bound Type2</strong><small>Separate theft-protection scene</small></span></label>
+        </fieldset>
+        <dl class="allowance"><div><dt>Estimated uses left</dt><dd>—</dd></div><div><dt>Accepted window</dt><dd>Awaiting run</dd></div></dl>
+        <div class="actions"><button disabled>Acquire allowance</button><button class="primary" disabled>Access resource <span aria-hidden="true">↗</span></button></div>
+        <p class="control-note">Profiles are selected when a run starts. The server determines accepted allowance and window.</p>
+      </section>
+      <section class="evidence panel" id="evidence" aria-labelledby="evidence-title">
+        <div class="panel-heading"><h2 id="evidence-title">Independent evidence</h2><span class="eyebrow">Protected origin</span></div>
+        <div class="metrics"><div><span>Requests received</span><strong>—</strong></div><div><span>Resources served</span><strong>—</strong></div><div><span>Generation mismatches</span><strong>—</strong></div></div>
+        <p class="empty-state">Evidence will appear after a real run completes an action.</p>
+      </section>
+      <section class="clients panel" id="clients" aria-labelledby="clients-title">
+        <div class="panel-heading"><h2 id="clients-title">Laboratory clients</h2><span class="eyebrow">One shared proxy</span></div>
+        <table><caption>Controlled client processes</caption><thead><tr><th>Client</th><th>Allowance estimate</th><th>State</th></tr></thead><tbody>
+          <tr><th scope="row">Client A</th><td>—</td><td>Awaiting run</td></tr><tr><th scope="row">Client B</th><td>—</td><td>Awaiting run</td></tr><tr><th scope="row">Client C</th><td>—</td><td>Awaiting run</td></tr><tr><th scope="row">Client D</th><td>—</td><td>Awaiting run</td></tr><tr><th scope="row">Client E</th><td>—</td><td>Awaiting run</td></tr>
+        </tbody></table>
+      </section>
+    </div>
+  </main>
+  <footer><span>TokenForge · A3-PS024-TC119</span><p>Credentials stay inside the lab client processes. This interface controls laboratory clients.</p></footer>
+</body>
+</html>
