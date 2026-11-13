@@ -11,7 +11,7 @@ from pathlib import Path
 import sys
 
 ROOT = Path(__file__).resolve().parent.parent
-SPEC = json.loads((ROOT / 'src/contracts/regional-v1.json').read_text())
+SPEC = json.loads((ROOT / 'src/contracts/lib/regional-v1.json').read_text())
 def canon(value):
     return json.dumps(value, sort_keys=True, separators=(',', ':'), ensure_ascii=True).encode('ascii')
 def framed(domain, *fields):

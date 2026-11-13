@@ -1,6 +1,6 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 const base = new URL('../src/contracts/', import.meta.url);
-const p = JSON.parse(readFileSync(new URL('regional-v1.json', base), 'utf8'));
+const p = JSON.parse(readFileSync(new URL('lib/regional-v1.json', base), 'utf8'));
 const c = value => ({const:value});
 const integer = (minimum=0, maximum=Number.MAX_SAFE_INTEGER) => ({type:'integer',minimum,maximum});
 const text = (maxLength, pattern, minLength=1) => ({type:'string',minLength,maxLength,...(pattern?{pattern}:{})});

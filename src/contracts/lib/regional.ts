@@ -1,13 +1,13 @@
 // Additive regional encodings and structural contracts. These do not authorize requests.
 import { createPublicKey, ECDH } from 'node:crypto';
-import spec from '../regional-v1.json' with {type:'json'};
+import spec from './regional-v1.json' with {type:'json'};
 import policySchema from '../schemas/regional-policy-v1.json' with {type:'json'};
 import nonceSchema from '../schemas/regional-holder-nonce-v1.json' with {type:'json'};
 import proofSchema from '../schemas/regional-holder-proof-v1.json' with {type:'json'};
 import requestSchema from '../schemas/regional-arc-request-v1.json' with {type:'json'};
 import responseSchema from '../schemas/regional-arc-response-v1.json' with {type:'json'};
 import { assertSchema, ContractError, deepFreeze, type Schema } from './schema.ts';
-import { canonicalJson, configurationDigest, decodeBase64Url, encodeBase64Url, hex, sha256, type Manifest } from './index.ts';
+import { canonicalJson, configurationDigest, decodeBase64Url, encodeBase64Url, hex, sha256, PROTOCOL, type Manifest } from './index.ts';
 
 export const REGIONAL = deepFreeze(spec);
 export const REGIONAL_CONTRACT_VERSION = spec.contract_version;
@@ -45,7 +45,7 @@ export function validateRegionalPolicy(value:unknown, baseline?:Manifest):Region
   assertSchema(policySchema as Schema,value);
   const p=value as RegionalPolicy;
   if(p.window_end_ms-p.window_start_ms!==spec.window_ms)throw new ContractError('regional-window');
-  if(p.window_end_ms>Number.MAX_SAFE_INTEGER-30000)throw new ContractError('regional-window-overflow');
+  if(p.window_end_ms>Number.MAX_SAFE_INTEGER-PROTOCOL.guard_ms)throw new ContractError('regional-window-overflow');
   if(baseline && (p.run_id!==baseline.run_id || p.baseline_config_digest!==configurationDigest(baseline)
     || p.window_start_ms<baseline.run_start_ms || p.window_end_ms>baseline.run_start_ms+baseline.epoch_ms
     || (p.type2_key_id!==null && p.type2_key_id!==baseline.token_key_id)))throw new ContractError('regional-baseline-binding');
