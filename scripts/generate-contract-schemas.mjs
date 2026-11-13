@@ -41,9 +41,11 @@ const scenario = obj({scenario_id:choice(p.scenario_ids),status:choice(['PASS','
   worker_verification_attempts:arr(obj({worker_index:int(1),attempts:int()}),2),
   failure_labels:arr(choice([...Object.keys(p.gateway_results),...p.faults,'missing-evidence','assertion-failed','overload','transport-failure']),32)
 });
+const extendedCounters = obj({...counters.properties,...Object.fromEntries(['attempted_operations','completed_operations','timed_out_operations','uncertain_operations','not_started_operations'].map(k=>[k,int()]))},[]);
+const scenarioExtended = structuredClone(scenario); scenarioExtended.properties.counters = extendedCounters;
 const resource = obj({scope:choice(['gateway-worker','gateway-supervisor','controller','issuer','origin','client']),worker_index:either(int(1),nil),elapsed_ms:number,cpu_user_us:int(),cpu_system_us:int(),peak_rss_bytes:int(),memory_scope:c('process-lifetime-highwater')});
 const rpcOutcome = obj({operation:choice(['snapshot','claim']),failures:int(),timeouts:int(),uncertain:int()});
-const roleReport = obj({counters, measurements:arr(measurement,16),same_source_observed:either(bool,nil),origin_counts_available:bool,
+const roleReport = obj({counters:extendedCounters, measurements:arr(measurement,16),same_source_observed:either(bool,nil),origin_counts_available:bool,
   worker_verification_attempts:arr(obj({worker_index:int(1),attempts:int()}),2),resources:arr(resource,16),rpc_outcomes:arr(rpcOutcome,2)}, ['counters','measurements','same_source_observed','origin_counts_available','worker_verification_attempts']);
 const batchBase={batch_id:hex(32),batch_index:int(65535),expected_total:int(16384),final_batch:bool};
 const refPath=str(128,'^/run/secrets/[A-Za-z0-9_.-]+$');
@@ -69,7 +71,7 @@ const results={
   KEY_CREATED:obj({token_key_spki_b64url:publicKey,token_key_id:hex(64)}),PREPARED:obj({}),
   PROVISIONED:obj({received_total:int(16384),sealed:bool}),READY:obj({workers_ready:int(2)}),
   ENABLED:obj({workers_enabled:int(2)}),HEARTBEAT_ACK:obj({seq:int(Number.MAX_SAFE_INTEGER,1)}),FENCED:obj({}),
-  STATUS:obj({ready:bool,run_closed:bool,fault:either(choice(p.faults),nil)}),REPORT:roleReport,SCENARIO_COMPLETE:scenario
+  STATUS:obj({ready:bool,run_closed:bool,fault:either(choice(p.faults),nil)}),REPORT:roleReport,SCENARIO_COMPLETE:scenarioExtended
 };
 const replies=either(...Object.entries(results).map(([result,data])=>obj({...responseBase,ok:c(true),result:c(result),data})),
   obj({...responseBase,ok:c(false),result:choice(errorResults),data:obj({})}));
@@ -89,6 +91,7 @@ const runV2 = reportV2.properties.runs.items;
 Object.assign(runV2.properties, {resources:arr(resource,16),rpc_outcomes:arr(rpcOutcome,2),experiment:either(nil,obj({condition:choice([1,10,50]),stage:choice(['warmup','measured']),repetition:int(3,1),target_successes:c(1000)}))});
 runV2.required.push('resources','rpc_outcomes','experiment');
 const scenarioV2 = runV2.properties.scenario_results.items;
+scenarioV2.properties.counters = extendedCounters;
 Object.assign(scenarioV2.properties,{same_source_observed:either(bool,nil),source_observations:int(131070)});
 scenarioV2.required.push('same_source_observed','source_observations');
 const schemas={'report-v2.schema.json':reportV2,'run-manifest-v1.json':manifest,'control-request-v1.json':requests,'control-response-v1.json':replies,'report-v1.schema.json':report,'scenario-result-v1.json':scenario};

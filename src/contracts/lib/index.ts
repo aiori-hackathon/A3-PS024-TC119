@@ -1,3 +1,4 @@
+import { analyzeBenchmark } from './benchmark.ts';
 import { createHash, createPublicKey } from 'node:crypto';
 import protocol from '../protocol-v1.json' with { type: 'json' };
 import manifestSchema from '../schemas/run-manifest-v1.json' with { type: 'json' };
@@ -180,6 +181,7 @@ export function validateReport(value:unknown):void {
     const observed=new Set(r.runs.flatMap(run=>run.scenario_results.map(s=>s.scenario_id)));
     if(protocol.suite_required_scenarios[r.suite_kind].some(id=>!observed.has(id)))throw new ContractError('missing-evidence');
   }
+  if(version===2 && r.suite_kind==='benchmark' && r.overall_status==='PASS' && !analyzeBenchmark(r.runs).complete) throw new ContractError('incomplete-benchmark');
   if(version===2) for(const run of r.runs) for(const raw of run.scenario_results) {
     const s = raw as typeof raw & {same_source_observed:boolean|null;source_observations:number;counters:Record<string,number>};
     if(s.scenario_id==='shared-egress' && s.status==='PASS' && (s.same_source_observed!==true || s.source_observations<15 || s.counters['claims_successful']!==10 || (s.counters['replays_rejected']??0)<1 || s.counters['protected_requests_received']!==10 || s.counters['resources_served']!==10 || s.counters['generation_mismatches']!==0)) throw new ContractError('missing-source-evidence');

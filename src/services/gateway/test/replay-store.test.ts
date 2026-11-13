@@ -177,6 +177,9 @@ test('command timeout closes all connections and a late result cannot reopen or 
   const { m, store, channels, faults } = await ready('B0');
   const pending = deferred<unknown>(); channels[0]!.intercept = () => pending.promise;
   assert.deepEqual(await store.claim(candidate()), { kind: 'unavailable' });
+  assert.deepEqual(store.rpcOutcomes.find(r=>r.operation==='claim'), {operation:'claim',failures:1,timeouts:1,uncertain:1});
+  assert.equal(store.measurements.find(m=>m.metric==='claim_rpc_ms')!.failures,1);
+  assert.equal(store.measurements.find(m=>m.metric==='claim_rpc_ms')!.count,0);
   const count = channels[0]!.calls.length;
   pending.resolve(['CLAIMED', m.run_start_ms + 630000]);
   await Promise.resolve();

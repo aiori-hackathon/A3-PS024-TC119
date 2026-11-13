@@ -7,6 +7,21 @@ import manifestSchema from '../../../contracts/schemas/run-manifest-v1.json' wit
 import requestSchema from '../../../contracts/schemas/control-request-v1.json' with {type:'json'};
 import replySchema from '../../../contracts/schemas/control-response-v1.json' with {type:'json'};
 import reportSchema from '../../../contracts/schemas/report-v1.schema.json' with {type:'json'};
+import { analyzeBenchmark } from '../../../contracts/lib/benchmark.ts';
+
+test('benchmark gains require complete comparable repetitions, warmups and clean dependency evidence',()=>{
+  const rows: any[]=[];
+  const row=(condition:number,profile:string,stage:string,repetition:number)=>({gateway_profile:profile,experiment:{condition,stage,repetition},
+    scenario_results:[{scenario_id:'performance',status:'PASS',counters:{claims_successful:1000,protected_requests_received:1000,resources_served:1000,generation_mismatches:0,uncertain_operations:0,timed_out_operations:0,not_started_operations:0,issuance_failures:0,requests_rejected:0,queue_rejected:0,attempted_operations:1000,completed_operations:1000}}],
+    measurements:[{metric:'protected_response_ms',count:1000,elapsed_ms:profile==='B0'?1000:500}],rpc_outcomes:[{failures:0},{failures:0}]});
+  for(const c of [1,10,50]) { for(const p of ['B0','B1'])rows.push(row(c,p,'warmup',1));for(const n of [1,2,3])for(const p of n===2?['B1','B0']:['B0','B1'])rows.push(row(c,p,'measured',n)); }
+  assert.equal(analyzeBenchmark(rows).complete,true);assert.equal(analyzeBenchmark(rows).conditions[0]!.gain,1);
+  const fault=structuredClone(rows);fault[2].rpc_outcomes[0].failures=1;assert.equal(analyzeBenchmark(fault).conditions[0]!.gain,null);
+  const lost=structuredClone(rows);lost[2].scenario_results[0].counters.uncertain_operations=1;assert.equal(analyzeBenchmark(lost).complete,false);
+  const few=structuredClone(rows);few[2].scenario_results[0].counters.claims_successful=999;assert.equal(analyzeBenchmark(few).complete,false);
+  const order=structuredClone(rows);[order[2],order[3]]=[order[3],order[2]];assert.equal(analyzeBenchmark(order).complete,false);
+  assert.equal(analyzeBenchmark(rows.filter(r=>r.experiment.stage!=='warmup')).complete,false);
+});
 import { conforms, assertSupportedSchema, type Schema } from '../../../contracts/lib/schema.ts';
 import {
   CONTRACT_VERSION,PROTOCOL,canonicalJson,configurationDigest,validateManifest,makeManifest,
