@@ -4,7 +4,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createPki } from '../src/pki.ts';
-import { localReadiness } from '../src/controller/preflight.ts';
+import { localReadiness, supportedVersion } from '../src/controller/preflight.ts';
 import { overlaps, checkNetworkConfiguration } from '../src/controller/network-readiness.ts';
 
 test('subnet conflicts use ranges, including broader VPN routes; topology checks cannot substitute for live isolation',()=>{
@@ -18,6 +18,15 @@ test('subnet conflicts use ranges, including broader VPN routes; topology checks
   assert.equal(checkNetworkConfiguration(config,foreign,[])[1]!.ok,false);
   config.networks.gateway_replay!.internal=false;
   assert.equal(checkNetworkConfiguration(config,[],[])[0]!.ok,false);
+});
+
+test('version checks accept supported CI and desktop patches and reject lower/malformed versions',()=>{
+  assert.equal(supportedVersion('28.0.4',[28,0,4]),true);
+  assert.equal(supportedVersion('29.4.0',[28,0,4]),true);
+  assert.equal(supportedVersion('v2.38.2',[2,38,2]),true);
+  assert.equal(supportedVersion('5.1.1',[2,38,2]),true);
+  assert.equal(supportedVersion('2.38.1',[2,38,2]),false);
+  assert.equal(supportedVersion('unavailable',[28,0,4]),false);
 });
 
 test('preflight detects expired certificates, wrong key pairs, invalid credentials and missing dependencies', t => {

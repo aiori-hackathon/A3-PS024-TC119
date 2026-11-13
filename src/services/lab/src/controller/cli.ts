@@ -41,7 +41,7 @@ import { privacyProblems } from '../report/verify.ts';
 import { SUITES, type RunPlan } from './suites.ts';
 import { buildReport, writeReportAtomic, type RunRecord, type SuiteKind } from '../report/build.ts';
 import { verifyReportFile } from '../report/verify.ts';
-import { localReadiness } from './preflight.ts';
+import { localReadiness, supportedVersion } from './preflight.ts';
 import { networkReadiness } from './network-readiness.ts';
 import { analyzeBenchmark } from '../../../../contracts/lib/benchmark.ts';
 
@@ -80,11 +80,11 @@ async function preflight(): Promise<number> {
   for (const result of local) say(result);
   const engine = await realDocker.run(['info', '--format', '{{json .}}'], { timeoutMs: 20_000 });
   let linux = false;
-  try { const info = JSON.parse(engine.stdout); linux = info.OSType === 'linux' && Number(info.ServerVersion.split('.')[0]) >= 29; } catch { /* unavailable */ }
-  say({ check: 'linux-engine-29-or-newer', ok: linux });
+  try { const info = JSON.parse(engine.stdout); linux = info.OSType === 'linux' && supportedVersion(info.ServerVersion,[28,0,4]); } catch { /* unavailable */ }
+  say({ check: 'linux-engine-compatible', ok: linux, ...(linux?{}:{action:'Use Linux Docker Engine 28.0.4 or newer'}) });
   const compose = await realDocker.run(['compose', 'version', '--short'], { timeoutMs: 10_000 });
-  const composeOk = compose.status === 0 && Number(compose.stdout.trim().replace(/^v/, '').split('.')[0]) >= 5;
-  say({ check: 'compose-5-or-newer', ok: composeOk });
+  const composeOk = compose.status === 0 && supportedVersion(compose.stdout,[2,38,2]);
+  say({ check: 'compose-compatible', ok: composeOk, ...(composeOk?{}:{action:'Use Compose 2.38.2 or newer'}) });
   say({ check: 'live-isolation', status: 'INCONCLUSIVE', action: 'Run node infra/scripts/check-network.mjs; Compose syntax is not live network evidence' });
   return checks.every(([, ok]) => ok) && local.every(c => c.ok) && linux && composeOk ? 0 : 1;
 }

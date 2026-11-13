@@ -1,6 +1,6 @@
 # Private Linux host reproduction
 
-Use a separate quiet Linux host with Docker Engine 29 or newer, Compose 5 or newer, OpenSSL 3, Git, and exactly the Node patch in `.node-version` (24.22.1). Install those host tools through your host's normal administration process. The account needs Docker access; it is a trusted host/controller account. Clone this repository and check out the team's selected commit on the host. Do not copy `.runtime`, secrets, tokens, snapshots or dependency directories from another machine.
+Use a separate quiet Linux host with Docker Engine 28.0.4 or newer, Compose 2.38.2 or newer, OpenSSL 3 for component TLS tests, Git, and exactly the Node patch in `.node-version` (24.22.1). Provisioning itself uses Node crypto, not the OpenSSL executable. These floors cover the GitHub Ubuntu runner and the newer development Docker Desktop versions. Install those host tools through your host's normal administration process. The account needs Docker access; it is a trusted host/controller account. Clone this repository and check out the team's selected commit on the host. Do not copy `.runtime`, secrets, tokens, snapshots or dependency directories from another machine.
 
 From that checkout:
 

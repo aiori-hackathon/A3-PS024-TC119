@@ -1,9 +1,16 @@
 import { X509Certificate, createPrivateKey } from 'node:crypto';
-import { readFileSync, statSync } from 'node:fs';
+import { existsSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 
 export type ReadinessCheck = { check: string; ok: boolean; action?: string };
+export function supportedVersion(value:string,minimum:readonly number[]):boolean {
+  const match=/^v?(\d+)\.(\d+)\.(\d+)(?:[-+].*)?$/.exec(value.trim());
+  if(!match)return false;
+  const parts=match.slice(1).map(Number);
+  for(let i=0;i<3;i++){if(parts[i]!>minimum[i]!)return true;if(parts[i]!<minimum[i]!)return false;}
+  return true;
+}
 /** Fixed diagnostics only: never return exception text, file contents or credentials. */
 export function localReadiness(root: string, now = Date.now()): ReadinessCheck[] {
   const checks: ReadinessCheck[] = [];
@@ -12,8 +19,10 @@ export function localReadiness(root: string, now = Date.now()): ReadinessCheck[]
     checks.push({ check: name, ok, ...(ok ? {} : { action }) });
   };
   check('pinned-node-patch', 'Use Node from .node-version', () => process.versions.node === readFileSync(join(root, '.node-version'), 'utf8').trim());
-  check('openssl-3-or-newer', 'Install OpenSSL 3 or newer for local TLS provisioning', () => {
-    const r=spawnSync('openssl',['version'],{encoding:'utf8',timeout:5000,shell:false});
+  check('openssl-test-tool', 'Install OpenSSL 3 or newer for the component TLS tests (Git for Windows is supported)', () => {
+    const fallback='C:\\Program Files\\Git\\usr\\bin\\openssl.exe';
+    const executable=process.platform==='win32'&&existsSync(fallback)?fallback:'openssl';
+    const r=spawnSync(executable,['version'],{encoding:'utf8',timeout:5000,shell:false,windowsHide:true});
     return r.status===0 && Number(/^OpenSSL (\d+)\./.exec(r.stdout)?.[1])>=3;
   });
   for (const service of ['gateway', 'lab']) check(`${service}-locked-dependencies`, `Run npm ci --ignore-scripts --prefix src/services/${service}`, () => {
