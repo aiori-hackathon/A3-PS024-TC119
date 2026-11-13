@@ -1,5 +1,7 @@
 # Aggregate measurement boundaries
 
+The deployed issuer's RSA signing uses a dedicated worker thread to keep its HTTP/control event loop responsive. Issuer process CPU and RSS measurements include that thread. Signing still uses the pinned Privacy Pass library, and supervision retains its existing acknowledgement and lease deadlines.
+
 The shared histogram implementation is in `src/contracts/lib/measurements.ts`; metric names and millisecond bucket bounds remain those of TF-PS024-1.0.0. Storage is fixed size, capped at one billion samples/failures per producer. Quantiles are bucket upper bounds; overflow quantiles are unknown. A failed operation increments `failures` instead of adding a successful latency sample.
 
 All duration clocks are monotonic. `issuance_http_ms` starts after blinding and ends at the complete issuer HTTP response (or transport failure), including any client gate wait, CONNECT and TLS setup. It excludes finalization and public verification. `token_acquisition_ms` includes blinding, HTTP, finalization and public verification. `protected_response_ms` includes CONNECT/TLS and the entire gateway response; the gateway sends `Connection: close`, so gateway connections are not reused.
