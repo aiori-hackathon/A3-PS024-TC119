@@ -23,8 +23,12 @@ export type ClientErrorCode =
 export class LabClientError extends Error {
   readonly code: ClientErrorCode;
   readonly status: number | undefined;
+  readonly label: string | null;
   timedOut = false;
-  constructor(code: ClientErrorCode, status?: number) { super(code); this.name = 'LabClientError'; this.code = code; this.status = status; }
+  constructor(code: ClientErrorCode, status?: number, label: string | null = null) {
+    super(code); this.name = 'LabClientError'; this.code = code; this.status = status;
+    this.label = label && Object.hasOwn(PROTOCOL.gateway_results, label) ? label : null;
+  }
 }
 
 export type ClientConfig = {
@@ -103,7 +107,7 @@ export class LabClient {
   /** Unauthenticated GET; the 401 must carry exactly one acceptable challenge for the pinned key and run. */
   async fetchChallenge(): Promise<ParsedChallenge> {
     const r = await this.#exchange(this.#gatewayAgent, this.#m.origin_name, { method: 'GET', path: '/resource' }, PROTOCOL.gateway_common.origin_body_max_bytes);
-    if (r.status !== 401) throw new LabClientError('challenge-unavailable', r.status);
+    if (r.status !== 401) throw new LabClientError('challenge-unavailable', r.status, errorLabel(r.body));
     const values = headerValues(r.rawHeaders, 'www-authenticate');
     try { return parseChallenge(values, this.#m, plausibleEpochs(this.#m, this.#now())); }
     catch (e) { if (e instanceof ContractError) throw new LabClientError('challenge-unavailable'); throw e; }

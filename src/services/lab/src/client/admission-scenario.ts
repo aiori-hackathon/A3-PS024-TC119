@@ -82,11 +82,19 @@ export async function admissionLimitsWith(ctx: ScenarioContext, d: AdmissionDeps
 
     // Phase 3: a busy refusal consumed nothing. A token whose first answer never arrived is presented once more: a 200 proves
     // the first attempt claimed nothing; anything else leaves its outcome unknown to the client, and the origin counter decides.
-    let retriedOk = 0, retryWrong = 0, unknownOutcome = 0;
+    let retriedOk = 0, retryWrong = 0, unknownOutcome = 0, additionalBusy = 0;
     for (const i of busy) {
       if (signal.aborted) return inconclusive('missing-evidence');
-      const r: Answer = await client.redeemWire(wires[i]!).catch(() => lostAnswer);
+      let r: Answer = lostAnswer;
+      for (let attempt = 0; attempt < 3; attempt++) {
+        r = await client.redeemWire(wires[i]!).catch(() => lostAnswer);
+        if (!isBusy(r)) break;
+        additionalBusy++;
+        if (attempt < 2) await d.sleep(250, signal);
+        if (signal.aborted) return inconclusive('missing-evidence');
+      }
       if (r.status === 200) retriedOk++; else retryWrong++;
+      if (r.status === 0) unknownOutcome++;
     }
     for (const i of lost) {
       if (signal.aborted) return inconclusive('missing-evidence');
@@ -102,7 +110,7 @@ export async function admissionLimitsWith(ctx: ScenarioContext, d: AdmissionDeps
     ];
     const ok = checks.every((c) => c.ok);
     return { status: ok ? 'PASS' : 'FAIL', expected: 'bounded',
-      counters: { observations: checks.length + BURST, ...(phase === 'full' ? { issuance_successes: BURST } : {}), claims_successful: wins, queue_rejected: busy.length, transport_failures: unknownOutcome, requests_rejected: connected.filter((s) => s.closed).length },
+      counters: { observations: checks.length + BURST, ...(phase === 'full' ? { issuance_successes: BURST } : {}), claims_successful: wins, queue_rejected: busy.length + additionalBusy, transport_failures: unknownOutcome, requests_rejected: connected.filter((s) => s.closed).length },
       failure_labels: ok ? [] : ['assertion-failed'] };
   } finally { for (const w of wires) w.fill(0); }
 }

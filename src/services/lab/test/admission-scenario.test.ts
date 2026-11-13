@@ -82,3 +82,33 @@ test('a fence mid-scenario stops it before anything more is presented', async ()
   const abort = new AbortController(); const x = rig({ abort }); abort.abort();
   assert.equal((await admissionLimitsWith(x.ctx, x.deps)).status, 'INCONCLUSIVE');
 });
+
+test('a busy-token recovery permits only bounded repeated gateway-busy refusals', async () => {
+  let retry = 0;
+  const x = rig({ busy: 1, retry: () => ++retry < 3 ? { status: 503, label: 'gateway-busy' } : { status: 200, label: null } });
+  const result = await admissionLimitsWith(x.ctx, x.deps);
+  assert.equal(result.status, 'PASS'); assert.equal(retry, 3);
+  assert.equal(result.counters?.queue_rejected, 3);
+  assert.equal(result.counters?.claims_successful, BURST);
+});
+
+test('busy-token recovery fails after exhaustion or any other response and counts uncertainty', async () => {
+  for (const response of [{ status: 503, label: 'gateway-busy' }, { status: 401, label: 'token-already-redeemed' }, { status: 503, label: 'authorization-unavailable' }, { status: 0, label: null }]) {
+    let calls = 0;
+    const x = rig({ busy: 1, retry: () => { calls++; return response; } });
+    const result = await admissionLimitsWith(x.ctx, x.deps);
+    assert.equal(result.status, 'FAIL');
+    assert.equal(calls, response.label === 'gateway-busy' ? 3 : 1);
+    assert.equal(result.counters?.transport_failures, response.status === 0 ? 1 : 0);
+  }
+});
+
+test('fencing during recovery backoff prevents another token presentation', async () => {
+  const abort = new AbortController(); let retries = 0;
+  const x = rig({ busy: 1, abort, retry: () => { retries++; return { status: 503, label: 'gateway-busy' }; } });
+  const result = await admissionLimitsWith(x.ctx, { ...x.deps, sleep: async ms => {
+    if (x.counts().redeemed > BURST) abort.abort();
+    await x.deps.sleep(ms);
+  } });
+  assert.equal(result.status, 'INCONCLUSIVE'); assert.equal(retries, 1);
+});

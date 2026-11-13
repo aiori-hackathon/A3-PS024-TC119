@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Histogram, bucketOf, mergeMeasurements, quantile, BUCKETS } from '../src/report/histogram.ts';
-import { performanceWith, TOKENS } from '../src/client/performance-scenario.ts';
+import { performanceWith, TOKENS, benchmarkChallenge } from '../src/client/performance-scenario.ts';
+import { LabClientError } from '../src/client/client.ts';
 import type { ScenarioContext, ScenarioRunner } from '../src/client/control.ts';
 import { LabRun } from '../src/controller/run.ts';
 import { buildReport } from '../src/report/build.ts';
@@ -84,4 +85,34 @@ test('the performance controller waits for every mint acknowledgement before any
   const rig=controllerRig({scenarios:{performance:runner}});
   const run=new LabRun({links:rig.links,redis:rig.redis,reset:rig.reset,gatewayLauncher:rig.launcher},{perClient:2,heartbeatMs:40,ackDeadlineMs:150,controlTimeoutMs:3000});
   await run.start();try {await run.runScenario(['A','B'],'performance',10);assert.equal(early,false);assert.equal(maxMint,1);assert.equal(maxRedemption,2);assert.deepEqual(phases,[10010,10010,10,10]);}finally{await run.stop();}
+});
+
+test('benchmark challenges retry only confirmed busy replies with a fixed bound', async () => {
+  let calls = 0; const waits: number[] = [];
+  const ctx = { signal: new AbortController().signal, client: { fetchChallenge: async () => {
+    calls++; if (calls < 3) throw new LabClientError('challenge-unavailable', 503, 'gateway-busy');
+    return { epoch: 0 };
+  } } } as unknown as ScenarioContext;
+  assert.equal((await benchmarkChallenge(ctx, async ms => { waits.push(ms); })).epoch, 0);
+  assert.equal(calls, 3); assert.deepEqual(waits, [250, 250]);
+  calls = 0;
+  ctx.client.fetchChallenge = async () => { calls++; throw new LabClientError('challenge-unavailable', 503, 'authorization-unavailable'); };
+  await assert.rejects(benchmarkChallenge(ctx, async () => {}));
+  assert.equal(calls, 1);
+  calls = 0;
+  ctx.client.fetchChallenge = async () => { calls++; throw new LabClientError('challenge-unavailable', 503, 'gateway-busy'); };
+  await assert.rejects(benchmarkChallenge(ctx, async () => {}));
+  assert.equal(calls, 3);
+  const abort = new AbortController(); ctx.signal = abort.signal; calls = 0;
+  await assert.rejects(benchmarkChallenge(ctx, async () => { abort.abort(); }));
+  assert.equal(calls, 1);
+});
+
+test('an exhausted starting challenge records all planned operations as not started', async () => {
+  const x = perfRig();
+  x.ctx.client.fetchChallenge = async () => { throw new LabClientError('challenge-unavailable', 503, 'gateway-busy'); };
+  const result = await performanceWith(x.ctx, x.deps);
+  assert.equal(result.status, 'INCONCLUSIVE');
+  assert.equal(result.counters?.attempted_operations, 0);
+  assert.equal(result.counters?.not_started_operations, TOKENS);
 });

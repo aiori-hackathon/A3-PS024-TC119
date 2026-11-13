@@ -5,13 +5,28 @@ import type { ScenarioContext, ScenarioOutcome } from './control.ts';
 import { LabClientError } from './client.ts';
 import { Histogram } from '../report/histogram.ts';
 
-export const TOKENS = 80, WORKERS = 3, MINT_PACE_MS = 200;
+// The controller serializes preparation across clients. Yield between operations without
+// an artificial signing delay so the bounded inventory can be prepared within its epoch.
+export const TOKENS = 80, WORKERS = 3, MINT_PACE_MS = 0;
 export const EXPERIMENT_SETTINGS = {
   1:{ tokens:400,workers:1,stage:'measured' }, 10:{tokens:80,workers:2,stage:'measured'},50:{tokens:200,workers:10,stage:'measured'},
   101:{tokens:100,workers:1,stage:'warmup'},110:{tokens:20,workers:2,stage:'warmup'},150:{tokens:20,workers:10,stage:'warmup'},
 } as const;
 export type PerfDeps = { sleep: (ms: number) => Promise<void>; now: () => number };
 const real: PerfDeps = { sleep: (ms) => new Promise((r) => setTimeout(r, ms)), now: () => performance.now() };
+
+/** Challenge requests carry no token. Only a confirmed busy refusal permits another attempt. */
+export async function benchmarkChallenge(ctx: Pick<ScenarioContext, 'client' | 'signal'>, sleep: PerfDeps['sleep']) {
+  for (let attempt = 0; attempt < 3; attempt++) {
+    if (ctx.signal.aborted) throw new LabClientError('client-closed');
+    try { return await ctx.client.fetchChallenge(); }
+    catch (error) {
+      if (!(error instanceof LabClientError) || error.status !== 503 || error.label !== 'gateway-busy' || attempt === 2) throw error;
+      await sleep(250);
+    }
+  }
+  throw new LabClientError('challenge-unavailable');
+}
 
 export async function performanceWith(ctx: ScenarioContext, d: PerfDeps = real): Promise<ScenarioOutcome> {
   const { client, signal } = ctx;
@@ -21,7 +36,14 @@ export async function performanceWith(ctx: ScenarioContext, d: PerfDeps = real):
   if (!setting || (ctx.seed !== undefined && ctx.seed !== seed && ctx.seed !== 10000 + seed!)) return {status:'INCONCLUSIVE',expected:'measured',failure_labels:['missing-evidence']};
   const {tokens,workers} = setting;
   if (phase !== 'redeem' && !ctx.hasVoucher(tokens)) return { status:'INCONCLUSIVE',expected:'measured',failure_labels:['missing-evidence'] };
-  const parsed = await client.fetchChallenge();
+  let parsed;
+  try { parsed = await benchmarkChallenge(ctx, d.sleep); }
+  catch (error) {
+    const busy = error instanceof LabClientError && error.status === 503 && error.label === 'gateway-busy';
+    return { status: busy || signal.aborted ? 'INCONCLUSIVE' : 'FAIL', expected: 'measured',
+      counters: { attempted_operations: 0, completed_operations: 0, not_started_operations: tokens },
+      failure_labels: [busy || signal.aborted ? 'missing-evidence' : 'authorization-unavailable'] };
+  }
   const acquisition = new Histogram(), response = new Histogram(), http = new Histogram();
   const wires: Uint8Array[] = [];
   let mintElapsed = 0, mintFailures = 0;
@@ -59,7 +81,7 @@ export async function performanceWith(ctx: ScenarioContext, d: PerfDeps = real):
       }
     }));
     const redeemElapsed=d.now()-redeemStart;
-    const endEpoch=await client.fetchChallenge().then(r=>r.epoch).catch(()=>null);
+    const endEpoch=await benchmarkChallenge(ctx, d.sleep).then(r=>r.epoch).catch(()=>null);
     const clean=other===0&&lost===0&&mintFailures===0&&attempted===tokens&&endEpoch===parsed.epoch&&!signal.aborted;
     return {status:clean?'PASS':endEpoch===null?'INCONCLUSIVE':'FAIL',expected:'measured',
       counters:{attempted_operations:attempted,completed_operations:ok+busy+other,timed_out_operations:timedOut,uncertain_operations:lost,not_started_operations:tokens-attempted,

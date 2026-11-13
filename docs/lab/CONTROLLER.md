@@ -52,6 +52,8 @@ The admission-limit scenario prepares each client's 24 tokens in a separate cont
 
 Shared-egress visits the five clients sequentially within one generation. Each client issues and redeems its two credentials through the same proxy. Gateway source equality covers all fifteen authenticated presentations and the origin must receive ten first spends. Concurrent redemption is exercised separately by the replay and overload scenarios.
 
+The overload scenario permits up to three recovery presentations of a token initially refused with `503 gateway-busy`, with 250 ms backoff between repeated busy refusals. Every busy refusal is counted. Other rejection labels and uncertain recovery responses fail the check. Fencing cancels recovery before another presentation.
+
 The deployed issuer runs the pinned library's synchronous blind RSA operation in a dedicated worker thread. Its private key is generated and retained in that thread. Voucher admission and lease/control decisions run on the issuer's main thread, with the existing deadlines. Worker failure closes admission, and FENCE waits for signing to settle and for worker termination, including a key that finishes generation after fencing begins. A signature completed after lease expiry is suppressed and its voucher stays consumed.
 
 ## Not done
