@@ -6,8 +6,11 @@ rust-version = "1.89"
 publish = false
 
 [dependencies]
-arc = { git = "https://github.com/cloudflareresearch/arc", rev = "4f023d349a552d019ee0d8d7f73921da8d035165", default-features = false, features = ["suite_p256"] }
+arc = { path = "vendor/arc", default-features = false, features = ["suite_p256"] }
 rand_core = { version = "=0.6.4", features = ["getrandom"] }
+
+[dev-dependencies]
+arc-unpatched = { package = "arc", git = "https://github.com/cloudflareresearch/arc", rev = "4f023d349a552d019ee0d8d7f73921da8d035165", default-features = false, features = ["suite_p256"] }
 
 [[bin]]
 name = "arc-feasibility"

@@ -7,7 +7,7 @@ fn run() -> Result<(), arc::ArcError> {
     let request_context = b"tokenforge-feasibility/request";
     let presentation_context = b"tokenforge-feasibility/research-resource";
     let limit = NonZeroU32::new(5).ok_or(arc::ArcError::LimitExceeded)?;
-    let issuer = Issuer::generate();
+    let issuer = Issuer::generate()?;
     let parameters = issuer.parameters()?;
     let pending = PendingIssuance::begin(request_context)?;
     let request = pending.request_bytes();
@@ -28,7 +28,7 @@ fn run() -> Result<(), arc::ArcError> {
 
     // Counts and lengths only. Credential material never enters output.
     println!(
-        "{{\"check\":\"arc-library-roundtrip\",\"ok\":true,\"suite\":\"P256\",\"verified\":5,\"request_bytes\":{},\"response_bytes\":{},\"presentation_bytes\":{},\"verified_tag_api_available\":false,\"integration_ready\":false}}",
+        "{{\"check\":\"arc-library-roundtrip\",\"ok\":true,\"suite\":\"P256\",\"verified\":5,\"request_bytes\":{},\"response_bytes\":{},\"presentation_bytes\":{},\"verified_tag_api_available\":true,\"integration_ready\":false}}",
         request.len(),
         response.len(),
         presentation_bytes

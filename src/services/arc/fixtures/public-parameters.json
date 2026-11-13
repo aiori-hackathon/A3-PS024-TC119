@@ -1,0 +1,8 @@
+{
+  "notice": "PUBLIC TEST DATA. Issuer public parameters from the pinned upstream draft-01 vector.",
+  "suite": "ARCV1-P256",
+  "issuer_params_bytes": 99,
+  "issuer_params_b64url": "AphOOjfiEFTS5UYUrLf5WmJK_H6yLeZhMb9Fj6R44vYrA5E8J_Ki9Qv7CJXZ9Wqlg-sAvhAvenrGYolvwGg6AiPDA0C_BptaphAZ1sbYJuf13G9nZ6KIxbwXOKep-lvDzz1f",
+  "arc_key_id": "6a0fc128fa975247ad0c28294fd265af9070e324454ac4a3bfc0f563cca4a599",
+  "upstream_revision": "4f023d349a552d019ee0d8d7f73921da8d035165"
+}

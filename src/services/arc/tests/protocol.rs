@@ -20,7 +20,7 @@ fn issued_wallet(issuer: &Issuer) -> Wallet {
 
 #[test]
 fn blind_issuance_produces_five_verifiable_presentations() {
-    let issuer = Issuer::generate();
+    let issuer = Issuer::generate().unwrap();
     let client = issued_wallet(&issuer);
     let mut state = client
         .presentation_state(five(), PRESENTATION_CONTEXT)
@@ -40,8 +40,8 @@ fn blind_issuance_produces_five_verifiable_presentations() {
 
 #[test]
 fn wrong_key_context_limit_and_modified_proof_are_rejected() {
-    let issuer = Issuer::generate();
-    let other_issuer = Issuer::generate();
+    let issuer = Issuer::generate().unwrap();
+    let other_issuer = Issuer::generate().unwrap();
     let client = issued_wallet(&issuer);
     let mut state = client
         .presentation_state(five(), PRESENTATION_CONTEXT)
@@ -90,7 +90,7 @@ fn wrong_key_context_limit_and_modified_proof_are_rejected() {
 
 #[test]
 fn exact_serialization_rejects_truncation_trailing_bytes_and_empty_requests() {
-    let issuer = Issuer::generate();
+    let issuer = Issuer::generate().unwrap();
     assert!(issuer.issue(&[]).is_err());
     let pending = PendingIssuance::begin(REQUEST_CONTEXT).unwrap();
     let mut request = pending.request_bytes();
@@ -115,7 +115,7 @@ fn exact_serialization_rejects_truncation_trailing_bytes_and_empty_requests() {
 
 #[test]
 fn copied_wallets_generate_different_proofs_for_the_same_slot() {
-    let issuer = Issuer::generate();
+    let issuer = Issuer::generate().unwrap();
     let client = issued_wallet(&issuer);
     let mut first = client
         .presentation_state(five(), PRESENTATION_CONTEXT)
@@ -123,21 +123,25 @@ fn copied_wallets_generate_different_proofs_for_the_same_slot() {
     let mut copied = client
         .presentation_state(five(), PRESENTATION_CONTEXT)
         .unwrap();
+    let mut tags = Vec::new();
     for _ in 0..5 {
         let a = first.present(&mut OsRng).unwrap().to_bytes();
         let b = copied.present(&mut OsRng).unwrap().to_bytes();
         assert!(a != b, "fresh randomness changes presentation bytes");
-        issuer
-            .verify(&a, REQUEST_CONTEXT, five(), PRESENTATION_CONTEXT)
+        let tag_a = issuer
+            .verify_and_tag(&a, REQUEST_CONTEXT, five(), PRESENTATION_CONTEXT)
             .unwrap();
-        issuer
-            .verify(&b, REQUEST_CONTEXT, five(), PRESENTATION_CONTEXT)
+        let tag_b = issuer
+            .verify_and_tag(&b, REQUEST_CONTEXT, five(), PRESENTATION_CONTEXT)
             .unwrap();
-        // Pinned P256 serialization observation for K01 review. The upstream
-        // public API currently has no method returning a verified tag.
         assert!(
-            a[99..132] == b[99..132],
-            "same slot retains its protocol tag"
+            tag_a == tag_b,
+            "same slot retains its verified protocol tag"
         );
+        assert!(
+            !tags.contains(&tag_a),
+            "different slots have different tags"
+        );
+        tags.push(tag_a);
     }
 }

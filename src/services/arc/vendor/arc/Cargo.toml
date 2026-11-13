@@ -1,0 +1,52 @@
+[package]
+name = "arc"
+description = "ARC — Anonymous Rate-Limited Credentials"
+version = "0.1.0"
+rust-version = "1.87"
+edition = "2024"
+publish = false
+resolver = "3"
+authors = ["Armando Faz <armfazh@cloudflare.com>"]
+license = "Apache-2.0"
+repository = "https://github.com/cloudflareresearch/arc"
+homepage = "https://github.com/cloudflareresearch/arc"
+keywords = ["cryptography", "privacy", "credentials", "privacy-pass", "zero-knowledge"]
+categories = ["cryptography", "authentication"]
+readme = "README.md"
+
+[features]
+default = []
+suite_p256 = ["dep:p256", "p256/hash2curve", "dep:sha2", "sigma-proofs/p256"]
+suite_ristretto255 = ["dep:curve25519-dalek", "curve25519-dalek/group", "curve25519-dalek/digest", "curve25519-dalek/zeroize", "dep:sha2", "sigma-proofs/curve25519-dalek", "dep:elliptic-curve", "elliptic-curve/hash2curve"]
+
+[dependencies]
+group = { version = "0.13.0", default-features = false }
+subtle = { version = "2.6.1", default-features = false }
+rand_core = { version = "0.6", default-features = false }
+# sigma-proofs crate needs changes to support draft v01.
+sigma-proofs = { git = "https://github.com/armfazh/sigma-proofs", default-features = false, rev = "f6a1737673ed3b76c66659a17e7ec4174fcdbe7a" }
+spongefish = { version = "0.5", default-features = false }
+zeroize = { version = "1.8.2", default-features = false }
+
+# Feature: suite_p256
+p256 = { version = "0.13.2", default-features = false, optional = true }
+sha2 = { version = "0.10.9", default-features = false, optional = true }
+
+# Feature: suite_ristretto255
+curve25519-dalek = { version = "4.1.3", default-features = false, optional = true }
+elliptic-curve = { version = "0.13.8", default-features = false, optional = true }
+
+[dev-dependencies]
+criterion = { version = "0.8.0", default-features = false }
+rand = { version = "0.8.5", default-features = false }
+serde = { version = "1.0", default-features = false }
+serde_json = { version = "1.0.149", default-features = false }
+serde_with = { version = "3.16.1", features = ["hex", "macros"], default-features = false }
+
+[[bench]]
+name = "arc_bench"
+harness = false
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]

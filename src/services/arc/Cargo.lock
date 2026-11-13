@@ -28,6 +28,20 @@ dependencies = [
 [[package]]
 name = "arc"
 version = "0.1.0"
+dependencies = [
+ "group",
+ "p256",
+ "rand_core 0.6.4",
+ "sha2 0.10.9",
+ "sigma-proofs",
+ "spongefish",
+ "subtle",
+ "zeroize",
+]
+
+[[package]]
+name = "arc"
+version = "0.1.0"
 source = "git+https://github.com/cloudflareresearch/arc?rev=4f023d349a552d019ee0d8d7f73921da8d035165#4f023d349a552d019ee0d8d7f73921da8d035165"
 dependencies = [
  "group",
@@ -951,7 +965,8 @@ checksum = "55937e1799185b12863d447f42597ed69d9928686b8d88a1df17376a097d8369"
 name = "tokenforge-arc"
 version = "0.0.0"
 dependencies = [
- "arc",
+ "arc 0.1.0",
+ "arc 0.1.0 (git+https://github.com/cloudflareresearch/arc?rev=4f023d349a552d019ee0d8d7f73921da8d035165)",
  "rand_core 0.6.4",
 ]
 

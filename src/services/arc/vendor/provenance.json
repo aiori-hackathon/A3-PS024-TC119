@@ -1,0 +1,107 @@
+{
+  "upstream": "https://github.com/cloudflareresearch/arc",
+  "revision": "4f023d349a552d019ee0d8d7f73921da8d035165",
+  "license": "Apache-2.0",
+  "adapter_revision": "tf-arc-p256-1",
+  "hash_encoding": "UTF-8 with CRLF normalized to LF",
+  "patch_format": "unified diff with zero context; git apply --unidiff-zero",
+  "production_implementation_revision": "40-hex repository source commit containing this corrected adapter, resolved at build/deployment",
+  "patch_sha256": "2f514d29333afdb869e1410f9bc1c5399955f0401f728b75da349388d1f10d04",
+  "files": [
+    {
+      "path": "benches/arc_bench.rs",
+      "upstream_sha256": "a1e5d6b7f3f47fc79af0995bb0f9022327ce04afaf39aca375989a2a6e33c1d4",
+      "sha256": "a1e5d6b7f3f47fc79af0995bb0f9022327ce04afaf39aca375989a2a6e33c1d4"
+    },
+    {
+      "path": "Cargo.lock",
+      "upstream_sha256": "ea2fa0c40f0b35fe267a77d384732d1286ce3567503991c522bf2a820a5e6662",
+      "sha256": "ea2fa0c40f0b35fe267a77d384732d1286ce3567503991c522bf2a820a5e6662"
+    },
+    {
+      "path": "Cargo.toml",
+      "upstream_sha256": "6fdc087899d0358a6159d44c471f4adab69d47fa78472d29c624372454cf98e9",
+      "sha256": "6fdc087899d0358a6159d44c471f4adab69d47fa78472d29c624372454cf98e9"
+    },
+    {
+      "path": "LICENSE",
+      "upstream_sha256": "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4",
+      "sha256": "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4"
+    },
+    {
+      "path": "README.md",
+      "upstream_sha256": "4b9a6f384b3406992e595110aa13649302ba666960728167182a8d8a130ad717",
+      "sha256": "4b9a6f384b3406992e595110aa13649302ba666960728167182a8d8a130ad717"
+    },
+    {
+      "path": "src/input_tests.rs",
+      "upstream_sha256": null,
+      "sha256": "346d5364650859179b15f15dd3127fd5f62eee5ac1078e1925d4e9d2aa7dccd5"
+    },
+    {
+      "path": "src/kvac.rs",
+      "upstream_sha256": "4be6bf60a85a9bf77f137dfb9fb1566422a29a7a181d3a526b09afbc5f46e87c",
+      "sha256": "b7fec826e772db96d1cda3658c5edbe4a49935918910b914c9888f1ac7daa33a"
+    },
+    {
+      "path": "src/lib.rs",
+      "upstream_sha256": "ffbe525706f216caab14ef8dd6e8d842c78ecbda39ed2153d76dd2a02413c60a",
+      "sha256": "ffbe525706f216caab14ef8dd6e8d842c78ecbda39ed2153d76dd2a02413c60a"
+    },
+    {
+      "path": "src/mac.rs",
+      "upstream_sha256": "02a537a4f8e42351e20d492ed5f135c27117b1cd8dcc15c8d0c8006bd4d35372",
+      "sha256": "02a537a4f8e42351e20d492ed5f135c27117b1cd8dcc15c8d0c8006bd4d35372"
+    },
+    {
+      "path": "src/range.rs",
+      "upstream_sha256": "4497c6a2e2c95e5963655332b9f2fa065d61f205fe8c1a768ff8547795bf11db",
+      "sha256": "4497c6a2e2c95e5963655332b9f2fa065d61f205fe8c1a768ff8547795bf11db"
+    },
+    {
+      "path": "src/serde.rs",
+      "upstream_sha256": "a28f56a946af3fec6ca34b06afbd2b796552e2a0455b5404cdfddd2faaa3859d",
+      "sha256": "331e9928debe54fa2e32aed8421e9453ecafb538c83a24426b4dfd4c60f6ab06"
+    },
+    {
+      "path": "src/suites/mod.rs",
+      "upstream_sha256": "1271001f3b51aa4e57373a2cc0341317c525b24560f64dc8dac39d5c7a141d5b",
+      "sha256": "1271001f3b51aa4e57373a2cc0341317c525b24560f64dc8dac39d5c7a141d5b"
+    },
+    {
+      "path": "src/suites/p256.rs",
+      "upstream_sha256": "886b3fe1c9dc3ca373decb9886427afa84d6a6583c8ee75d798a455bc8fa1af8",
+      "sha256": "886b3fe1c9dc3ca373decb9886427afa84d6a6583c8ee75d798a455bc8fa1af8"
+    },
+    {
+      "path": "src/suites/ristretto255.rs",
+      "upstream_sha256": "bad95ba29be9e43b6e959787ddaefb4f9922de8505d9ca85dbb56e45cd4c83c5",
+      "sha256": "bad95ba29be9e43b6e959787ddaefb4f9922de8505d9ca85dbb56e45cd4c83c5"
+    },
+    {
+      "path": "tests/protocol/mod.rs",
+      "upstream_sha256": "e0ca625d54518bf971cdb6cad1ea859732fa175675a319cf8c50011223046011",
+      "sha256": "e0ca625d54518bf971cdb6cad1ea859732fa175675a319cf8c50011223046011"
+    },
+    {
+      "path": "tests/test_protocol.rs",
+      "upstream_sha256": "3b6f04356dbd94d4373878f25a156c54ef9bba0b6b57e97743427ad7b0b02f67",
+      "sha256": "3b6f04356dbd94d4373878f25a156c54ef9bba0b6b57e97743427ad7b0b02f67"
+    },
+    {
+      "path": "tests/test_vectors.rs",
+      "upstream_sha256": "5cade860c7ccb3bba61367fbd11607ce9bd5b6f0d4cb4d44f5357ee64960c8e0",
+      "sha256": "5cade860c7ccb3bba61367fbd11607ce9bd5b6f0d4cb4d44f5357ee64960c8e0"
+    },
+    {
+      "path": "tests/vectors/arc_v01.json",
+      "upstream_sha256": "968805adcd9d432824ff1f913df08ae2892c727a5da27864c839b9d4c9ecac00",
+      "sha256": "968805adcd9d432824ff1f913df08ae2892c727a5da27864c839b9d4c9ecac00"
+    },
+    {
+      "path": "tests/vectors/mod.rs",
+      "upstream_sha256": "6dd17d041008b134e47592c30137dd04785d75a432f159bf803fd29967c0014a",
+      "sha256": "6dd17d041008b134e47592c30137dd04785d75a432f159bf803fd29967c0014a"
+    }
+  ]
+}
