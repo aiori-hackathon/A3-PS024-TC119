@@ -7,7 +7,6 @@ WORKDIR /build
 COPY package.json ./package.json
 COPY config/tsconfig.base.json ./config/tsconfig.base.json
 COPY src/contracts/protocol-v1.json ./src/contracts/protocol-v1.json
-COPY src/contracts/regional-v1.json ./src/contracts/regional-v1.json
 COPY src/contracts/lib ./src/contracts/lib
 COPY src/contracts/schemas ./src/contracts/schemas
 # The host controller (type-checked here, never bundled into a role) imports the public reset barrier utility.
