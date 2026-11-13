@@ -13,6 +13,7 @@ import {
   PROTOCOL, ContractError, hex, validateControlRequest, validateControlResponse, type Manifest,
 } from '../../../../contracts/lib/index.ts';
 import { LabError, type ControlErrorResult } from '../errors.ts';
+import { RESEARCH_RESOURCE_BODY } from './resource.ts';
 
 type State = 'FENCED' | 'PREPARED' | 'READY' | 'ENABLED' | 'CLOSING' | 'FAULTED';
 type Fault = (typeof PROTOCOL.faults)[number] | null;
@@ -20,7 +21,7 @@ type Json = Record<string, unknown>;
 
 export const RUN_HEADER = 'x-tokenforge-run';
 const ROUTE = new URL(PROTOCOL.endpoints.origin_http).pathname;
-const BODY = Buffer.alloc(1024, 0x61); // deterministic, well under origin_body_max_bytes
+const BODY = RESEARCH_RESOURCE_BODY;
 
 export type OriginRoleOptions = {
   listen?: { host: string; port: number }; drainMs?: number;

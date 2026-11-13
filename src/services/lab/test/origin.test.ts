@@ -41,6 +41,8 @@ test('received is counted before generation validation; mismatch and served are 
   assert.deepEqual(await r.counters(), { protected_requests_received: 0, generation_mismatches: 0, resources_served: 0 });
   const served = await r.get('/resource', good);
   assert.equal(served.status, 200); assert.equal(served.body.length, 1024);
+  assert.match(served.body.toString('utf8'), /TOKENFORGE RESEARCH BRIEF 01/);
+  assert.match(served.body.toString('utf8'), /Research question/);
   assert.deepEqual(await r.counters(), { protected_requests_received: 1, generation_mismatches: 0, resources_served: 1 });
   // Wrong generation: received +1, mismatch +1, served unchanged.
   assert.equal((await r.get('/resource', { 'X-TokenForge-Run': 'f'.repeat(32) })).status, 421);
