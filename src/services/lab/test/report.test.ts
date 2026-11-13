@@ -9,7 +9,8 @@ import { buildReport, overallStatus, writeReportAtomic, type RunRecord, type Sce
 import { privacyProblems, verifyReportFile, verifyReportText } from '../src/report/verify.ts';
 
 const scenario = (id: string, over: Partial<ScenarioRecord> = {}): ScenarioRecord => ({
-  scenario_id: id, status: 'PASS', expected: 'accepted', counters: { protected_requests_received: 0 }, origin_counts_available: true,
+  same_source_observed: id === 'shared-egress' ? true : null, source_observations: id === 'shared-egress' ? 15 : 0,
+  scenario_id: id, status: 'PASS', expected: 'accepted', counters: id === 'shared-egress' ? { protected_requests_received: 10, resources_served:10,generation_mismatches:0,claims_successful:10,replays_rejected:5 } : { protected_requests_received: 0 }, origin_counts_available: true,
   worker_verification_attempts: [], failure_labels: [], ...over,
 });
 const run = (ids: string[], over: Partial<RunRecord> = {}): RunRecord => ({
@@ -103,4 +104,13 @@ test('privacy scan: token, voucher, key and address-shaped content is caught whe
   }
   // Ordinary environment strings that contain dots are not mistaken for addresses.
   assert.equal(tweak((r) => { r.environment.os = 'linux 6.6.87.2-microsoft-standard-WSL2'; r.environment.docker_version = '29.4.0'; }).ok, true);
+});
+
+test('v2 source evidence cannot be omitted or contradicted; v1 remains readable with its historical evidence rules', () => {
+  const r = buildReport({kind:'demo',runs:[run([...required])]});
+  assert.equal(verifyReportText(JSON.stringify(r)).ok,true);
+  for(const value of [null,false]) { const bad = structuredClone(r); bad.runs[0]!.scenario_results.find(s=>s.scenario_id==='shared-egress')!.same_source_observed=value; assert.equal(verifyReportText(JSON.stringify(bad)).ok,false); }
+  const legacy:any = structuredClone(r); legacy.schema_version=1;
+  for(const row of legacy.runs) { delete row.resources; delete row.rpc_outcomes; delete row.experiment; for(const s of row.scenario_results) {delete s.same_source_observed;delete s.source_observations;} }
+  assert.equal(verifyReportText(JSON.stringify(legacy)).ok,true);
 });

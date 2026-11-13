@@ -27,9 +27,12 @@ const counters = (c: Record<string, number>) => Object.entries(c).map(([k, v]) =
 
 export function renderReport(r: Json): string {
   const runs = (r['runs'] as Json[]).map((run, i) => {
-    const scenarios = (run['scenario_results'] as Json[]).map((s) => `<tr><td>${esc(s['scenario_id'])}</td><td>${status(s['status'])}</td><td>${esc(s['expected'])}</td><td>${s['origin_counts_available'] ? 'available' : '<b>not available</b>'}</td><td>${counters(s['counters'] ?? {})}</td><td>${esc((s['failure_labels'] ?? []).join(', '))}</td></tr>`).join('\n');
+    const scenarios = (run['scenario_results'] as Json[]).map((s) => `<tr><td>${esc(s['scenario_id'])}</td><td>${status(s['status'])}</td><td>${esc(s['expected'])}</td><td>${s['origin_counts_available'] ? 'available' : '<b>not available</b>'}</td><td>${counters(s['counters'] ?? {})}${s['scenario_id'] === 'shared-egress' ? `<br>source equality: ${esc(s['same_source_observed'] ?? 'unknown')} (${esc(s['source_observations'] ?? 0)} observations)` : ''}</td><td>${esc((s['failure_labels'] ?? []).join(', '))}</td></tr>`).join('\n');
     const retention = (run['retention_checks'] as Json[]);
     const measures = (run['measurements'] as Json[]);
+    const resources = (run['resources'] ?? []) as Json[];
+    const resourceTable = resources.length ? `<table><tr><th>Process scope</th><th>Worker</th><th>Span ms</th><th>User CPU us</th><th>System CPU us</th><th>Process lifetime peak RSS bytes</th></tr>${resources.map(m => `<tr><td>${esc(m['scope'])}</td><td>${esc(m['worker_index'] ?? 'n/a')}</td><td>${esc(m['elapsed_ms'])}</td><td>${esc(m['cpu_user_us'])}</td><td>${esc(m['cpu_system_us'])}</td><td>${esc(m['peak_rss_bytes'])}</td></tr>`).join('')}</table>` : '';
+    const rpcTable = (run['rpc_outcomes'] ?? []).length ? `<table><tr><th>RPC</th><th>Failures</th><th>Timeouts</th><th>Uncertain</th></tr>${run['rpc_outcomes'].map((m:Json)=>`<tr><td>${esc(m['operation'])}</td><td>${esc(m['failures'])}</td><td>${esc(m['timeouts'])}</td><td>${esc(m['uncertain'])}</td></tr>`).join('')}</table>` : '';
     const q = (v: unknown) => (v === null ? 'beyond 5000' : esc(v));
     const measurementTable = measures.length ? `<table><tr><th>Metric</th><th>Samples</th><th>Failures</th><th>Elapsed ms</th><th>Samples/s</th><th>p50 ms</th><th>p95 ms</th><th>p99 ms</th></tr>${measures.map((m) => `<tr><td>${esc(m['metric'])}</td><td>${esc(m['count'])}</td><td>${esc(m['failures'])}</td><td>${esc(m['elapsed_ms'])}</td><td>${m['elapsed_ms'] > 0 ? esc((m['count'] / m['elapsed_ms'] * 1000).toFixed(1)) : 'n/a'}</td><td>${q(m['p50_ms'])}</td><td>${q(m['p95_ms'])}</td><td>${q(m['p99_ms'])}</td></tr>`).join('')}</table><p class="note">Quantiles are the upper bound of the histogram bucket they fall in.</p>` : '';
     return `<h2>Run ${i + 1}: ${esc(run['gateway_profile'])} gateway, ${esc(run['client_profile'])} clients</h2>
@@ -38,6 +41,8 @@ export function renderReport(r: Json): string {
 ${scenarios}
 </table>
 ${measurementTable}
+${resourceTable}
+${rpcTable}
 ${retention.length ? `<table><tr><th>Retention check</th><th>Status</th></tr>${retention.map((c) => `<tr><td>${esc(c['check_id'])}</td><td>${status(c['status'])}</td></tr>`).join('')}</table>` : ''}
 <p class="note">${esc((run['state_transitions'] as Json[]).map((t) => t['state']).join(' > '))}</p>`;
   }).join('\n');
@@ -47,7 +52,7 @@ ${retention.length ? `<table><tr><th>Retention check</th><th>Status</th></tr>${r
 <h1>TokenForge evidence report</h1>
 <p>Suite <b>${esc(r['suite_kind'])}</b> · overall ${status(r['overall_status'])} · created ${esc(r['created_at_utc'])} · contract ${esc(r['contract_version'])}</p>
 <p class="note">Read-only view of a validated report file. A PASS needs every required scenario, each with independent origin evidence; this page only displays what the controller recorded.</p>
-${runs}
+${r['schema_version'] === 1 ? '<p class="note">Legacy schema 1: PASS uses historical evidence rules and does not prove source equality or repeated benchmark comparability.</p>' : ''}${runs}
 <h2>Provenance</h2>
 <p class="note">commit <code>${esc(sw['git_commit'])}</code>${sw['dirty'] ? ' (<b>working tree was dirty</b>)' : ''} · node ${esc(sw['node_version'])} · ${esc(env['os'])} · ${esc(env['cpu_count'])} CPUs · docker ${esc(env['docker_version'])} · ${esc(env['topology'])}</p>
 </body></html>`;

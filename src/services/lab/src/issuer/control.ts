@@ -1,3 +1,4 @@
+import { ResourceProbe } from '../../../../contracts/lib/resources.ts';
 // Issuer role lifecycle (plan section 5): FENCED -> PREPARED -> READY -> ENABLED -> CLOSING -> FENCED, any unsafe
 // event -> FAULTED. Transport-agnostic: handle() takes one parsed control request and returns one reply.
 // Nothing here exports the signing key, mints a second key, or accepts vouchers after enable.
@@ -31,6 +32,7 @@ export type IssuerRoleOptions = {
 };
 
 export class IssuerRole {
+  readonly #resources = new ResourceProbe('issuer');
   readonly incarnation = hex(randomBytes(16));
   readonly #readSecret: (path: string) => Buffer;
   readonly #now: () => number;
@@ -267,7 +269,7 @@ export class IssuerRole {
 
   /** REPORT payload: fixed allowlisted counters only. */
   report(requestId: string): Json {
-    return this.#ok(requestId, 'REPORT', {
+    return this.#ok(requestId, 'REPORT', { resources: [this.#resources.summary()],
       counters: { ...(this.#service?.counters ?? { issuance_successes: 0, issuance_failures: 0 }) },
       measurements: [], same_source_observed: null, origin_counts_available: false, worker_verification_attempts: [],
     });

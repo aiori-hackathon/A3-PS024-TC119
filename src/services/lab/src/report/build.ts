@@ -1,3 +1,5 @@
+import type { ResourceMeasurement, RpcOutcome } from '../../../../contracts/lib/resources.ts';
+import { privacyProblems } from './verify.ts';
 // Report assembly (plan section 9.2). Only fixed-schema aggregates go in: no token or voucher material, no addresses,
 // no per-request timing. The shared validator is the gate: nothing is written unless validateReport accepts it, and
 // "PASS" can only be produced when every required scenario ran with independent origin evidence.
@@ -13,10 +15,12 @@ export type SuiteKind = 'demo' | 'security' | 'benchmark';
 export type Counters = Partial<Record<'verification_attempts' | 'claims_successful' | 'replays_rejected' | 'requests_rejected' | 'queue_rejected' | 'transport_failures'
   | 'protected_requests_received' | 'generation_mismatches' | 'resources_served' | 'issuance_successes' | 'issuance_failures' | 'observations', number>>;
 export type ScenarioRecord = {
+  same_source_observed?: boolean | null; source_observations?: number;
   scenario_id: string; status: Status; expected: string; counters: Counters; origin_counts_available: boolean;
   worker_verification_attempts: { worker_index: number; attempts: number }[]; failure_labels: string[];
 };
 export type RunRecord = {
+  resources?: ResourceMeasurement[]; rpc_outcomes?: RpcOutcome[]; experiment?: {condition:1|10|50;stage:'warmup'|'measured';repetition:number;target_successes:1000} | null;
   run_id: string; config_digest: string; token_key_id: string; gateway_profile: 'B0' | 'B1'; client_profile: 'demo' | 'security' | 'benchmark';
   origin_incarnation: string | null; scenario_results: ScenarioRecord[]; measurements: unknown[];
   state_transitions: { state: string; reason: string }[]; retention_checks: { check_id: string; status: Status }[];
@@ -29,7 +33,7 @@ export function overallStatus(kind: SuiteKind, runs: readonly RunRecord[]): Stat
   if (scenarios.some((s) => s.status === 'FAIL') || runs.some((r) => r.retention_checks.some((c) => c.status === 'FAIL'))) return 'FAIL';
   const seen = new Set(scenarios.map((s) => s.scenario_id));
   const complete = runs.length > 0 && PROTOCOL.suite_required_scenarios[kind].every((id) => seen.has(id));
-  const allPass = scenarios.length > 0 && scenarios.every((s) => s.status === 'PASS' && s.origin_counts_available);
+  const allPass = scenarios.length > 0 && scenarios.every((s) => s.status === 'PASS' && s.origin_counts_available && (s.scenario_id !== 'shared-egress' || s.same_source_observed === true && (s.source_observations ?? 0) >= 15));
   const retentionOk = runs.every((r) => r.retention_checks.every((c) => c.status === 'PASS'));
   return complete && allPass && retentionOk ? 'PASS' : 'INCONCLUSIVE';
 }
@@ -62,11 +66,11 @@ export function collectProvenance(imageDigests: readonly string[] = []) {
 
 export function buildReport(input: { kind: SuiteKind; runs: RunRecord[]; imageDigests?: readonly string[]; now?: Date }): Report {
   const report = {
-    schema_version: 1, contract_version: PROTOCOL.contract_version, suite_kind: input.kind, suite_id: hex(randomBytes(16)),
+    schema_version: 2, contract_version: PROTOCOL.contract_version, suite_kind: input.kind, suite_id: hex(randomBytes(16)),
     // One coarse suite creation time; never a per-request timestamp.
     created_at_utc: (input.now ?? new Date()).toISOString().replace(/\.\d+Z$/, 'Z'),
     ...collectProvenance(input.imageDigests),
-    runs: input.runs, overall_status: overallStatus(input.kind, input.runs),
+    runs: input.runs.map(r => ({ ...r, resources:r.resources ?? [], rpc_outcomes:r.rpc_outcomes ?? [], experiment:r.experiment ?? null, scenario_results:r.scenario_results.map(s => ({...s,same_source_observed:s.same_source_observed ?? null,source_observations:s.source_observations ?? 0})) })), overall_status: overallStatus(input.kind, input.runs),
   } as Report;
   validateReport(report); // throws ContractError rather than ever producing an unsound document
   return report;
@@ -75,6 +79,7 @@ export function buildReport(input: { kind: SuiteKind; runs: RunRecord[]; imageDi
 /** Atomic replacement: a viewer reading during a run sees the old or the new snapshot, never a torn file. */
 export function writeReportAtomic(path: string, report: Report): void {
   validateReport(report);
+  if (privacyProblems(report).length) throw new Error('report-privacy');
   mkdirSync(dirname(path), { recursive: true });
   const tmp = `${path}.${process.pid}.tmp`;
   writeFileSync(tmp, JSON.stringify(report, null, 2) + '\n', { mode: 0o644 });

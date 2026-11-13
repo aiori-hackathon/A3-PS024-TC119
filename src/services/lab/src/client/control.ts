@@ -1,3 +1,4 @@
+import { ResourceProbe } from '../../../../contracts/lib/resources.ts';
 // Client role lifecycle (plan section 5): same state machine as the issuer, minus key/lease. A client holds its own
 // plaintext vouchers and runs named scenarios one at a time. Scenario execution is asynchronous so STATUS and
 // FENCE stay responsive; FENCE aborts the scenario, clears all credentials and returns only after it has settled.
@@ -72,6 +73,7 @@ export type ClientRoleOptions = {
 };
 
 export class ClientRole {
+  readonly #resources = new ResourceProbe('client');
   readonly incarnation = hex(randomBytes(16));
   readonly #readSecret: (path: string) => Buffer;
   readonly #proxyOverride: { host: string; port: number } | undefined;
@@ -239,7 +241,7 @@ export class ClientRole {
   }
 
   #report(requestId: string): Json {
-    return this.#ok(requestId, 'REPORT', {
+    return this.#ok(requestId, 'REPORT', { resources: [this.#resources.summary()],
       counters: { ...this.#counters }, measurements: this.#measurements.map((m) => ({ ...m, histogram_counts: [...m.histogram_counts] })), same_source_observed: null, origin_counts_available: false, worker_verification_attempts: [],
     });
   }

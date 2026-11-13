@@ -1,3 +1,4 @@
+import { performance } from 'node:perf_hooks';
 // Node Privacy Pass client for the lab (M02): challenge, issuance, finalization, inventory, redemption, all through
 // a pinned CONNECT/TLS path. One library Client per outstanding issuance; vouchers are removed before use and never
 // reused; tokens and vouchers stay in memory. This is the lab client, not a browser extension.
@@ -121,15 +122,20 @@ export class LabClient {
    * Trusted scenario harness only: the caller owns the token and must not retain it past the scenario. Same one-voucher,
    * one-attempt rules as obtainToken; the issuer signs blindly and cannot know which context the challenge carries.
    */
-  async issueWire(challenge: import('@cloudflare/privacypass-ts').TokenChallenge): Promise<Uint8Array> {
+  async issueWire(challenge: import('@cloudflare/privacypass-ts').TokenChallenge, observeHttp?: (ms: number, ok: boolean) => void): Promise<Uint8Array> {
     const voucher = this.#vouchers.take();
     if (!voucher) throw new LabClientError('no-voucher');
     const issuance = await LabIssuance.begin(challenge, this.#issuerKey);
-    const r = await this.#exchange(this.#issuerAgent, this.#m.issuer_name, {
+    const httpStart = performance.now();
+    let r: Reply;
+    try {
+      r = await this.#exchange(this.#issuerAgent, this.#m.issuer_name, {
       method: 'POST', path: new URL(this.#m.issuer_request_uri).pathname, body: issuance.requestWire,
       headers: { 'Content-Type': REQUEST_TYPE, Accept: RESPONSE_TYPE, 'X-Lab-Voucher': encodeBase64Url(voucher, false) },
     }, 4096);
-    voucher.fill(0);
+      observeHttp?.(performance.now() - httpStart, r.status === 200);
+    } catch (error) { observeHttp?.(performance.now() - httpStart, false); throw error; }
+    finally { voucher.fill(0); }
     if (r.status !== 200) throw new LabClientError('issuance-refused', r.status);
     if (r.headers['content-type'] !== RESPONSE_TYPE || r.body.length !== PROTOCOL.response_bytes) throw new LabClientError('issuance-invalid');
     let wire: Uint8Array;

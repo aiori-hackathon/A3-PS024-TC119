@@ -1,3 +1,4 @@
+import { ResourceProbe, type ResourceMeasurement, type RpcOutcome } from '../../../../contracts/lib/resources.ts';
 // The foreground run controller (plan sections 5.2 to 5.5, 9.1). It holds no state that survives the process: it
 // discovers fresh role incarnations, builds one run in the exact startup order, supervises it with sequenced heartbeats
 // (one outstanding per link), and on ANY unsafe event closes through the strong reset barrier. It never retries a
@@ -108,6 +109,10 @@ export class LabRun {
   #harnessVouchers: string[] = [];
   #retention: RetentionCheck[] = [];
   #measurements: Measurement[] = [];
+  #resources: ResourceMeasurement[] = [];
+  #rpc: RpcOutcome[] = [];
+  readonly #resourceProbe = new ResourceProbe('controller');
+  #sourceEvidence: { same: boolean | null; observations: number } | null = null;
   #closeReason: string | null = null;
   /** Fixed check names that failed in the most recent scenario (operator output only). */
   lastFailed: string[] = [];
@@ -334,9 +339,10 @@ export class LabRun {
     if (!g) return null;
     try {
       const r = await g.send(request('REPORT', this.#at('gateway')), this.#cfg.controlTimeoutMs);
-      if (r['ok'] !== true) return null;
+      if (r['ok'] !== true) { this.#sourceEvidence = null; return null; }
+      this.#sourceEvidence = { same: r['data'].same_source_observed ?? null, observations: r['data'].counters.observations ?? 0 };
       return new Map((r['data'].worker_verification_attempts as { worker_index: number; attempts: number }[]).map((w) => [w.worker_index, w.attempts]));
-    } catch { return null; }
+    } catch { this.#sourceEvidence = null; return null; }
   }
 
   /**
@@ -363,15 +369,24 @@ export class LabRun {
   /** Measurements travel in each client's REPORT (aggregates only). Without them a performance row is not evidence: INCONCLUSIVE. */
   async #collectMeasurements(ids: readonly ClientId[], record: ScenarioRecord): Promise<void> {
     const groups: Measurement[][] = [];
+    const resources: ResourceMeasurement[] = [];
+    const absorb = (data: Json) => resources.push(...(data.resources ?? []));
     for (const id of ids) {
       try {
         const r = await this.#d.links.clients[id].send(request('REPORT', this.#at(`client-${id}`)), this.#cfg.controlTimeoutMs);
-        if (r['ok'] === true && Array.isArray(r['data'].measurements)) groups.push(r['data'].measurements as Measurement[]);
+        if (r['ok'] === true && Array.isArray(r['data'].measurements)) { groups.push(r['data'].measurements as Measurement[]); absorb(r['data']); }
       } catch { /* reported below as missing evidence */ }
     }
+    const clientReportsComplete = groups.length === ids.length;
+    try {
+      const g = this.#gateway && await this.#gateway.send(request('REPORT', this.#at('gateway')), this.#cfg.controlTimeoutMs);
+      if (g?.['ok'] === true) { groups.push(g['data'].measurements as Measurement[]); absorb(g['data']); this.#rpc = g['data'].rpc_outcomes ?? []; }
+    } catch { /* incomplete telemetry is visible in the metric counts */ }
     const merged = mergeMeasurements(groups);
-    if (groups.length !== ids.length || merged.length === 0) { if (record.status === 'PASS') record.status = 'INCONCLUSIVE'; if (!record.failure_labels.includes('missing-evidence')) record.failure_labels.push('missing-evidence'); return; }
+    if (!clientReportsComplete || merged.length === 0) { if (record.status === 'PASS') record.status = 'INCONCLUSIVE'; if (!record.failure_labels.includes('missing-evidence')) record.failure_labels.push('missing-evidence'); return; }
     this.#measurements = merged;
+    for (const role of ['issuer','origin'] as const) { try { const r = await this.#d.links[role].send(request('REPORT',this.#at(role)),this.#cfg.controlTimeoutMs); if(r['ok'] === true) absorb(r['data']); } catch { /* missing resources remain absent */ } }
+    this.#resources = resources;
   }
 
   /** Vouchers for the security harness, removed from controller memory as they are handed out. */
@@ -424,9 +439,11 @@ export class LabRun {
   async #measure(scenarioId: string, exec: () => Promise<ScenarioData[] | 'control-lost' | 'missing-evidence'>): Promise<ScenarioRecord> {
     if (this.#phase !== 'enabled') throw new ControllerError('setup-failed', 'not-enabled');
     const before = await this.#originCounts(), workersBefore = await this.#workerAttempts();
+    const sourceBefore = this.#sourceEvidence;
     const outcome = await exec();
     let after = await this.#originCounts();
     const workersAfter = await this.#workerAttempts();
+    const sourceAfter = this.#sourceEvidence;
     // A fault scenario can end with supervision closing the run before the live read; the barrier's settled REPORT is then the evidence.
     if (!after && this.#closing) { await this.#closing; after = this.#d.finalOriginCounts?.() ?? null; }
 
@@ -455,12 +472,15 @@ export class LabRun {
       record.worker_verification_attempts = [...workersAfter].map(([worker_index, attempts]) => ({ worker_index, attempts: attempts - (workersBefore.get(worker_index) ?? 0) }))
         .sort((a, b) => a.worker_index - b.worker_index);
     }
+    if (scenarioId === 'shared-egress') { record.same_source_observed = sourceAfter?.same ?? null; record.source_observations = sourceBefore && sourceAfter ? Math.max(0,sourceAfter.observations-sourceBefore.observations) : 0; }
     const rule = ORIGIN_RULES[scenarioId];
     const statuses = datas.map((d) => d.status as string);
     if (statuses.includes('FAIL')) record.status = 'FAIL';
     else if (statuses.some((st) => st !== 'PASS')) record.status = 'INCONCLUSIVE';
     else if (!rule || (rule.needsGateway && !this.#gateway) || !delta || (rule.needsWorkers && (!workersAfter || record.worker_verification_attempts.length === 0))) { record.status = 'INCONCLUSIVE'; labels.add('missing-evidence'); }
     else if (!rule.holds({ origin: delta, workers: record.worker_verification_attempts.map((w) => w.attempts), client: clientCounters })) { record.status = 'FAIL'; labels.add('assertion-failed'); }
+    else if (scenarioId === 'shared-egress' && (record.same_source_observed === null || (record.source_observations ?? 0) < 15)) { record.status = 'INCONCLUSIVE'; labels.add('missing-evidence'); }
+    else if (scenarioId === 'shared-egress' && (record.same_source_observed !== true || clientCounters['claims_successful'] !== 10 || (clientCounters['replays_rejected'] ?? 0) < 1)) { record.status = 'FAIL'; labels.add('assertion-failed'); }
     else record.status = 'PASS';
     record.failure_labels = [...labels];
     this.#scenarios.push(record);
@@ -474,6 +494,7 @@ export class LabRun {
     return {
       run_id: this.#info.run_id, config_digest: this.#info.config_digest, token_key_id: m.token_key_id, gateway_profile: m.gateway_profile,
       client_profile: m.client_profile, origin_incarnation: this.#targets.get('origin')?.incarnation ?? null, scenario_results: [...this.#scenarios],
+      resources: [...this.#resources,this.#resourceProbe.summary()], rpc_outcomes: this.#rpc,
       measurements: this.#measurements.map((m) => ({ ...m })), state_transitions: [...this.#transitions], retention_checks: retention,
     };
   }

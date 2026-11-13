@@ -1,3 +1,4 @@
+import { ResourceProbe } from '../../../../contracts/lib/resources.ts';
 // Private protected origin (plan sections 4.1, 5.5). Three independent aggregate counters, never reset within a run:
 //   protected_requests_received  incremented for every fully parsed request to the protected route, BEFORE the
 //                                generation check (so a wrong-generation request still counts as an arrival)
@@ -28,6 +29,7 @@ export type OriginRoleOptions = {
 };
 
 export class OriginRole {
+  readonly #resources = new ResourceProbe('origin');
   readonly incarnation = hex(randomBytes(16));
   readonly #listen: { host: string; port: number };
   readonly #drainMs: number;
@@ -199,7 +201,7 @@ export class OriginRole {
 
   /** Counts are final (settled) unless a handler is still running; then they are reported unavailable, never as a guess. */
   #report(requestId: string): Json {
-    return this.#ok(requestId, 'REPORT', {
+    return this.#ok(requestId, 'REPORT', { resources: [this.#resources.summary()],
       counters: { ...this.#counters }, measurements: [], same_source_observed: null,
       origin_counts_available: this.#active === 0, worker_verification_attempts: [],
     });

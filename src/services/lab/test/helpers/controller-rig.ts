@@ -38,6 +38,8 @@ export class FakeGateway {
   concurrent = 0; maxConcurrent = 0;
   /** Per-worker verification attempts reported by REPORT; tests bump these to model real verification work. */
   attempts: { worker_index: number; attempts: number }[] = [];
+    source: boolean | null = null;
+    observations = 0;
   ackDelayMs = 0; dropAcks = false; badSeq = false; failCommand: string | null = null;
   async handle(raw: unknown): Promise<Json> {
     if (!this.started) throw new Error('control socket does not exist yet');
@@ -61,7 +63,7 @@ export class FakeGateway {
         return ok('HEARTBEAT_ACK', { seq: this.badSeq ? seq + 1 : seq });
       }
       case 'FENCE': this.state = 'FENCED'; if (this.runId) this.runClosed = true; return ok('FENCED', {});
-      case 'REPORT': return ok('REPORT', { counters: {}, measurements: [], same_source_observed: null, origin_counts_available: false, worker_verification_attempts: this.attempts.map((a) => ({ ...a })) });
+        case 'REPORT': return ok('REPORT', { counters: { observations: this.observations }, measurements: [], same_source_observed: this.source, origin_counts_available: false, worker_verification_attempts: this.attempts.map((a) => ({ ...a })) });
       default: return this.#reply(req, false, 'ILLEGAL_STATE', {});
     }
   }

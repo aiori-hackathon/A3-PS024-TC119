@@ -109,9 +109,9 @@ test('before the run is enabled there is no record and scenarios are refused', a
 });
 
 test('shared-egress: five clients must produce exactly ten distinct first spends at the origin', async () => {
-  for (const [arrivals, expected] of [[2, 'PASS'], [1, 'FAIL']] as const) {
+  for (const [arrivals, source, observations, expected] of [[2, true, 3, 'PASS'], [1, true, 3, 'FAIL'], [2, null, 3, 'INCONCLUSIVE'], [2, false, 3, 'FAIL'], [2,true,1,'INCONCLUSIVE']] as const) {
     let rig!: ControllerRig;
-    const part: ScenarioRunner = async ({ manifest }) => { for (let i = 0; i < arrivals; i++) await hitOrigin(rig, manifest.run_id); return { status: 'PASS', expected: 'accepted', counters: { claims_successful: arrivals } }; };
+    const part: ScenarioRunner = async ({ manifest }) => { for (let i = 0; i < arrivals; i++) await hitOrigin(rig, manifest.run_id); rig.gateway.source=source; rig.gateway.observations+=observations; return { status: 'PASS', expected: 'accepted', counters: { claims_successful: arrivals, replays_rejected:1 } }; };
     rig = controllerRig({ scenarios: { 'shared-egress': part } });
     const r = start(rig); await r.start();
     const rec = await r.runScenario(['A', 'B', 'C', 'D', 'E'], 'shared-egress');
