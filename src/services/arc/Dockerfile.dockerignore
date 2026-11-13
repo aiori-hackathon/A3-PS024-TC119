@@ -1,0 +1,10 @@
+**
+!src/
+!src/services/
+!src/services/arc/
+!src/services/arc/Cargo.toml
+!src/services/arc/Cargo.lock
+!src/services/arc/src/
+!src/services/arc/src/**
+!src/services/arc/tests/
+!src/services/arc/tests/**
