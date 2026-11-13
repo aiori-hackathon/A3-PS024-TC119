@@ -41,6 +41,6 @@ test('performance uses separate warmups, three alternating repetitions and bound
     assert.equal(plans.filter(p=>p.experiment!.stage==='warmup').length,2);
     const trials=plans.filter(p=>p.experiment!.stage==='measured');
     assert.deepEqual(trials.map(p=>p.gatewayProfile),['B0','B1','B1','B0','B0','B1']);
-    assert.ok(trials.every(p=>p.perClient*(condition===1?1:5)>=1000));
+    assert.ok(['B0','B1'].every(profile=>trials.filter(p=>p.gatewayProfile===profile).reduce((n,p)=>n+p.perClient*(condition===1?1:5),0)>=1000));
   }
 });

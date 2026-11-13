@@ -70,3 +70,18 @@ test('the controller merges every client\'s REPORT measurements into the run rec
   await r.stop();
   assert.doesNotThrow(() => buildReport({ kind: 'benchmark', runs: [r.runRecord()!] }));
 });
+
+test('the performance controller waits for every mint acknowledgement before any redemption phase',async()=>{
+  let minted=0,early=false;
+  const phases:number[]=[];
+  const runner:ScenarioRunner=async ctx=>{
+    phases.push(ctx.seed);
+    if(ctx.seed>=10000){await new Promise(r=>setTimeout(r,10));minted++;}
+    else if(minted!==2)early=true;
+    const h=new Histogram();h.add(1);
+    return {status:'PASS',expected:'measured',measurements:[h.summary(ctx.seed>=10000?'token_acquisition_ms':'protected_response_ms',1)]};
+  };
+  const rig=controllerRig({scenarios:{performance:runner}});
+  const run=new LabRun({links:rig.links,redis:rig.redis,reset:rig.reset,gatewayLauncher:rig.launcher},{perClient:2,heartbeatMs:40,ackDeadlineMs:150,controlTimeoutMs:3000});
+  await run.start();try {await run.runScenario(['A','B'],'performance',10);assert.equal(early,false);assert.deepEqual(phases,[10010,10010,10,10]);}finally{await run.stop();}
+});

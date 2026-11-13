@@ -53,6 +53,17 @@ class FakeDocker implements DockerCli {
   }
   spawn(): ChildProcess { throw new Error('not used'); }
 }
+
+test('project inventory rejects failed or timed-out inspection even if stdout contains a valid container ID',async()=>{
+  const d=new FakeDocker(),id=d.add('issuer'),p=new DockerProject(d,'c.yaml');
+  assert.deepEqual(await p.existing(),[{service:'issuer',container_id:id}]);
+  const original=d.run.bind(d);
+  for(const defect of [{status:1},{failed:true},{timedOut:true}]) {
+    d.run=async args=>{const result=await original(args);return args[0]==='inspect'?{...result,...defect}:result;};
+    await assert.rejects(p.existing(),/instance-unavailable/);
+    assert.equal(d.removals,0);
+  }
+});
 const noSleep = () => Promise.resolve();
 const fast = { sleep: noSleep, confirmMs: 40, killRetryMs: 5 };
 const signal = () => new AbortController().signal;

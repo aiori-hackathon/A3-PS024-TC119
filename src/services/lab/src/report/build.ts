@@ -21,7 +21,7 @@ export type ScenarioRecord = {
   worker_verification_attempts: { worker_index: number; attempts: number }[]; failure_labels: string[];
 };
 export type RunRecord = {
-  resources?: ResourceMeasurement[]; rpc_outcomes?: RpcOutcome[]; experiment?: {condition:1|10|50;stage:'warmup'|'measured';repetition:number;target_successes:1000} | null;
+  reset_confirmed?:boolean|null; resources?: ResourceMeasurement[]; rpc_outcomes?: RpcOutcome[]; experiment?: {condition:1|10|50;stage:'warmup'|'measured';repetition:number;target_successes:1000} | null;
   run_id: string; config_digest: string; token_key_id: string; gateway_profile: 'B0' | 'B1'; client_profile: 'demo' | 'security' | 'benchmark';
   origin_incarnation: string | null; scenario_results: ScenarioRecord[]; measurements: unknown[];
   state_transitions: { state: string; reason: string }[]; retention_checks: { check_id: string; status: Status }[];
@@ -35,8 +35,9 @@ export function overallStatus(kind: SuiteKind, runs: readonly RunRecord[]): Stat
   const seen = new Set(scenarios.map((s) => s.scenario_id));
   const complete = runs.length > 0 && PROTOCOL.suite_required_scenarios[kind].every((id) => seen.has(id));
   const allPass = scenarios.length > 0 && scenarios.every((s) => s.status === 'PASS' && s.origin_counts_available && (s.scenario_id !== 'shared-egress' || s.same_source_observed === true && (s.source_observations ?? 0) >= 15));
+  const resetOk = runs.every(r=>r.reset_confirmed===true);
   const retentionOk = runs.every((r) => r.retention_checks.every((c) => c.status === 'PASS'));
-  return complete && allPass && retentionOk && (kind !== 'benchmark' || analyzeBenchmark(runs).complete) ? 'PASS' : 'INCONCLUSIVE';
+  return complete && allPass && retentionOk && resetOk && (kind !== 'benchmark' || analyzeBenchmark(runs).complete) ? 'PASS' : 'INCONCLUSIVE';
 }
 
 function git(args: string[]): string | null {
@@ -67,11 +68,11 @@ export function collectProvenance(imageDigests: readonly string[] = []) {
 
 export function buildReport(input: { kind: SuiteKind; runs: RunRecord[]; imageDigests?: readonly string[]; now?: Date }): Report {
   const report = {
-    schema_version: 2, contract_version: PROTOCOL.contract_version, suite_kind: input.kind, suite_id: hex(randomBytes(16)),
+    schema_version: 3, contract_version: PROTOCOL.contract_version, suite_kind: input.kind, suite_id: hex(randomBytes(16)),
     // One coarse suite creation time; never a per-request timestamp.
     created_at_utc: (input.now ?? new Date()).toISOString().replace(/\.\d+Z$/, 'Z'),
     ...collectProvenance(input.imageDigests),
-    runs: input.runs.map(r => ({ ...r, resources:r.resources ?? [], rpc_outcomes:r.rpc_outcomes ?? [], experiment:r.experiment ?? null, scenario_results:r.scenario_results.map(s => ({...s,same_source_observed:s.same_source_observed ?? null,source_observations:s.source_observations ?? 0})) })), overall_status: overallStatus(input.kind, input.runs),
+    runs: input.runs.map(r => ({ ...r, reset_confirmed:r.reset_confirmed ?? null, resources:r.resources ?? [], rpc_outcomes:r.rpc_outcomes ?? [], experiment:r.experiment ?? null, scenario_results:r.scenario_results.map(s => ({...s,same_source_observed:s.same_source_observed ?? null,source_observations:s.source_observations ?? 0})) })), overall_status: overallStatus(input.kind, input.runs),
   } as Report;
   validateReport(report); // throws ContractError rather than ever producing an unsound document
   return report;

@@ -1,6 +1,7 @@
 import { X509Certificate, createPrivateKey } from 'node:crypto';
 import { readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
+import { spawnSync } from 'node:child_process';
 
 export type ReadinessCheck = { check: string; ok: boolean; action?: string };
 /** Fixed diagnostics only: never return exception text, file contents or credentials. */
@@ -11,6 +12,10 @@ export function localReadiness(root: string, now = Date.now()): ReadinessCheck[]
     checks.push({ check: name, ok, ...(ok ? {} : { action }) });
   };
   check('pinned-node-patch', 'Use Node from .node-version', () => process.versions.node === readFileSync(join(root, '.node-version'), 'utf8').trim());
+  check('openssl-3-or-newer', 'Install OpenSSL 3 or newer for local TLS provisioning', () => {
+    const r=spawnSync('openssl',['version'],{encoding:'utf8',timeout:5000,shell:false});
+    return r.status===0 && Number(/^OpenSSL (\d+)\./.exec(r.stdout)?.[1])>=3;
+  });
   for (const service of ['gateway', 'lab']) check(`${service}-locked-dependencies`, `Run npm ci --ignore-scripts --prefix src/services/${service}`, () => {
     const dir = join(root, 'src', 'services', service);
     const pkg = JSON.parse(readFileSync(join(dir, 'package.json'), 'utf8'));
@@ -38,5 +43,7 @@ export function localReadiness(root: string, now = Date.now()): ReadinessCheck[]
   });
   if (process.platform !== 'win32') check('secret-directory-permissions', 'Set .runtime/secrets and each role directory to mode 0700', () =>
     ['', 'issuer', 'gateway', 'client', 'controller', 'redis'].every(p => (statSync(join(secrets, p)).mode & 0o077) === 0));
+  if (process.platform !== 'win32') check('secret-file-permissions', 'Remove group/other write permissions from secret files; keep role directories owner-only', () =>
+    ['issuer/tls.crt','issuer/tls.key','gateway/tls.crt','gateway/tls.key','client/ca.crt','controller/redis-password','redis/redis-acl.conf'].every(p=>{const s=statSync(join(secrets,p));return s.isFile()&&(s.mode&0o022)===0;}));
   return checks;
 }

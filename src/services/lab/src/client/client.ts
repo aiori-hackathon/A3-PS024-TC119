@@ -238,7 +238,7 @@ export class LabClient {
         res.on('error', () => done(() => reject(new LabClientError('transport'))));
       });
       const deadline = setTimeout(() => { const error = new LabClientError('transport'); error.timedOut = true; done(() => reject(error)); req.destroy(); }, this.#timeoutMs);
-      req.on('error', () => done(() => reject(new LabClientError('transport'))));
+      req.on('error', cause => done(() => { const error=new LabClientError('transport'); error.timedOut=['tunnel-timeout','tls-timeout'].includes(cause.message); reject(error); }));
       req.end(o.body ? Buffer.from(o.body) : undefined);
     });
   }

@@ -42,7 +42,7 @@ node src/services/lab/src/controller/cli.ts run --suite performance --out artifa
 node src/services/lab/src/controller/cli.ts verify-report --file artifacts/security-report.json --require-pass
 ```
 
-The security suite runs all seventeen required scenarios in twelve fresh runs (about twenty-five minutes, of which the epoch-boundary run alone waits about 100 seconds for a real boundary). The performance suite runs the same declared load against the one-worker and the two-worker gateway. Read the performance table in `docs/lab/SCENARIOS_AND_REPORTS.md` before quoting a number: at this load the two profiles are not distinguishable, and the figures describe this laptop only.
+The security suite runs all seventeen required scenarios in twelve fresh runs (about twenty-five minutes, of which the epoch-boundary run alone waits about 100 seconds for a real boundary). The performance suite runs separate warmups and three alternating B0/B1 repetitions per bounded concurrency condition, with at least 1,000 measured successes targeted per condition and profile across generations. Read `docs/lab/BENCHMARK.md` before quoting results; gain is unavailable without comparable complete trials. Use a new output filename for every attempt.
 
 ## Showing a report in a browser
 
@@ -77,3 +77,8 @@ node infra/scripts/check-controller.mjs   # controller supervision, lease expiry
 ## What this does not claim
 
 It does not claim Privacy Pass solves token theft, enrollment or Sybil resistance, protection against arbitrary clock rollback (only a regression against the recorded highwater is detected, and the store's wall time is assumed trustworthy and non-regressing), protection from a host or root user, or exactly-once delivery to the origin (a claim can be spent while the origin response is lost). It is a laboratory on one host; Redis and the origin link are plaintext on internal networks.
+
+
+## Access, Attack and Recovery presentation sequence
+
+Use the existing CLI and read-only viewer: show the demo report's shared-egress/healthy-flow rows for Access, wrong-context/replay/theft rows for Attack, and restart-and-reset plus closed/reset-confirmed events for Recovery. For a live audience, run the supervised demo in one terminal and serve its growing validated report in another once the first generation exists. The viewer has no action buttons or control endpoints. Use a previously validated report as a clearly labelled fallback if venue resources are unavailable; never present it as a fresh run. The [private-host wrapper](../../infra/deploy/README.md) supplies setup, verification, SSH viewer, fence and cleanup commands.

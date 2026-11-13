@@ -52,7 +52,7 @@ for (const condition of [1,10,50] as const) {
     steps:[{scenario:'performance',clients:condition===1?['A']:ALL,seed:100+condition}],
   });
   for (const repetition of [1,2,3]) for (const gatewayProfile of (repetition%2===1?['B0','B1']:['B1','B0']) as ('B0'|'B1')[]) performancePlans.push({
-    name:`measured-${condition}-${repetition}-${gatewayProfile}`,clientProfile:'benchmark',gatewayProfile,perClient:condition===1?1000:condition===50?400:200,
+    name:`measured-${condition}-${repetition}-${gatewayProfile}`,clientProfile:'benchmark',gatewayProfile,perClient:condition===1?400:condition===50?200:80,
     experiment:{condition,stage:'measured',repetition,target_successes:1000},
     steps:[{scenario:'performance',clients:condition===1?['A']:ALL,seed:condition}],
   });

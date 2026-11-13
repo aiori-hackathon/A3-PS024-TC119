@@ -96,6 +96,7 @@ const SECRETS = { issuer_cert: '/run/secrets/tls.crt', issuer_key: '/run/secrets
 export class LabRun {
   readonly #d: RunDeps;
   readonly #cfg: Required<RunConfig>;
+  #resetConfirmed: boolean | null = null;
   #phase: Phase = 'idle';
   #targets = new Map<string, Target>();
   #heartbeats: { stop: () => void }[] = [];
@@ -505,7 +506,7 @@ export class LabRun {
     return {
       run_id: this.#info.run_id, config_digest: this.#info.config_digest, token_key_id: m.token_key_id, gateway_profile: m.gateway_profile,
       client_profile: m.client_profile, origin_incarnation: this.#targets.get('origin')?.incarnation ?? null, scenario_results: [...this.#scenarios],
-      resources: [...this.#resources,this.#resourceProbe.summary()], rpc_outcomes: this.#rpc,
+      reset_confirmed:this.#resetConfirmed, resources: [...this.#resources,this.#resourceProbe.summary()], rpc_outcomes: this.#rpc,
       measurements: this.#measurements.map((m) => ({ ...m })), state_transitions: [...this.#transitions], retention_checks: retention,
     };
   }
@@ -544,6 +545,7 @@ export class LabRun {
         result = { reason, reset_confirmed: false, error: 'close-unconfirmed' };
       }
       for (const { link } of this.#links()) { try { link.close(); } catch { /* every link is closed even if one throws */ } }
+      this.#resetConfirmed=result.reset_confirmed;
       this.#phase = 'closed';
       this.#transitions.push({ state: 'FENCED', reason: why });
       finish(result);

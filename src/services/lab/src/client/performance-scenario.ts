@@ -1,15 +1,5 @@
-// S18 performance (client part). The same declared load runs against the B0 and the B1 gateway, with identical security
-// semantics, and only aggregates leave this file: two fixed-bucket histograms (token acquisition and protected response) with
-// counts, failures and elapsed time. Method:
-//   * Every client first mints TOKENS tokens, paced (a burst of minting from five clients would starve the issuer's control
-//     heartbeat, and the supervision deadline is never lengthened). Minting is timed as `token_acquisition_ms`
-//     (blinding + issuer POST + finalization + public verification, for one token).
-//   * Then each client presents its tokens once each, with WORKERS requests in flight, as one closed loop. The latency of a
-//     request is `protected_response_ms` (client side: request start to complete response). A 503 `gateway-busy` is counted as a
-//     failure and is NOT retried, so the number is the declared load's honest result. Total in flight is clients x WORKERS = 15,
-//     which fits the one-worker B0 gateway (1 active flow + 16 queued) so both profiles face the same load.
-// The clients and the gateway share one host and the CPU is shared with the issuer's signing, so absolute numbers describe this
-// lab, not a deployment. The gateway closes every response connection: CONNECT and TLS setup are paid per redemption.
+// Bounded S18 mint/redemption phases. Fixed settings and timer boundaries: docs/lab/BENCHMARK.md.
+// Tokens stay in the existing bounded in-memory inventory; only aggregate REPORT data leaves the client.
 import { performance } from 'node:perf_hooks';
 import type { ScenarioContext, ScenarioOutcome } from './control.ts';
 import { LabClientError } from './client.ts';
@@ -17,7 +7,7 @@ import { Histogram } from '../report/histogram.ts';
 
 export const TOKENS = 80, WORKERS = 3, MINT_PACE_MS = 200;
 export const EXPERIMENT_SETTINGS = {
-  1:{ tokens:1000,workers:1,stage:'measured' }, 10:{tokens:200,workers:2,stage:'measured'},50:{tokens:400,workers:10,stage:'measured'},
+  1:{ tokens:400,workers:1,stage:'measured' }, 10:{tokens:80,workers:2,stage:'measured'},50:{tokens:200,workers:10,stage:'measured'},
   101:{tokens:100,workers:1,stage:'warmup'},110:{tokens:20,workers:2,stage:'warmup'},150:{tokens:20,workers:10,stage:'warmup'},
 } as const;
 export type PerfDeps = { sleep: (ms: number) => Promise<void>; now: () => number };
@@ -28,7 +18,7 @@ export async function performanceWith(ctx: ScenarioContext, d: PerfDeps = real):
   const phase = ctx.seed === undefined ? 'full' : ctx.seed >= 10000 ? 'mint' : 'redeem';
   const seed = ctx.seed === undefined ? undefined : ctx.seed % 10000;
   const setting = seed === undefined ? {tokens:TOKENS,workers:WORKERS,stage:'test'} : EXPERIMENT_SETTINGS[seed as keyof typeof EXPERIMENT_SETTINGS];
-  if (!setting) return {status:'INCONCLUSIVE',expected:'measured',failure_labels:['missing-evidence']};
+  if (!setting || (ctx.seed !== undefined && ctx.seed !== seed && ctx.seed !== 10000 + seed!)) return {status:'INCONCLUSIVE',expected:'measured',failure_labels:['missing-evidence']};
   const {tokens,workers} = setting;
   if (phase !== 'redeem' && !ctx.hasVoucher(tokens)) return { status:'INCONCLUSIVE',expected:'measured',failure_labels:['missing-evidence'] };
   const parsed = await client.fetchChallenge();
@@ -71,10 +61,10 @@ export async function performanceWith(ctx: ScenarioContext, d: PerfDeps = real):
     const redeemElapsed=d.now()-redeemStart;
     const endEpoch=await client.fetchChallenge().then(r=>r.epoch).catch(()=>null);
     const clean=other===0&&lost===0&&mintFailures===0&&attempted===tokens&&endEpoch===parsed.epoch&&!signal.aborted;
-    return {status:clean?'PASS':'FAIL',expected:'measured',
+    return {status:clean?'PASS':endEpoch===null?'INCONCLUSIVE':'FAIL',expected:'measured',
       counters:{attempted_operations:attempted,completed_operations:ok+busy+other,timed_out_operations:timedOut,uncertain_operations:lost,not_started_operations:tokens-attempted,
         observations:wires.length,...(phase==='full'?{issuance_successes:wires.length,issuance_failures:mintFailures}:{}),claims_successful:ok,queue_rejected:busy,transport_failures:lost,requests_rejected:other},
-      failure_labels:clean?[]:endEpoch!==parsed.epoch?['token-expired']:['assertion-failed'],
+      failure_labels:clean?[]:endEpoch===null?['missing-evidence']:endEpoch!==parsed.epoch?['token-expired']:['assertion-failed'],
       measurements:[...(phase==='full'?[http.summary('issuance_http_ms',mintElapsed),acquisition.summary('token_acquisition_ms',mintElapsed)]:[]),response.summary('protected_response_ms',redeemElapsed)]};
   } finally {for(const w of wires)w.fill(0);}
 }

@@ -42,6 +42,7 @@ import { SUITES, type RunPlan } from './suites.ts';
 import { buildReport, writeReportAtomic, type RunRecord, type SuiteKind } from '../report/build.ts';
 import { verifyReportFile } from '../report/verify.ts';
 import { localReadiness } from './preflight.ts';
+import { networkReadiness } from './network-readiness.ts';
 import { analyzeBenchmark } from '../../../../contracts/lib/benchmark.ts';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', '..', '..');
@@ -75,6 +76,7 @@ async function preflight(): Promise<number> {
   ];
   for (const [name, ok] of checks) say({ check: name, ok });
   const local = localReadiness(root);
+  local.push(...await networkReadiness(project, realDocker));
   for (const result of local) say(result);
   const engine = await realDocker.run(['info', '--format', '{{json .}}'], { timeoutMs: 20_000 });
   let linux = false;
@@ -89,11 +91,16 @@ async function preflight(): Promise<number> {
 
 async function fence(): Promise<number> {
   const project = new DockerProject(realDocker, composeFile);
+  let existing: {service:string;container_id:string}[];
+  try { existing = await project.existing(); }
+  catch { say({error:'project-state-unknown',fenced:false}); return 1; }
   const adapters = new DockerAdapters(project, new Map());
   let failed = 0;
   for (const role of ALL_ROLES) {
-    let instance: Instance;
-    try { instance = await project.instance(role); } catch { say({ role, fenced: null, note: 'not present' }); continue; }
+    const found = existing.filter(i=>i.service===SERVICE_FOR_ROLE[role]);
+    if(found.length===0) { say({role,fenced:true,method:'confirmed-absent'}); continue; }
+    if(found.length!==1) { say({role,fenced:false}); failed++; continue; }
+    const instance: Instance = {role,container_id:found[0]!.container_id};
     const link = project.openLink(instance);
     let strong = false;
     try { const r = await link.send(emergencyFence('operator-stop'), 12_000); strong = r['ok'] === true && r['result'] === 'FENCED'; } catch { /* fall back to kill-and-confirm */ } finally { link.close(); }
@@ -271,7 +278,7 @@ function summarizeBenchmark(): number {
   const verdict = verifyReportFile(file);
   if (!verdict.ok) { say({error:'invalid-report'}); return 1; }
   const report = JSON.parse(readFileSync(file,'utf8'));
-  if(report.schema_version !== 2 || report.suite_kind !== 'benchmark') { say({error:'schema-2-benchmark-required'}); return 2; }
+  if(![2,3].includes(report.schema_version) || report.suite_kind !== 'benchmark') { say({error:'versioned-benchmark-required'}); return 2; }
   say(analyzeBenchmark(report.runs)); return 0;
 }
 

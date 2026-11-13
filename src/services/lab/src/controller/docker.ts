@@ -83,8 +83,9 @@ export class DockerProject {
       const q = await this.compose(['ps', '-q', '-a', service], { timeoutMs: 20_000 });
       if (q.status !== 0) throw new Error('instance-unavailable'); // cannot enumerate: do not assume the project is empty
       for (const id of q.stdout.trim().split('\n').filter(Boolean)) {
-        const full = (await this.#cli.run(['inspect', '--format', '{{.Id}}', id], { timeoutMs: 10_000 })).stdout.trim();
-        if (!CONTAINER_ID.test(full)) throw new Error('instance-unavailable');
+        const inspected = await this.#cli.run(['inspect', '--format', '{{.Id}}', id], { timeoutMs: 10_000 });
+        const full = inspected.stdout.trim();
+        if (inspected.status !== 0 || inspected.failed || inspected.timedOut || !CONTAINER_ID.test(full)) throw new Error('instance-unavailable');
         out.push({ service, container_id: full });
       }
     }

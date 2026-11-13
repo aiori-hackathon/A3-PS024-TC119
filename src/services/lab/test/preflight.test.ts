@@ -5,6 +5,20 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createPki } from '../src/pki.ts';
 import { localReadiness } from '../src/controller/preflight.ts';
+import { overlaps, checkNetworkConfiguration } from '../src/controller/network-readiness.ts';
+
+test('subnet conflicts use ranges, including broader VPN routes; topology checks cannot substitute for live isolation',()=>{
+  assert.equal(overlaps('172.28.0.0/16','172.28.40.0/24'),true);
+  assert.equal(overlaps('172.28.39.0/24','172.28.40.0/24'),false);
+  const networks=Object.fromEntries(['client_proxy','proxy_issuer','proxy_gateway','gateway_replay','gateway_origin'].map((name,i)=>[name,{internal:true,enable_ipv6:false,ipam:{config:[{subnet:`172.28.${(i+1)*10}.0/24`}]}}]));
+  const config={networks,services:Object.fromEntries(Array.from({length:10},(_,i)=>[String(i),{}]))};
+  assert.ok(checkNetworkConfiguration(config,[],[]).every(c=>c.ok));
+  assert.equal(checkNetworkConfiguration(config,[],['172.28.0.1/16'])[1]!.ok,false);
+  const foreign=[{Labels:{},IPAM:{Config:[{Subnet:'172.28.40.128/25'}]}}];
+  assert.equal(checkNetworkConfiguration(config,foreign,[])[1]!.ok,false);
+  config.networks.gateway_replay!.internal=false;
+  assert.equal(checkNetworkConfiguration(config,[],[])[0]!.ok,false);
+});
 
 test('preflight detects expired certificates, wrong key pairs, invalid credentials and missing dependencies', t => {
   const root = mkdtempSync(join(tmpdir(), 'tf-preflight-'));

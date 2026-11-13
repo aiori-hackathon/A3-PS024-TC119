@@ -14,7 +14,7 @@ const scenario = (id: string, over: Partial<ScenarioRecord> = {}): ScenarioRecor
   worker_verification_attempts: [], failure_labels: [], ...over,
 });
 const run = (ids: string[], over: Partial<RunRecord> = {}): RunRecord => ({
-  run_id: hex(randomBytes(16)), config_digest: hex(randomBytes(32)), token_key_id: hex(randomBytes(32)), gateway_profile: 'B1', client_profile: 'demo',
+  reset_confirmed:true, run_id: hex(randomBytes(16)), config_digest: hex(randomBytes(32)), token_key_id: hex(randomBytes(32)), gateway_profile: 'B1', client_profile: 'demo',
   origin_incarnation: hex(randomBytes(16)), scenario_results: ids.map((i) => scenario(i)), measurements: [],
   state_transitions: [{ state: 'ENABLED', reason: 'enabled' }, { state: 'FENCED', reason: 'completed' }], retention_checks: [], ...over,
 });
@@ -111,6 +111,15 @@ test('v2 source evidence cannot be omitted or contradicted; v1 remains readable 
   assert.equal(verifyReportText(JSON.stringify(r)).ok,true);
   for(const value of [null,false]) { const bad = structuredClone(r); bad.runs[0]!.scenario_results.find(s=>s.scenario_id==='shared-egress')!.same_source_observed=value; assert.equal(verifyReportText(JSON.stringify(bad)).ok,false); }
   const legacy:any = structuredClone(r); legacy.schema_version=1;
-  for(const row of legacy.runs) { delete row.resources; delete row.rpc_outcomes; delete row.experiment; for(const s of row.scenario_results) {delete s.same_source_observed;delete s.source_observations;} }
+  for(const row of legacy.runs) { delete row.reset_confirmed; delete row.resources; delete row.rpc_outcomes; delete row.experiment; for(const s of row.scenario_results) {delete s.same_source_observed;delete s.source_observations;} }
+  assert.equal(verifyReportText(JSON.stringify(legacy)).ok,true);
+});
+
+
+test('schema 3 refuses PASS after an unconfirmed reset and keeps saved schema 2 readable',()=>{
+  const record=run([...required]);record.reset_confirmed=false;
+  const incomplete=buildReport({kind:'demo',runs:[record]});assert.equal(incomplete.overall_status,'INCONCLUSIVE');
+  assert.equal(verifyReportText(JSON.stringify({...incomplete,overall_status:'PASS'})).ok,false);
+  const legacy:any=structuredClone(incomplete);legacy.schema_version=2;delete legacy.runs[0].reset_confirmed;
   assert.equal(verifyReportText(JSON.stringify(legacy)).ok,true);
 });

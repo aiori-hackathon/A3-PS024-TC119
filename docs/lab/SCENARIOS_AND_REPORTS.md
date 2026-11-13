@@ -1,6 +1,6 @@
 # Scenarios and reports
 
-**Contract:** `TF-PS024-1.0.0`, unchanged. **Paths:** `src/services/lab/src/client/`, `src/services/lab/src/controller/`, `src/services/lab/src/report/`.
+**Protocol contract:** `TF-PS024-1.0.0`; aggregate evidence revision 2 produces report schema 3 and reads historical schemas 1 and 2 explicitly. **Paths:** `src/services/lab/src/client/`, `src/services/lab/src/controller/`, `src/services/lab/src/report/`.
 
 Every scenario below runs against the real deployment (real issuer, CONNECT proxy, gateway with two workers, Redis and private origin). The controller never takes a client's word: it reads the origin's received/mismatch/served counters and the gateway workers' verification counters before and after, and decides PASS from those.
 
@@ -9,7 +9,7 @@ Every scenario below runs against the real deployment (real issuer, CONNECT prox
 | ID | Scenario | State | How it is checked |
 |---|---|---|---|
 | S01 | `healthy-flow` | **passes on the deployment** | challenge, issuance, finalization, redemption; origin received 1, served 1 |
-| S02 | `shared-egress` | **passes** | five clients, two tokens each through one proxy; origin received 10, served 10; a reused token refused |
+| S02 | `shared-egress` | **passes** | five clients, two tokens each through one proxy; generation-scoped gateway equality across both workers with at least fifteen authenticated observations, ten first-spend successes, origin received 10/served 10, and replay refusal; absent source evidence is INCONCLUSIVE and contradictory evidence fails |
 | S03 | `voucher-policy` | **passes** | unknown/missing vouchers 403; a protocol-invalid request is 422 and spares the voucher; one signing per voucher; origin untouched |
 | S04 | `malformed-token` | **passes** | 21 size, encoding, type, duplicate-parameter, header-count/size, body and framing abuses refused; origin received 0; gateway still serves afterwards |
 | S05 | `signature-and-key` | **passes** | modified nonce/digest/key id/authenticator, all-zero authenticator, random token and a REAL token under another issuer key all 401; origin received 0 |
@@ -55,21 +55,11 @@ It found one real defect while being built: the Redis image declares `VOLUME /da
 
 ## Performance (S18)
 
-Method: each of the five clients mints 80 tokens (paced, so the issuer heartbeat is not starved; timed as `token_acquisition_ms`), then presents them once each with three requests in flight per client (15 in total, which fits the one-worker B0 gateway: one active flow plus sixteen queued). A busy refusal is counted as a failure and is not retried. Only aggregates leave the client: fixed-bucket histograms (bounds in the frozen protocol), counts, failures and elapsed time, delivered through `REPORT` and merged by the controller. Quantiles are the upper bound of their bucket, and null if they fall in the overflow bucket.
+The current fixed experiment, timer boundaries, inventory limits, TLS policy, outcome counts and gain validity rules are documented in [BENCHMARK](BENCHMARK.md) and [MEASUREMENTS](../implementation/MEASUREMENTS.md). It runs separate warmup generations and three alternating paired repetitions at aggregate concurrency 1, 10 and 50. Clients finish minting before the controller releases redemption. Supervision stays enabled and its overhead remains included. Schema 3 reports carry all eight declared latency histograms, RPC outcomes and process resource aggregates through ordinary REPORT and viewer entry points.
 
-One clean local run on this laptop (Windows 11, Docker Desktop, 16 logical CPUs, 7.5 GiB VM, a Supabase stack running alongside):
+The earlier one-shot 400-token B0/B1 sample is historical evidence only: successful latencies fell in similar buckets and did not support a measurable gain. Its old claim of gateway TLS reuse was wrong: every gateway response closes its TLS connection, and current protected-response timing includes CONNECT/TLS setup per request. Do not cite that old sample as a repeated experiment. `performance-smoke` runs only two warmups, stays INCONCLUSIVE as benchmark evidence, and is suitable for checking the plumbing in CI.
 
-| | B0 (1 worker) | B1 (2 workers) |
-|---|---|---|
-| requests accepted / refused | 400 / 0 | 400 / 0 |
-| verification attempts by worker | 400 | 186 and 214 |
-| `protected_response_ms` p50 / p95 / p99 | 10 / 25 / 50 | 10 / 25 / 25 |
-| redemption phase | 0.33 s | 0.29 s |
-| `token_acquisition_ms` p50 / p95 | 1000 / 2000 | 1000 / 2000 |
-
-Read it carefully: **at this declared load the two profiles are not distinguishable.** The redemption phase is a burst of about a third of a second, dominated by the client side. B1 splits work across both workers as designed, but this laptop shows no throughput difference worth reporting, and the numbers are a sample, not a benchmark of record. Token acquisition (about 4.8 per second across five clients) is limited by client-side RSA blinding in JavaScript, not by the issuer. Not measured, because the gateway does not export them under this contract: `verification_ms`, `snapshot_rpc_ms`, `claim_rpc_ms`, `queue_wait_ms`, `authorization_ms`, and the issuer's HTTP time. TLS is established per connection and reused within the pool. Controller supervision (one heartbeat per second per role) is always on; there is no run without it, so its overhead is inside every number and was not measured separately.
-
-Minting at full speed from five clients can cost the supervision deadline (a heartbeat acknowledged later than 1.5 s closes the run, correctly), so the scenario paces itself instead of lengthening any deadline. Roughly one performance run in five still lost a heartbeat on this shared, busy host; the `closed` event names the role (`lost_role`) when that happens. A PASS needs a run where it did not occur, and this is a property of running everything on one machine.
+Fresh 13 November baseline evidence at `6bd3c2a` passed both the demo and seventeen-scenario security suites on Windows with Docker Desktop Linux Engine 29.4.0. The schema-2 demo at `3d6c004` also passed the stricter source rule. Its first full security rerun was INCONCLUSIVE because issuer supervision was lost during S10; all other scenarios passed and reset confirmation succeeded. A lost heartbeat remains an invalid trial, not a reason to lengthen supervision. Local sanitized reports and exact tested commits are recorded in the task's local evidence notes; no generated runtime artifacts are committed.
 
 ## Viewing a report
 

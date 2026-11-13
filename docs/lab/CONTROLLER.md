@@ -6,7 +6,7 @@
 
 | Command | Behavior |
 |---|---|
-| `lab preflight` | Read-only: Docker reachable, Compose file valid, secrets provisioned, Node 24 |
+| `lab preflight` | Read-only: pinned tools/dependencies, TLS validity/key/CA/ACL, permissions, private topology and obvious subnet conflicts; live isolation requires the deeper checker |
 | `lab run --suite NAME --out F` | Fixed multi-generation suites (`demo`, `security`, `performance`, and smaller ones: `gateway-core`, `redis-faults`, `retention`, `upstream`, `epoch-boundary`, `admission-limits`); writes a validated atomic report after every generation |
 | `lab run [--profile demo\|security] [--per-client N] [--scenarios a,b --out F]` | One ad-hoc generation running named client scenarios |
 | `lab run --partial` | Development mode without the gateway; uses a partial reset barrier that refuses eight-role runs. Never reports a complete suite as PASS |
@@ -48,4 +48,4 @@ If setup fails before a complete snapshot exists (no manifest or no gateway inca
 
 ## Not done
 
-A native Linux run of the security and performance suites; a fresh-checkout rehearsal on a second machine; the deployment scripts for a separate host. Windows cannot deliver a graceful SIGINT to the controller; stopping it abruptly is exactly the case the issuer and gateway leases cover.
+A native Linux run outside CI and a fresh-checkout/venue rehearsal on a second physical machine remain environment-dependent. The [separate-host scripts and runbook](../../infra/deploy/README.md) are implemented. See [benchmark conditions](BENCHMARK.md). Existing report output paths are refused to preserve failed trials. Windows cannot deliver a graceful SIGINT to the controller; stopping it abruptly is exactly the case the issuer and gateway leases cover.
