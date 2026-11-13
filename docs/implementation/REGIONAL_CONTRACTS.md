@@ -6,7 +6,7 @@ This additive contract defines the new product interfaces. It does **not** enabl
 
 ## Policy and lifecycle
 
-`src/contracts/regional-v1.json` supplies constants; `schemas/regional-*.json` supplies strict structural schemas. A regional policy is a separate controller-installed object, validated against the baseline manifest and bound by `baseline_config_digest`. Its digest is SHA-256 of `regionalBytes(domains.policy, policy)`.
+`src/contracts/lib/regional-v1.json` supplies constants; `schemas/regional-*.json` supplies strict structural schemas. The constants live under the existing shared-library Docker COPY boundary so both service images can typecheck without Dockerfile changes. A regional policy is a separate controller-installed object, validated against the baseline manifest and bound by `baseline_config_digest`. Its digest is SHA-256 of `regionalBytes(domains.policy, policy)`.
 
 Profiles are `ip`, `type2-bearer`, `arc` and `type2-holder`. Exactly one profile is accepted during a run. Client headers, UI selection or invalid proofs cannot change it. B0/B1 still mean gateway capacity profiles, not authorization algorithms.
 

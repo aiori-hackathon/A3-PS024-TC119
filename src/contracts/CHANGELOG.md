@@ -1,5 +1,11 @@
 # Contract changes
 
+## Additive API revision regional-replay-1 — 14 November 2026
+
+Adds a separately namespaced regional policy/spend store, controller initializer/readiness, constrained regional gateway ACL, exact reply/command helpers and bounded gateway pool. Atomic claims use Redis TIME to enforce regional window and authenticated holder nonce expiry. Observed window end latches shared terminal closure; snapshots/refusals record clock highwater. No baseline Lua bytes/hashes, manifests, report schemas or existing runtime path changed. ARC proof/holder verification and admission remain future integration dependencies.
+
+Moves the authoritative regional constants unchanged into `lib/regional-v1.json` so both existing Docker shared-library COPY inputs contain them. Generators/imports follow the new location. The regional contract version and fixtures retain the same meaning. Counterpart acceptance and real ARC interface gates remain pending.
+
 ## Regional candidate TF-PS024-REGIONAL-1.0.0 — 14 November 2026
 
 Separate regional policy and encodings define a one-window-per-fresh-run five-use entitlement, ARC private-service requests/replies and canonical verified spend tags, and ephemeral P-256 holder-context/nonce/proof framing. Five generated strict schemas and independent Python framing/MAC vectors accompany focused Node/Ajv and real P-256 interoperability checks. The implementation specification records public adapter routes, current-window-only admission, key rotation, stockpiling prevention, atomic expiry requirements and privacy limits.
