@@ -378,10 +378,16 @@ export class LabRun {
         if(issuance.some(r=>r['status']!=='PASS'))return issuance as ScenarioData[];
       }
       const redemptionStart=performance.now();
-      const replies = await Promise.all(ids.map(async (id): Promise<Json | null> => {
+      const runClient = async (id: ClientId): Promise<Json | null> => {
         try { return await this.#d.links.clients[id].send(request('RUN_SCENARIO', this.#at(`client-${id}`), { scenario_id: scenarioId, schedule_seed: seed }), scenarioId === 'performance' ? 540_000 : 180_000); }
         catch { return null; }
-      }));
+      };
+      const replies: (Json | null)[] = [];
+      if (scenarioId === 'shared-egress') {
+        for (const id of ids) replies.push(await runClient(id));
+      } else {
+        replies.push(...await Promise.all(ids.map(runClient)));
+      }
       if(scenarioId==='performance')this.#redemptionSpan=performance.now()-redemptionStart;
       if (replies.some((r) => r === null)) return 'control-lost';
       if (replies.some((r) => r!['ok'] !== true || r!['result'] !== 'SCENARIO_COMPLETE')) return 'missing-evidence';
