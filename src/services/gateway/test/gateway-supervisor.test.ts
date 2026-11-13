@@ -13,6 +13,8 @@ test('source equality combines both workers, detects distinct singleton sources 
   assert.equal(combineSources([a.summary(), b.summary()]).same, null);
   a.observe('192.0.2.1'); assert.equal(combineSources([a.summary(), b.summary()]).same, null);
   b.observe('192.0.2.2'); assert.equal(combineSources([a.summary(), b.summary()]).same, false);
+  b.observe('192.0.2.3'); b.observe(undefined); assert.equal(b.summary().consistent,false);
+  for(let i=0;i<65536;i++) b.observe('192.0.2.2'); assert.equal(b.summary().consistent,false,'known mismatch survives saturation');
   const c = new SourceObservation('a'.repeat(64)); c.observe('192.0.2.1');
   assert.deepEqual(combineSources([a.summary(), c.summary()]), { same: true, observations: 2 });
   assert.equal(JSON.stringify(a.summary()).includes('192.0.2.1'), false);

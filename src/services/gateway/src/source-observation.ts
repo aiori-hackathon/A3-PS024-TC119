@@ -19,7 +19,7 @@ export class SourceObservation {
     if (this.#tag === null) this.#tag = tag;
     else if (this.#tag !== tag) this.#same = false;
   }
-  summary(): SourceSummary { return { observations: this.#count, consistent: this.#unknown ? null : this.#same, tag: this.#tag }; }
+  summary(): SourceSummary { return { observations: this.#count, consistent: !this.#same ? false : this.#unknown ? null : true, tag: this.#tag }; }
 }
 export function combineSources(summaries: readonly SourceSummary[]): { observations: number; same: boolean | null } {
   let observations = 0, tag: string | null = null, mismatch = false, unknown = false;

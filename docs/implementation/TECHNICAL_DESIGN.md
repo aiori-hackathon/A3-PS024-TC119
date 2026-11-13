@@ -2,7 +2,7 @@
 
 PS-024: Privacy Pass token issuance and anti-replay gateway. Accepted bootstrap contract: `TF-PS024-1.0.0`, 26 October 2026.
 
-**Implementation status:** the gateway coordinator now connects bounded admission, signature/context verification, real Redis single-spend claims and fixed-origin transport. Component/integration tests use genuine blind-issued tokens, a restricted Redis ACL and an independently counted test origin. Shared encodings, leases and bootstrap builds are also tested. The programmatic HTTPS listener is also implemented and tested with real TLS. The serving process, private control transport, one/two-worker supervision and gateway-local exit barrier are implemented and tested; see the [runtime guide](GATEWAY_RUNTIME.md). Actual issuer/client service deployment, full cross-role reset, network integration and performance measurements remain planned. See [bootstrap status](G0_STATUS.md) for historical G0 evidence and the [gateway component status](../../src/services/gateway/README.md) for subsequent work.
+**Implementation status:** the gateway coordinator now connects bounded admission, signature/context verification, real Redis single-spend claims and fixed-origin transport. Component/integration tests use genuine blind-issued tokens, a restricted Redis ACL and an independently counted test origin. Shared encodings, leases and bootstrap builds are also tested. The programmatic HTTPS listener is also implemented and tested with real TLS. The serving process, private control transport, one/two-worker supervision and gateway-local exit barrier are implemented and tested; see the [runtime guide](GATEWAY_RUNTIME.md). Issuer/client deployment, full cross-role reset, network integration and aggregate performance measurements are implemented; the repeated experiment and separate-host runbook are in [BENCHMARK](../lab/BENCHMARK.md) and [deployment](../../infra/deploy/README.md). See [bootstrap status](G0_STATUS.md) for historical G0 evidence and the [gateway component status](../../src/services/gateway/README.md) for subsequent work.
 
 The selected protocol is RFC 9578 Type 2 with RSA-2048, SHA-384/PSS and 48-byte salt, using the pinned existing Privacy Pass library. See [dependency review](../security/DEPENDENCY_REVIEW.md) and [contract reference](../../src/contracts/README.md). No new cryptographic primitive is proposed.
 
@@ -32,7 +32,7 @@ Mitigate exposure through validated TLS, memory-only token inventory, no credent
 
 ## 1. Contract A — Public protocol and shared policy
 
-The schemas, fixtures and helpers in `src/contracts/` define the accepted executable interface baseline. These sections specify the target services; the bootstrap does not yet implement the HTTP, replay-store or lifecycle components.
+The schemas, fixtures and helpers in `src/contracts/` define the accepted executable interface baseline. These sections describe the implemented HTTP, replay-store and lifecycle interfaces; historical bootstrap evidence is separate from current deployment evidence.
 
 ### 1.1 Service identities and public endpoints
 
@@ -220,7 +220,7 @@ This gives bounded detection under healthy scheduling, not instantaneous revocat
 
 ### 2.5 Strong reset barrier
 
-The public `src/security/reset-barrier.ts` utility now gates old Redis discard on complete identity-bound stop evidence, with an opaque single-use receipt and terminal handling of uncertainty. See [reset integration and recovery evidence](RESET_RECOVERY.md). Real lab control/Docker adapters and full deployed cross-role verification remain integration work.
+The public `src/security/reset-barrier.ts` utility now gates old Redis discard on complete identity-bound stop evidence, with an opaque single-use receipt and terminal handling of uncertainty. See [reset integration and recovery evidence](RESET_RECOVERY.md). Real lab control/Docker adapters implement this barrier, including kill-and-confirm by immutable container identity before Redis discard. Demo/security suites exercise deployed recovery.
 
 For intentional stop or fault, stop admitting first and broadcast FENCE. Gateway supervisor closes admission, removes queued jobs, prevents any late verify/Redis callback from authorizing another forward, aborts upstream/downstream work, closes pools/sockets and waits for active work to settle. A worker that cannot acknowledge is terminated.
 
@@ -342,7 +342,7 @@ An active flow holds its permit until completion or actual abort. A 250 ms Redis
 
 `FlowAdmission` implements these flow bounds per worker, bound to the immutable manifest and `WorkerLease`. Acquire a permit before crypto/Redis/upstream work; queued entries hold only live cancellation/deadline bookkeeping. Active capacity is reserved before resolving acquisition, with FIFO promotion before fresh arrivals. Queue overflow or original-deadline expiry returns fixed `gateway-busy`; terminal run closure returns `authorization-unavailable`; a disconnected request returns an internal canceled result rather than a new HTTP error label. Client cancellation aborts an active permit but does not free its capacity. The owning flow must finish actual abort/settlement cleanup before calling idempotent `release()`. Immediately recheck the permit after any await and before protected operations; a permit may be canceled between promise resolution and consumption.
 
-Lease closure cancels queued entries and active permits. Queue-clock/scheduler failures latch the worker closed before dispatching cancellation handlers. Admission checks monotonic time again at promotion, so delayed timers cannot extend the 100ms wait. `close()` is terminal and returns one shared promise that resolves after every issued permit is released; it does not prove listener/socket/native-operation teardown or provide a strong FENCED acknowledgement. These remain lifecycle-host duties. The HTTPS adapter and coordinator now enforce downstream socket/framing limits, parsing/deadlines and the authorization flow. Cross-worker gateway lifecycle is now tested through the Linux serving entry point; cross-role reset and deployment integration remain pending.
+Lease closure cancels queued entries and active permits. Queue-clock/scheduler failures latch the worker closed before dispatching cancellation handlers. Admission checks monotonic time again at promotion, so delayed timers cannot extend the 100ms wait. `close()` is terminal and returns one shared promise that resolves after every issued permit is released; it does not prove listener/socket/native-operation teardown or provide a strong FENCED acknowledgement. These remain lifecycle-host duties. The HTTPS adapter and coordinator now enforce downstream socket/framing limits, parsing/deadlines and the authorization flow. Cross-worker gateway lifecycle is now tested through the Linux serving entry point; cross-role reset and deployment integration are exercised by the lab suites.
 
 **Complete B0 differences:** one worker, one active flow, FIFO 16/100 ms, 64 total gateway sockets, one persistent Redis connection/one RPC slot, and one origin total/per-origin/free socket. All protocol, security, timeout, memory, pool-idle, framing, supervision and no-retry settings remain identical to B1. The manifest records actual counts instead of assuming B1. G2 may run this one-worker configuration; readiness requires all configured workers, not an unconditional count of two. Issuer baseline: 2 active signing operations, FIFO 16/100 ms, 32 sockets, 8192-byte/32 headers, 4096-byte transport body cap with exactly 259-byte valid protocol payload, 2-second header/TLS deadline and 5-second request deadline; hold permits until signing actually settles or terminate the issuer on irrecoverable closure. Both B0/B1 use those same issuer bounds.
 
@@ -374,29 +374,29 @@ No issuer/gateway/Redis/private-origin public host ports. Optional proxy mapping
 
 ### 6.1 One supervised command owns a run
 
-The lab package will expose these target interfaces. They are not commands that already work at the bootstrap stage:
+The lab package exposes the following supported commands:
 
 ```powershell
 npm --prefix src/services/lab run lab -- preflight
-npm --prefix src/services/lab run lab -- run --profile demo --scenario demo-suite --out artifacts/demo-report.json
-npm --prefix src/services/lab run lab -- run --profile demo --scenario interactive-demo --out artifacts/live-report.json
-npm --prefix src/services/lab run lab -- run --profile security --scenario security-suite --out artifacts/security-report.json
-npm --prefix src/services/lab run lab -- run --profile benchmark --scenario benchmark-suite --out artifacts/benchmark-report.json
+npm --prefix src/services/lab run lab -- run --suite demo --out artifacts/demo-report.json
+npm --prefix src/services/lab run lab -- run --suite gateway-core --out artifacts/live-report.json
+npm --prefix src/services/lab run lab -- run --suite security --out artifacts/security-report.json
+npm --prefix src/services/lab run lab -- run --suite performance --out artifacts/benchmark-report.json
 npm --prefix src/services/lab run lab -- verify-report --file artifacts/demo-report.json
 npm --prefix src/services/lab run lab -- serve-report --file artifacts/demo-report.json --host 127.0.0.1 --port 4173
 ```
 
-`preflight` checks runtime versions, Docker access/Linux containers, Compose, available ports/subnets, dependency installation, contract versions, image pins and local secret permissions. It reports actionable failures without printing credentials. A Windows machine may use Docker Desktop/WSL2, but final integration and deployment must pass on Linux too.
+`preflight` checks the pinned Node patch, locked direct dependencies, OpenSSL, Linux engine/Compose versions, secret validity/key/CA/ACL consistency and platform-supported permissions, expected private network declarations and obvious host-interface/foreign-Docker subnet overlap. Live isolation remains INCONCLUSIVE until the deeper network checker runs; no published service port is expected. It reports actionable failures without printing credentials. A Windows machine may use Docker Desktop/WSL2, but final integration and deployment must pass on Linux too.
 
-`run` remains a **foreground supervisor**, holds an exclusive project lock, creates and supervises the roles, executes named scenarios, writes validated reports, and fences/cleans up in `finally`. It must not start services and exit while they remain authorized. Interactive mode pauses for local terminal input between named cases while supervision/heartbeats continue. It provides no web control API. A suite may contain multiple independent fresh runs: each gets a new key/run ID and its own evidence, and the preceding run must be fully fenced first.
+`run` remains a **foreground supervisor**, holds an exclusive project lock, creates and supervises the roles, executes named scenarios, writes validated reports, and fences/cleans up in `finally`. It must not start services and exit while they remain authorized. The supported presentation sequence uses named CLI suites plus the read-only viewer for Access, Attack and Recovery; there is no separate interactive execution UI. It provides no web control API. A suite may contain multiple independent fresh runs: each gets a new key/run ID and its own evidence, and the preceding run must be fully fenced first.
 
-Signal/exception handling fences the data path before ordinary teardown. If the controller crashes without running cleanup, role leases close admission; the next controller still fences or kills and confirms all old workers before resetting anything. Implement a documented emergency local `lab fence --project <name>` operation that acquires the exclusive lock or first confirms the previous controller is gone. Never interpret a stale lock file alone as permission to reset live state. Project names must be validated, not interpolated into shell commands.
+Signal/exception handling fences the data path before ordinary teardown. If the controller crashes without running cleanup, role leases close admission; the next controller still fences or kills and confirms all old workers before resetting anything. The emergency `lab fence` command inventories the fixed Compose project and fences or kills-and-confirms every discovered application role; an unknown inventory is failure. Never interpret a stale lock file alone as permission to reset live state. Project names must be validated, not interpolated into shell commands.
 
 Write live report snapshots by atomic file replacement. The read-only viewer reads only a schema-validated report file, escapes content, loads no remote analytics/CDN assets, and exposes no upload, terminal, arbitrary file-read, scenario execution or Docker endpoint. It can show progress during a run; a completed report remains viewable after all roles stop.
 
 ### 6.2 Report schema and privacy boundary
 
-Krish freezes `src/contracts/schemas/report-v1.schema.json` before Mihir builds the UI. Minimum structure:
+Schema 3 adds explicit reset confirmation to schema 2 aggregate evidence; the validator explicitly reads historical schemas 1 and 2 and the viewer labels historical evidence. See [contract changes](../../src/contracts/CHANGELOG.md) and [measurement definitions](MEASUREMENTS.md). Minimum structure:
 
 | Field | Meaning |
 |---|---|

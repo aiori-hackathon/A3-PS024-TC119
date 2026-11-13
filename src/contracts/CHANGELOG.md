@@ -1,5 +1,11 @@
 # Contract changes
 
+## Aggregate evidence revision 3 — 13 November 2026
+
+Report schema **3** explicitly records nullable `reset_confirmed`. Overall PASS requires true for every run. Benchmark comparison additionally requires eight distinct complete metrics, expected process/worker evidence, unique snapshot/claim outcomes with zero failures/timeouts/uncertainty, distinct generations and keys, completed warmups and exact alternating profile/repetition order. At least 1,000 measured successes are required per condition/profile across the three repetitions. The protocol, manifest and limits remain unchanged.
+
+Saved schemas 1 and 2 remain immutable and readable through explicit version dispatch; their historical PASS meaning is labelled in the viewer. A phase transition labelled FENCED alone is not proof that the external reset barrier confirmed shutdown. Regression fixtures cover unconfirmed reset, incomplete/duplicated telemetry, contradictory outcomes, duplicated generation identities, repetition relabelling and legacy reading.
+
 ## Additive evidence revision `aggregate-evidence-2` — 13 November 2026
 
 Protocol, manifests, profiles, token encodings and Redis ABI remain TF-PS024-1.0.0. Report schema **2** adds explicit source evidence, process resource aggregates, RPC failure/timeout/uncertainty counts and bounded experiment labels. REPORT control replies accept optional `resources` and `rpc_outcomes`; old producers remain readable. Existing metric names and buckets are unchanged. Shared histogram/resource helpers prevent competing consumer definitions.

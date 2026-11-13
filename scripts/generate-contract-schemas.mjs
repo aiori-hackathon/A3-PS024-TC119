@@ -94,7 +94,10 @@ const scenarioV2 = runV2.properties.scenario_results.items;
 scenarioV2.properties.counters = extendedCounters;
 Object.assign(scenarioV2.properties,{same_source_observed:either(bool,nil),source_observations:int(131070)});
 scenarioV2.required.push('same_source_observed','source_observations');
-const schemas={'report-v2.schema.json':reportV2,'run-manifest-v1.json':manifest,'control-request-v1.json':requests,'control-response-v1.json':replies,'report-v1.schema.json':report,'scenario-result-v1.json':scenario};
+const reportV3=structuredClone(reportV2); reportV3.properties.schema_version=c(3);
+reportV3.properties.runs.items.properties.reset_confirmed=either(bool,nil);
+reportV3.properties.runs.items.required.push('reset_confirmed');
+const schemas={'report-v3.schema.json':reportV3,'report-v2.schema.json':reportV2,'run-manifest-v1.json':manifest,'control-request-v1.json':requests,'control-response-v1.json':replies,'report-v1.schema.json':report,'scenario-result-v1.json':scenario};
 mkdirSync(root+'src/contracts/schemas',{recursive:true});
 for (const [name,schema] of Object.entries(schemas)) {
   const text=JSON.stringify({$schema:'http://json-schema.org/draft-07/schema#',$id:'https://tokenforge.invalid/contracts/'+name,...schema},null,2)+'\n';

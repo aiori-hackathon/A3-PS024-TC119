@@ -2,6 +2,7 @@ name: Bootstrap checks
 on:
   push:
   pull_request:
+  workflow_dispatch:
 permissions:
   contents: read
 jobs:
@@ -32,7 +33,7 @@ jobs:
     # The complete system: real issuer, CONNECT proxy, two-worker gateway, Redis and private origin on the planned networks.
     needs: contracts-and-crypto
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6 resolved 2026-10-24
         with:
@@ -47,4 +48,18 @@ jobs:
       - run: node infra/scripts/check-network.mjs
       - run: node src/services/lab/src/controller/cli.ts run --suite demo --out artifacts/demo-report.json
       - run: node src/services/lab/src/controller/cli.ts verify-report --file artifacts/demo-report.json --require-pass
+      - run: node src/services/lab/src/controller/cli.ts run --suite security --out artifacts/security-report.json
+      - run: node src/services/lab/src/controller/cli.ts verify-report --file artifacts/security-report.json --require-pass
+      - run: node src/services/lab/src/controller/cli.ts run --suite performance-smoke --out artifacts/benchmark-smoke.json
+      - run: node src/services/lab/src/controller/cli.ts verify-report --file artifacts/benchmark-smoke.json
+      - run: node src/services/lab/src/controller/cli.ts summarize-benchmark --file artifacts/benchmark-smoke.json
+      - if: always()
+        run: node scripts/collect-safe-reports.mjs
+      - if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4 resolved 2026-11-13
+        with:
+          name: sanitized-deployed-reports
+          path: sanitized-reports/*.json
+          if-no-files-found: ignore
+          retention-days: 14
 

@@ -1,3 +1,4 @@
+import reportSchemaV3 from '../schemas/report-v3.schema.json' with { type:'json' };
 import { analyzeBenchmark } from './benchmark.ts';
 import { createHash, createPublicKey } from 'node:crypto';
 import protocol from '../protocol-v1.json' with { type: 'json' };
@@ -174,15 +175,16 @@ export function validateControlRequest(value:unknown):Record<string,unknown> {
 export function validateControlResponse(value:unknown):void {assertSchema(responseSchema as Schema,value);}
 export function validateReport(value:unknown):void {
   const version = (value as {schema_version?: unknown} | null)?.schema_version;
-  assertSchema((version === 2 ? reportSchemaV2 : reportSchema) as Schema,value);
+  assertSchema((version === 3 ? reportSchemaV3 : version === 2 ? reportSchemaV2 : reportSchema) as Schema,value);
   const r=value as {overall_status:string;suite_kind:'demo'|'security'|'benchmark';runs:{scenario_results:{scenario_id:string;status:string;origin_counts_available:boolean}[];measurements:{count:number;histogram_counts:number[];p50_ms:number|null;p95_ms:number|null;p99_ms:number|null}[]}[]};
   if(r.overall_status==='PASS' && (r.runs.length===0||r.runs.some(x=>x.scenario_results.length===0||x.scenario_results.some(s=>s.status!=='PASS'||!s.origin_counts_available))))throw new ContractError('missing-evidence');
   if(r.overall_status==='PASS') {
     const observed=new Set(r.runs.flatMap(run=>run.scenario_results.map(s=>s.scenario_id)));
     if(protocol.suite_required_scenarios[r.suite_kind].some(id=>!observed.has(id)))throw new ContractError('missing-evidence');
   }
-  if(version===2 && r.suite_kind==='benchmark' && r.overall_status==='PASS' && !analyzeBenchmark(r.runs).complete) throw new ContractError('incomplete-benchmark');
-  if(version===2) for(const run of r.runs) for(const raw of run.scenario_results) {
+  if(version===3 && r.overall_status==='PASS' && r.runs.some(run=>(run as {reset_confirmed?:boolean}).reset_confirmed!==true)) throw new ContractError('unconfirmed-reset');
+  if(version===3 && r.suite_kind==='benchmark' && r.overall_status==='PASS' && !analyzeBenchmark(r.runs).complete) throw new ContractError('incomplete-benchmark');
+  if((version===2||version===3)) for(const run of r.runs) for(const raw of run.scenario_results) {
     const s = raw as typeof raw & {same_source_observed:boolean|null;source_observations:number;counters:Record<string,number>};
     if(s.scenario_id==='shared-egress' && s.status==='PASS' && (s.same_source_observed!==true || s.source_observations<15 || s.counters['claims_successful']!==10 || (s.counters['replays_rejected']??0)<1 || s.counters['protected_requests_received']!==10 || s.counters['resources_served']!==10 || s.counters['generation_mismatches']!==0)) throw new ContractError('missing-source-evidence');
   }

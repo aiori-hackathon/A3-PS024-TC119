@@ -9,17 +9,28 @@ import replySchema from '../../../contracts/schemas/control-response-v1.json' wi
 import reportSchema from '../../../contracts/schemas/report-v1.schema.json' with {type:'json'};
 import { analyzeBenchmark } from '../../../contracts/lib/benchmark.ts';
 
-test('benchmark gains require complete comparable repetitions, warmups and clean dependency evidence',()=>{
-  const rows: any[]=[];
-  const row=(condition:number,profile:string,stage:string,repetition:number)=>({gateway_profile:profile,experiment:{condition,stage,repetition},
-    scenario_results:[{scenario_id:'performance',status:'PASS',counters:{claims_successful:1000,protected_requests_received:1000,resources_served:1000,generation_mismatches:0,uncertain_operations:0,timed_out_operations:0,not_started_operations:0,issuance_failures:0,requests_rejected:0,queue_rejected:0,attempted_operations:1000,completed_operations:1000}}],
-    measurements:[{metric:'protected_response_ms',count:1000,elapsed_ms:profile==='B0'?1000:500}],rpc_outcomes:[{failures:0},{failures:0}]});
-  for(const c of [1,10,50]) { for(const p of ['B0','B1'])rows.push(row(c,p,'warmup',1));for(const n of [1,2,3])for(const p of n===2?['B1','B0']:['B0','B1'])rows.push(row(c,p,'measured',n)); }
+test('benchmark gains require complete independent evidence and exact alternating trials',()=>{
+  const rows:any[]=[];let id=0;
+  const names=['issuance_http_ms','token_acquisition_ms','verification_ms','snapshot_rpc_ms','claim_rpc_ms','queue_wait_ms','authorization_ms','protected_response_ms'];
+  const row=(condition:number,profile:string,stage:string,repetition:number)=>{
+    const n=stage==='warmup'?100:condition===50?1000:400,workers=profile==='B0'?1:2;id++;
+    const resource=(scope:string,worker_index:number|null=null)=>({scope,worker_index,elapsed_ms:1000,peak_rss_bytes:1,cpu_user_us:1,cpu_system_us:0});
+    return {run_id:id.toString(16).padStart(32,'0'),token_key_id:id.toString(16).padStart(64,'0'),reset_confirmed:true,client_profile:'benchmark',gateway_profile:profile,experiment:{condition,stage,repetition},
+      resources:[...['gateway-supervisor','controller','issuer','origin'].map(s=>resource(s)),...Array.from({length:workers},(_,i)=>resource('gateway-worker',i)),...Array.from({length:condition===1?1:5},()=>resource('client'))],
+      scenario_results:[{scenario_id:'performance',status:'PASS',origin_counts_available:true,worker_verification_attempts:Array.from({length:workers},(_,i)=>({worker_index:i,attempts:n})),counters:{issuance_successes:n,claims_successful:n,protected_requests_received:n,resources_served:n,generation_mismatches:0,uncertain_operations:0,timed_out_operations:0,not_started_operations:0,issuance_failures:0,requests_rejected:0,queue_rejected:0,attempted_operations:n,completed_operations:n}}],
+      measurements:names.map(metric=>({metric,count:n,failures:0,elapsed_ms:profile==='B0'?1000:500})),rpc_outcomes:['snapshot','claim'].map(operation=>({operation,failures:0,timeouts:0,uncertain:0}))};
+  };
+  for(const c of [1,10,50]) {for(const p of ['B0','B1'])rows.push(row(c,p,'warmup',1));for(const n of [1,2,3])for(const p of n===2?['B1','B0']:['B0','B1'])rows.push(row(c,p,'measured',n));}
   assert.equal(analyzeBenchmark(rows).complete,true);assert.equal(analyzeBenchmark(rows).conditions[0]!.gain,1);
-  const fault=structuredClone(rows);fault[2].rpc_outcomes[0].failures=1;assert.equal(analyzeBenchmark(fault).conditions[0]!.gain,null);
-  const lost=structuredClone(rows);lost[2].scenario_results[0].counters.uncertain_operations=1;assert.equal(analyzeBenchmark(lost).complete,false);
-  const few=structuredClone(rows);few[2].scenario_results[0].counters.claims_successful=999;assert.equal(analyzeBenchmark(few).complete,false);
-  const order=structuredClone(rows);[order[2],order[3]]=[order[3],order[2]];assert.equal(analyzeBenchmark(order).complete,false);
+  const mutations:( (r:any[])=>void )[]=[
+    r=>{r[2].rpc_outcomes[0].failures=1;},r=>{r[2].rpc_outcomes[0].uncertain=1;},r=>{r[2].rpc_outcomes[0].timeouts=1;},
+    r=>{r[2].rpc_outcomes[1].operation='snapshot';},r=>{r[2].measurements.pop();},r=>{r[2].measurements[0].metric='verification_ms';},
+    r=>{r[2].resources.pop();},r=>{r[2].reset_confirmed=false;},r=>{r[2].scenario_results[0].origin_counts_available=false;},
+    r=>{r[2].scenario_results[0].worker_verification_attempts=[];},r=>{r[2].run_id=r[3].run_id;},r=>{r[2].token_key_id=r[3].token_key_id;},
+    r=>{r[2].experiment.repetition=3;r[6].experiment.repetition=1;},r=>{[r[2],r[3]]=[r[3],r[2]];},
+    r=>{r[2].scenario_results[0].counters.uncertain_operations=1;},r=>{r[2].scenario_results[0].counters.attempted_operations=1;},
+  ];
+  for(const mutate of mutations){const bad=structuredClone(rows);mutate(bad);assert.equal(analyzeBenchmark(bad).conditions[0]!.gain,null);}
   assert.equal(analyzeBenchmark(rows.filter(r=>r.experiment.stage!=='warmup')).complete,false);
 });
 import { conforms, assertSupportedSchema, type Schema } from '../../../contracts/lib/schema.ts';
