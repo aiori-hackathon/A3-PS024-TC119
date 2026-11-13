@@ -29,7 +29,18 @@ test('every scenario a suite names is a frozen scenario id; every plan stays ins
   for (const [name, def] of Object.entries(SUITES)) for (const plan of def.plans) {
     for (const id of ids(plan)) assert.ok(protocol.scenario_ids.includes(id), `${name}/${plan.name}: ${id}`);
     const limit = { demo: 10, security: 128, benchmark: 16384 }[plan.clientProfile];
-    assert.ok(plan.perClient <= limit && plan.perClient * 5 + (plan.harnessVouchers ?? 0) <= 128 * 5, `${name}/${plan.name} vouchers`);
+    assert.ok(plan.perClient <= limit && plan.perClient * 5 + (plan.harnessVouchers ?? 0) <= 16384, `${name}/${plan.name} vouchers`);
     if (plan.clientProfile === 'security') assert.ok(plan.perClient * 5 + (plan.harnessVouchers ?? 0) <= 128, `${name}/${plan.name} total inventory`);
+  }
+});
+
+
+test('performance uses separate warmups, three alternating repetitions and bounded aggregate concurrency',()=>{
+  for(const condition of [1,10,50]) {
+    const plans=SUITES.performance!.plans.filter(p=>p.experiment!.condition===condition);
+    assert.equal(plans.filter(p=>p.experiment!.stage==='warmup').length,2);
+    const trials=plans.filter(p=>p.experiment!.stage==='measured');
+    assert.deepEqual(trials.map(p=>p.gatewayProfile),['B0','B1','B1','B0','B0','B1']);
+    assert.ok(trials.every(p=>p.perClient*(condition===1?1:5)>=1000));
   }
 });

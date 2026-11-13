@@ -35,7 +35,7 @@ test('PASS only when every required scenario ran, passed, and had independent or
   assert.equal(overallStatus('demo', [badRetention]), 'FAIL');
   const unsureRetention = run([...required], { retention_checks: [{ check_id: 'mounts', status: 'INCONCLUSIVE' }] });
   assert.equal(overallStatus('demo', [unsureRetention]), 'INCONCLUSIVE');
-  assert.equal(overallStatus('benchmark', [run(['performance'])]), 'PASS');
+  assert.equal(overallStatus('benchmark', [run(['performance'])]), 'INCONCLUSIVE');
 });
 
 test('buildReport yields a schema-valid document and refuses to build an unsound one', () => {

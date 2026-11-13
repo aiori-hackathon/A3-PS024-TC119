@@ -42,6 +42,7 @@ import { SUITES, type RunPlan } from './suites.ts';
 import { buildReport, writeReportAtomic, type RunRecord, type SuiteKind } from '../report/build.ts';
 import { verifyReportFile } from '../report/verify.ts';
 import { localReadiness } from './preflight.ts';
+import { analyzeBenchmark } from '../../../../contracts/lib/benchmark.ts';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', '..', '..');
 const composeFile = join(root, 'infra', 'compose.yaml');
@@ -190,7 +191,7 @@ async function executePlan(plan: RunPlan, partial: boolean, project: DockerProje
     for (const step of plan.steps) {
       if ('capture' in step) { say({ event: 'captured', plan: plan.name, ok: await runRef.captureForReset() }); continue; }
       const rec = 'orchestrated' in step ? await runRef.runOrchestrated(step.orchestrated)
-        : await runRef.runScenario(step.clients.length === 1 ? step.clients[0]! : step.clients, step.scenario);
+        : await runRef.runScenario(step.clients.length === 1 ? step.clients[0]! : step.clients, step.scenario, step.seed ?? 1);
       say({ event: 'scenario', plan: plan.name, scenario_id: rec.scenario_id, status: rec.status, origin_counts_available: rec.origin_counts_available, ...(rec.status === 'PASS' ? {} : { failed_checks: runRef.lastFailed, labels: rec.failure_labels }) });
     }
     if (plan.steps.length > 0 || adHocEvents) await runRef.stop('completed');
@@ -198,13 +199,15 @@ async function executePlan(plan: RunPlan, partial: boolean, project: DockerProje
     stopWatching();
     confirmed = closed.reset_confirmed;
     say({ event: 'closed', plan: plan.name, reason: closed.reason, reset_confirmed: closed.reset_confirmed, ...(runRef?.lostRole ? { lost_role: runRef.lostRole } : {}), origin_counts: adapters.originCounts });
-    return { record: runRef.runRecord(), confirmed };
+    const record = runRef.runRecord(); if(record && plan.experiment) record.experiment=plan.experiment;
+    return { record, confirmed };
   } catch (e) {
     say({ error: e instanceof ControllerError ? e.code : 'controller-failed', step: e instanceof ControllerError ? e.step : undefined });
     // Outer cleanup: close the run if there is one, otherwise (or if that is unconfirmed) clean up by recorded identity.
     if (runRef) { const r = await runRef.stop('unsafe-state'); confirmed = r.reset_confirmed; }
     if (!confirmed) confirmed = (await stopRoles(scope, adapters)) && (await discardRedis(scope, adapters));
-    return { record: runRef?.runRecord() ?? null, confirmed };
+    const record = runRef?.runRecord() ?? null; if(record && plan.experiment) record.experiment=plan.experiment;
+    return { record, confirmed };
   } finally {
     activeStop = null;
   }
@@ -214,6 +217,7 @@ async function run(): Promise<number> {
   const partial = flag('--partial');
   const suiteName = option('--suite', '');
   const out = option('--out', '');
+  if (out && existsSync(out)) { say({ error: 'output-exists-use-new-path' }); return 2; }
   let kind: SuiteKind = 'demo';
   let plans: RunPlan[];
   if (suiteName) {
@@ -262,6 +266,15 @@ function verify(): number {
   return v.ok && (!flag('--require-pass') || v.status === 'PASS') ? 0 : 1;
 }
 
+function summarizeBenchmark(): number {
+  const file = option('--file', '');
+  const verdict = verifyReportFile(file);
+  if (!verdict.ok) { say({error:'invalid-report'}); return 1; }
+  const report = JSON.parse(readFileSync(file,'utf8'));
+  if(report.schema_version !== 2 || report.suite_kind !== 'benchmark') { say({error:'schema-2-benchmark-required'}); return 2; }
+  say(analyzeBenchmark(report.runs)); return 0;
+}
+
 async function serve(): Promise<number> {
   const file = option('--file', '');
   if (!file) { say({ error: 'usage', detail: 'serve-report --file <path> [--host 127.0.0.1] [--port 4173]' }); return 2; }
@@ -277,5 +290,6 @@ async function serve(): Promise<number> {
 const command = process.argv[2];
 const code = command === 'preflight' ? await preflight() : command === 'run' ? await run() : command === 'fence' ? await fence() : command === 'verify-report' ? verify()
   : command === 'serve-report' ? await serve()
+  : command === 'summarize-benchmark' ? summarizeBenchmark()
   : (say({ error: 'usage', commands: ['preflight', 'run', 'fence', 'verify-report', 'serve-report'] }), 2);
 process.exit(code);

@@ -23,6 +23,7 @@ export type ClientErrorCode =
 export class LabClientError extends Error {
   readonly code: ClientErrorCode;
   readonly status: number | undefined;
+  timedOut = false;
   constructor(code: ClientErrorCode, status?: number) { super(code); this.name = 'LabClientError'; this.code = code; this.status = status; }
 }
 
@@ -236,7 +237,7 @@ export class LabClient {
         res.on('end', () => done(() => resolve({ status: res.statusCode!, headers: res.headers, rawHeaders: res.rawHeaders, body: Buffer.concat(chunks) })));
         res.on('error', () => done(() => reject(new LabClientError('transport'))));
       });
-      const deadline = setTimeout(() => { req.destroy(); done(() => reject(new LabClientError('transport'))); }, this.#timeoutMs);
+      const deadline = setTimeout(() => { const error = new LabClientError('transport'); error.timedOut = true; done(() => reject(error)); req.destroy(); }, this.#timeoutMs);
       req.on('error', () => done(() => reject(new LabClientError('transport'))));
       req.end(o.body ? Buffer.from(o.body) : undefined);
     });

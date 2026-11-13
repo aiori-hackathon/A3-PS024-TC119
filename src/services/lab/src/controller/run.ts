@@ -109,6 +109,7 @@ export class LabRun {
   #harnessVouchers: string[] = [];
   #retention: RetentionCheck[] = [];
   #measurements: Measurement[] = [];
+  #redemptionSpan = 0;
   #resources: ResourceMeasurement[] = [];
   #rpc: RpcOutcome[] = [];
   readonly #resourceProbe = new ResourceProbe('controller');
@@ -354,13 +355,23 @@ export class LabRun {
   async runScenario(clients: ClientId | readonly ClientId[], scenarioId: string, seed = 1): Promise<ScenarioRecord> {
     const ids = typeof clients === 'string' ? [clients] : [...clients];
     const record = await this.#measure(scenarioId, async () => {
+      let issuance: Json[] = [];
+      if(scenarioId === 'performance') {
+        const minted = await Promise.all(ids.map(async id => {try{return await this.#d.links.clients[id].send(request('RUN_SCENARIO',this.#at(`client-${id}`),{scenario_id:scenarioId,schedule_seed:10000+seed}),540_000);}catch{return null;}}));
+        if(minted.some(r=>r===null))return 'control-lost';
+        if(minted.some(r=>r!['ok']!==true))return 'missing-evidence';
+        issuance=minted.map(r=>r!['data']);
+        if(issuance.some(r=>r['status']!=='PASS'))return issuance as ScenarioData[];
+      }
+      const redemptionStart=performance.now();
       const replies = await Promise.all(ids.map(async (id): Promise<Json | null> => {
-        try { return await this.#d.links.clients[id].send(request('RUN_SCENARIO', this.#at(`client-${id}`), { scenario_id: scenarioId, schedule_seed: seed }), 180_000); }
+        try { return await this.#d.links.clients[id].send(request('RUN_SCENARIO', this.#at(`client-${id}`), { scenario_id: scenarioId, schedule_seed: seed }), scenarioId === 'performance' ? 540_000 : 180_000); }
         catch { return null; }
       }));
+      if(scenarioId==='performance')this.#redemptionSpan=performance.now()-redemptionStart;
       if (replies.some((r) => r === null)) return 'control-lost';
       if (replies.some((r) => r!['ok'] !== true || r!['result'] !== 'SCENARIO_COMPLETE')) return 'missing-evidence';
-      return replies.map((r) => r!['data'] as ScenarioData);
+      return replies.map((r,i) => {const data=r!['data'] as ScenarioData; if(issuance[i])data.counters={...issuance[i]!['counters'],...data.counters}; return data;});
     });
     if (scenarioId === 'performance') await this.#collectMeasurements(ids, record);
     return record;
@@ -384,7 +395,7 @@ export class LabRun {
     } catch { /* incomplete telemetry is visible in the metric counts */ }
     const merged = mergeMeasurements(groups);
     if (!clientReportsComplete || merged.length === 0) { if (record.status === 'PASS') record.status = 'INCONCLUSIVE'; if (!record.failure_labels.includes('missing-evidence')) record.failure_labels.push('missing-evidence'); return; }
-    this.#measurements = merged;
+    this.#measurements = merged.map(m=>m.metric==='protected_response_ms'?{...m,elapsed_ms:Math.round(this.#redemptionSpan*1000)/1000}:m);
     for (const role of ['issuer','origin'] as const) { try { const r = await this.#d.links[role].send(request('REPORT',this.#at(role)),this.#cfg.controlTimeoutMs); if(r['ok'] === true) absorb(r['data']); } catch { /* missing resources remain absent */ } }
     this.#resources = resources;
   }

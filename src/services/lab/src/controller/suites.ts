@@ -6,11 +6,12 @@ import type { ClientId } from './ports.ts';
 
 const ALL: ClientId[] = ['A', 'B', 'C', 'D', 'E'];
 export type Step =
-  | { scenario: string; clients: ClientId[] }      // runs inside client container(s) via RUN_SCENARIO
+  | { scenario: string; clients: ClientId[]; seed?: number }      // runs inside client container(s) via RUN_SCENARIO
   | { orchestrated: string }                       // runs in the controller with the harness / fault port (e.g. 'redis-failure:script-flush')
   | { capture: 'old-run' };                        // hidden half of S13: quarantine one spent and one unused credential across the reset
 export type RunPlan = {
   name: string;
+  experiment?: {condition:1|10|50;stage:'warmup'|'measured';repetition:number;target_successes:1000};
   clientProfile: 'demo' | 'security' | 'benchmark';
   gatewayProfile: 'B0' | 'B1';
   perClient: number;
@@ -42,11 +43,24 @@ const upstreamPlan: RunPlan = { name: 'upstream-failure', clientProfile: 'securi
 // S15 needs real traffic first, so the audit runs after a healthy flow in the same live generation.
 const retentionPlan: RunPlan = { name: 'retention', clientProfile: 'security', gatewayProfile: 'B1', perClient: 2, steps: [one('healthy-flow', 'A'), { orchestrated: 'retention-audit' }] };
 
-// S18: the same declared load against the one-worker (B0) and the two-worker (B1) gateway, each in its own fresh run.
-const perfPlan = (gatewayProfile: 'B0' | 'B1'): RunPlan => ({ name: `performance-${gatewayProfile.toLowerCase()}`, clientProfile: 'benchmark', gatewayProfile, perClient: 80, steps: [{ scenario: 'performance', clients: ALL }] });
+// Fixed aggregate concurrency sweep. 100 is excluded by the unchanged proxy's 64-tunnel ceiling.
+const performancePlans: RunPlan[] = [];
+for (const condition of [1,10,50] as const) {
+  for (const gatewayProfile of ['B0','B1'] as const) performancePlans.push({
+    name:`warmup-${condition}-${gatewayProfile}`, clientProfile:'benchmark',gatewayProfile,perClient:condition===1?100:20,
+    experiment:{condition,stage:'warmup',repetition:1,target_successes:1000},
+    steps:[{scenario:'performance',clients:condition===1?['A']:ALL,seed:100+condition}],
+  });
+  for (const repetition of [1,2,3]) for (const gatewayProfile of (repetition%2===1?['B0','B1']:['B1','B0']) as ('B0'|'B1')[]) performancePlans.push({
+    name:`measured-${condition}-${repetition}-${gatewayProfile}`,clientProfile:'benchmark',gatewayProfile,perClient:condition===1?1000:condition===50?400:200,
+    experiment:{condition,stage:'measured',repetition,target_successes:1000},
+    steps:[{scenario:'performance',clients:condition===1?['A']:ALL,seed:condition}],
+  });
+}
 
 export const SUITES: Record<string, SuiteDefinition> = {
-  performance: { kind: 'benchmark', plans: [perfPlan('B0'), perfPlan('B1')] },
+  performance: { kind: 'benchmark', plans: performancePlans },
+  'performance-smoke': {kind:'benchmark',plans:performancePlans.filter(p=>p.experiment?.condition===10 && p.experiment.stage==='warmup')},
   // Every scenario the frozen protocol requires for the security suite, each in its own fresh run where it needs one.
   security: { kind: 'security', plans: [sharedEgress, corePlan, epochPlan, admissionPlan, ...resetPlans, ...faultPlans, upstreamPlan, retentionPlan] },
   // Scenarios that need the gateway and the real issuer but no fault injection. S02 uses the demo client profile on purpose

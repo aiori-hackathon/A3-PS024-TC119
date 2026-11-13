@@ -1,0 +1,23 @@
+# Repeated B0/B1 experiment
+
+Run `node src/services/lab/src/controller/cli.ts run --suite performance --out artifacts/benchmark-<unique-name>.json`, then `verify-report --file ... --require-pass`, `summarize-benchmark --file ...` and `serve-report --file ...`. Existing output files are refused, so a retry cannot erase a failed trial. Every generation writes a validated snapshot; setup failures remain fixed diagnostics in the console log and missing runs prevent benchmark PASS.
+
+There are 24 fresh supervised generations: for each concurrency 1, 10 and 50, two warmups followed by three paired repetitions ordered B0/B1, B1/B0, B0/B1. Each has its own key, store, manifest, counters and confirmed reset boundary. Warmup samples remain in separately labelled runs and are never merged into measured distributions or gain calculations.
+
+| Aggregate concurrency | Clients | In flight per client | Measured inventory per participating client | Warmup inventory |
+|---|---|---|---|---|
+| 1 | A | 1 | 1,000 | 100 |
+| 10 | A–E | 2 | 200 | 20 |
+| 50 | A–E | 10 | 400 | 20 |
+
+The same per-client stock is provisioned for all five clients before enable, including idle clients at concurrency 1. The largest cohort is 5,000 vouchers, below the existing 16,384 total, delivered in sealed frames of at most 128. Participating clients retain bounded inventory in memory. The higher condition attempts 2,000 operations to leave room for bounded busy refusals while targeting at least 1,000 successes. There is no retry or live voucher refill.
+
+The original concurrency 100 is intentionally excluded: the unchanged CONNECT proxy admits only 64 simultaneous tunnels. Concurrency 50 fits that ceiling and each benchmark client's existing 100-socket bound, but can saturate B0's 1 active + 16 queued flows and B1's 4 active + 32 queued flows. The issuer remains paced at 200 ms per issuance per client with its existing 2 active signing/16 queue limits. CPU-intensive client RSA blinding can still lose supervision on a busy shared host; this invalidates that trial, not the lease design.
+
+The controller first invokes the fixed mint phase on every participant and waits for every acknowledgement. Only then does it dispatch redemption to all participants. Fixed seeds select only these built-in conditions and phases; they do not select workers, endpoints, code or arbitrary load settings. Acquisition and HTTP histograms survive the phase transition through ordinary client REPORT. Minting can take several minutes; a performance control operation has a bounded 540-second deadline. The 3-second lease, 100-ms gateway queue wait, HTTP deadlines and 600-second epoch remain unchanged. Missing inventory, epoch crossing, dependency loss, timeouts and uncertain responses stay visible and cannot become a valid comparison.
+
+Client latency measures one request through the full response, including a fresh CONNECT/TLS connection (gateway `Connection: close`). The throughput denominator is the controller's monotonic interval from dispatching the redemption phase to the last participant's acknowledgement, including dispatch, challenge and acknowledgement overhead. This conservative common span accounts for client start skew. It excludes minting. Gateway latency/resource spans cover the whole generation; see [precise timer and resource definitions](../implementation/MEASUREMENTS.md).
+
+Each measured run reports attempted, completed, rejected, timed-out, uncertain and not-started outcomes. Summaries show successful throughput medians, coefficient of variation, rejection totals and a gain only when all three repetitions per profile are comparable, independently supported by origin totals, have at least 1,000 successes and no dependency failure/uncertainty. A partial suite or smoke run is INCONCLUSIVE, even if its scenario operations succeed. Absence of a measurable gain is a valid finding. CPU utilization derived from process CPU/span describes the full process probe interval; it is not redemption-only or whole-host utilization. RSS values are process-lifetime highwaters, not simultaneous container peaks.
+
+`--suite performance-smoke` runs only the concurrency-10 warmups for integration/CI verification. It cannot establish performance, variability or a speedup. Full experiments should run on a quiet selected measurement host with all supervision active. Preserve the report and console diagnostics of failed trials before any new experiment.

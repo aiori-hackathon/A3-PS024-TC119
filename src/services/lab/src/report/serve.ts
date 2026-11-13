@@ -1,3 +1,4 @@
+import { analyzeBenchmark } from '../../../../contracts/lib/benchmark.ts';
 // serve-report: a read-only evidence viewer. It serves ONE report file, re-validated (schema, evidence rules, privacy scan) on
 // every change, rendered on the server with every value escaped. It has no JavaScript, loads nothing from elsewhere, accepts
 // only GET and HEAD on three fixed paths, and can listen only on loopback. It exposes no upload, no file other than the one it
@@ -36,6 +37,7 @@ export function renderReport(r: Json): string {
     const q = (v: unknown) => (v === null ? 'beyond 5000' : esc(v));
     const measurementTable = measures.length ? `<table><tr><th>Metric</th><th>Samples</th><th>Failures</th><th>Elapsed ms</th><th>Samples/s</th><th>p50 ms</th><th>p95 ms</th><th>p99 ms</th></tr>${measures.map((m) => `<tr><td>${esc(m['metric'])}</td><td>${esc(m['count'])}</td><td>${esc(m['failures'])}</td><td>${esc(m['elapsed_ms'])}</td><td>${m['elapsed_ms'] > 0 ? esc((m['count'] / m['elapsed_ms'] * 1000).toFixed(1)) : 'n/a'}</td><td>${q(m['p50_ms'])}</td><td>${q(m['p95_ms'])}</td><td>${q(m['p99_ms'])}</td></tr>`).join('')}</table><p class="note">Quantiles are the upper bound of the histogram bucket they fall in.</p>` : '';
     return `<h2>Run ${i + 1}: ${esc(run['gateway_profile'])} gateway, ${esc(run['client_profile'])} clients</h2>
+<p class="note">${run['experiment'] ? `Experiment ${esc(run['experiment'].condition)}, ${esc(run['experiment'].stage)}, repetition ${esc(run['experiment'].repetition)}` : ''}</p>
 <p class="note">config digest <code>${esc(run['config_digest'])}</code> · token key id <code>${esc(run['token_key_id'])}</code></p>
 <table><tr><th>Scenario</th><th>Status</th><th>Expected</th><th>Independent origin evidence</th><th>Counters</th><th>Labels</th></tr>
 ${scenarios}
@@ -52,7 +54,7 @@ ${retention.length ? `<table><tr><th>Retention check</th><th>Status</th></tr>${r
 <h1>TokenForge evidence report</h1>
 <p>Suite <b>${esc(r['suite_kind'])}</b> · overall ${status(r['overall_status'])} · created ${esc(r['created_at_utc'])} · contract ${esc(r['contract_version'])}</p>
 <p class="note">Read-only view of a validated report file. A PASS needs every required scenario, each with independent origin evidence; this page only displays what the controller recorded.</p>
-${r['schema_version'] === 1 ? '<p class="note">Legacy schema 1: PASS uses historical evidence rules and does not prove source equality or repeated benchmark comparability.</p>' : ''}${runs}
+${r['schema_version'] === 2 && r['suite_kind'] === 'benchmark' ? `<table><tr><th>Concurrency</th><th>Comparable</th><th>B1 median throughput gain</th></tr>${analyzeBenchmark(r['runs']).conditions.map(c=>`<tr><td>${c.condition}</td><td>${c.comparable}</td><td>${c.gain===null?'unavailable':esc((c.gain*100).toFixed(1)+'%')}</td></tr>`).join('')}</table>` : ''}${r['schema_version'] === 1 ? '<p class="note">Legacy schema 1: PASS uses historical evidence rules and does not prove source equality or repeated benchmark comparability.</p>' : ''}${runs}
 <h2>Provenance</h2>
 <p class="note">commit <code>${esc(sw['git_commit'])}</code>${sw['dirty'] ? ' (<b>working tree was dirty</b>)' : ''} · node ${esc(sw['node_version'])} · ${esc(env['os'])} · ${esc(env['cpu_count'])} CPUs · docker ${esc(env['docker_version'])} · ${esc(env['topology'])}</p>
 </body></html>`;

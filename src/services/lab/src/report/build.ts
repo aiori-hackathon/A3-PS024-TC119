@@ -1,3 +1,4 @@
+import { analyzeBenchmark } from '../../../../contracts/lib/benchmark.ts';
 import type { ResourceMeasurement, RpcOutcome } from '../../../../contracts/lib/resources.ts';
 import { privacyProblems } from './verify.ts';
 // Report assembly (plan section 9.2). Only fixed-schema aggregates go in: no token or voucher material, no addresses,
@@ -13,7 +14,7 @@ import { PROTOCOL, validateReport, hex } from '../../../../contracts/lib/index.t
 export type Status = 'PASS' | 'FAIL' | 'INCONCLUSIVE';
 export type SuiteKind = 'demo' | 'security' | 'benchmark';
 export type Counters = Partial<Record<'verification_attempts' | 'claims_successful' | 'replays_rejected' | 'requests_rejected' | 'queue_rejected' | 'transport_failures'
-  | 'protected_requests_received' | 'generation_mismatches' | 'resources_served' | 'issuance_successes' | 'issuance_failures' | 'observations', number>>;
+  | 'attempted_operations' | 'completed_operations' | 'timed_out_operations' | 'uncertain_operations' | 'not_started_operations' | 'protected_requests_received' | 'generation_mismatches' | 'resources_served' | 'issuance_successes' | 'issuance_failures' | 'observations', number>>;
 export type ScenarioRecord = {
   same_source_observed?: boolean | null; source_observations?: number;
   scenario_id: string; status: Status; expected: string; counters: Counters; origin_counts_available: boolean;
@@ -35,7 +36,7 @@ export function overallStatus(kind: SuiteKind, runs: readonly RunRecord[]): Stat
   const complete = runs.length > 0 && PROTOCOL.suite_required_scenarios[kind].every((id) => seen.has(id));
   const allPass = scenarios.length > 0 && scenarios.every((s) => s.status === 'PASS' && s.origin_counts_available && (s.scenario_id !== 'shared-egress' || s.same_source_observed === true && (s.source_observations ?? 0) >= 15));
   const retentionOk = runs.every((r) => r.retention_checks.every((c) => c.status === 'PASS'));
-  return complete && allPass && retentionOk ? 'PASS' : 'INCONCLUSIVE';
+  return complete && allPass && retentionOk && (kind !== 'benchmark' || analyzeBenchmark(runs).complete) ? 'PASS' : 'INCONCLUSIVE';
 }
 
 function git(args: string[]): string | null {
