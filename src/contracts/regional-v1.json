@@ -1,0 +1,38 @@
+{
+  "contract_version": "TF-PS024-REGIONAL-1.0.0",
+  "baseline_contract_version": "TF-PS024-1.0.0",
+  "schema_version": 1,
+  "profiles": ["ip", "type2-bearer", "arc", "type2-holder"],
+  "window_ms": 60000,
+  "quota": 5,
+  "admitted_entitlements": 5,
+  "resource_id": "research-resource",
+  "method": "GET",
+  "url": "https://origin.lab.test/resource",
+  "holder_algorithm": "ECDSA-P256-SHA256-P1363",
+  "holder_spki_bytes": 91,
+  "holder_signature_bytes": 64,
+  "nonce_lifetime_ms": 10000,
+  "rpc_frame_max_bytes": 65536,
+  "arc_blob_max_bytes": 24576,
+  "arc_tag_bytes": 33,
+  "arc_tag_encoding": "SEC1-P256-compressed",
+  "routes": {
+    "enroll": "https://issuer.lab.test/regional/enroll",
+    "arc_redeem": "https://origin.lab.test/regional/arc/redeem",
+    "holder_challenge": "https://origin.lab.test/regional/holder/challenge",
+    "holder_nonce": "https://origin.lab.test/regional/holder/nonce",
+    "holder_redeem": "https://origin.lab.test/regional/holder/redeem"
+  },
+  "domains": {
+    "policy": "TokenForge-regional-policy-v1",
+    "context": "TokenForge-regional-context-v1",
+    "arc_request_context": "TokenForge-arc-request-context-v1",
+    "arc_presentation_context": "TokenForge-arc-presentation-context-v1",
+    "arc_spend": "TokenForge-arc-spend-v1",
+    "holder_context": "TokenForge-holder-context-v1",
+    "holder_nonce": "TokenForge-holder-nonce-v1",
+    "holder_proof": "TokenForge-holder-proof-v1",
+    "arc_rpc": "TokenForge-arc-rpc-v1"
+  }
+}

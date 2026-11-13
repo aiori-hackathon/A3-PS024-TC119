@@ -1,5 +1,11 @@
 # Contract changes
 
+## Regional candidate TF-PS024-REGIONAL-1.0.0 — 14 November 2026
+
+Separate regional policy and encodings define a one-window-per-fresh-run five-use entitlement, ARC private-service requests/replies and canonical verified spend tags, and ephemeral P-256 holder-context/nonce/proof framing. Five generated strict schemas and independent Python framing/MAC vectors accompany focused Node/Ajv and real P-256 interoperability checks. The implementation specification records public adapter routes, current-window-only admission, key rotation, stockpiling prevention, atomic expiry requirements and privacy limits.
+
+Baseline version, manifests, 600-second epochs, token wire, replay scripts and report schemas 1–3 remain unchanged. Existing runtimes do not consume these definitions. Counterpart acceptance, pinned ARC tag/client-state adapter review, runtime verification/atomic authorization and new regional evidence remain pending. This candidate is not a claim that the regional product is implemented.
+
 ## Aggregate evidence revision 3 — 13 November 2026
 
 Report schema **3** explicitly records nullable `reset_confirmed`. Overall PASS requires true for every run. Benchmark comparison additionally requires eight distinct complete metrics, expected process/worker evidence, unique snapshot/claim outcomes with zero failures/timeouts/uncertainty, distinct generations and keys, completed warmups and exact alternating profile/repetition order. At least 1,000 measured successes are required per condition/profile across the three repetitions. The protocol, manifest and limits remain unchanged.

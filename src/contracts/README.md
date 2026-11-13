@@ -11,6 +11,8 @@ The gateway and lab consume these shared definitions rather than copying constan
 
 Run `node scripts/generate-contract-schemas.mjs --check` and `python scripts/derive-golden-fixture.py --check` from root. Tests run through the gateway package's pinned tools. Do not install dependencies or create a lockfile in this directory/root.
 
+Regional candidate **TF-PS024-REGIONAL-1.0.0** is additive and explicitly imported from `lib/regional.ts`. Its separate policy, ARC RPC and holder-proof schemas do not change this baseline or enable runtime authorization. Read [the regional contract](../../docs/implementation/REGIONAL_CONTRACTS.md) for fixed-window admission, fresh-key lifecycle, cryptographic boundaries, counterpart gates and pending ARC adapter work. Check its generated schemas with `node scripts/generate-regional-schemas.mjs --check` and independent vectors with `python scripts/derive-regional-fixture.py --check`.
+
 Consumer requirements:
 
 1. Initial PREPARE envelope uses `config_digest:null`; payload carries manifest, proposed digest, role and role_config. Helper validates the manifest's actual RSA-PSS parameters/key ID and matching run/digest. Receiver still enforces role-specific mounts/state/incarnation.

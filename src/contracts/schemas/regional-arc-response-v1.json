@@ -1,0 +1,262 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://tokenforge.invalid/contracts/regional-arc-response-v1.json",
+  "oneOf": [
+    {
+      "type": "object",
+      "properties": {
+        "contract_version": {
+          "const": "TF-PS024-REGIONAL-1.0.0"
+        },
+        "run_id": {
+          "type": "string",
+          "minLength": 32,
+          "maxLength": 32,
+          "pattern": "^[0-9a-f]{32}$"
+        },
+        "policy_digest": {
+          "type": "string",
+          "minLength": 64,
+          "maxLength": 64,
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "request_id": {
+          "type": "string",
+          "minLength": 32,
+          "maxLength": 32,
+          "pattern": "^[0-9a-f]{32}$"
+        },
+        "service_incarnation": {
+          "type": "string",
+          "minLength": 32,
+          "maxLength": 32,
+          "pattern": "^[0-9a-f]{32}$"
+        },
+        "request_digest": {
+          "type": "string",
+          "minLength": 64,
+          "maxLength": 64,
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "operation": {
+          "const": "issue"
+        },
+        "status": {
+          "const": "issued"
+        },
+        "credential_response_b64url": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 32768,
+          "pattern": "^[A-Za-z0-9_-]+$"
+        }
+      },
+      "required": [
+        "contract_version",
+        "run_id",
+        "policy_digest",
+        "request_id",
+        "service_incarnation",
+        "request_digest",
+        "operation",
+        "status",
+        "credential_response_b64url"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "contract_version": {
+          "const": "TF-PS024-REGIONAL-1.0.0"
+        },
+        "run_id": {
+          "type": "string",
+          "minLength": 32,
+          "maxLength": 32,
+          "pattern": "^[0-9a-f]{32}$"
+        },
+        "policy_digest": {
+          "type": "string",
+          "minLength": 64,
+          "maxLength": 64,
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "request_id": {
+          "type": "string",
+          "minLength": 32,
+          "maxLength": 32,
+          "pattern": "^[0-9a-f]{32}$"
+        },
+        "service_incarnation": {
+          "type": "string",
+          "minLength": 32,
+          "maxLength": 32,
+          "pattern": "^[0-9a-f]{32}$"
+        },
+        "request_digest": {
+          "type": "string",
+          "minLength": 64,
+          "maxLength": 64,
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "operation": {
+          "const": "verify"
+        },
+        "status": {
+          "const": "verified"
+        },
+        "spend_tag_b64url": {
+          "type": "string",
+          "minLength": 44,
+          "maxLength": 44,
+          "pattern": "^[A-Za-z0-9_-]{44}$"
+        }
+      },
+      "required": [
+        "contract_version",
+        "run_id",
+        "policy_digest",
+        "request_id",
+        "service_incarnation",
+        "request_digest",
+        "operation",
+        "status",
+        "spend_tag_b64url"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "contract_version": {
+          "const": "TF-PS024-REGIONAL-1.0.0"
+        },
+        "run_id": {
+          "type": "string",
+          "minLength": 32,
+          "maxLength": 32,
+          "pattern": "^[0-9a-f]{32}$"
+        },
+        "policy_digest": {
+          "type": "string",
+          "minLength": 64,
+          "maxLength": 64,
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "request_id": {
+          "type": "string",
+          "minLength": 32,
+          "maxLength": 32,
+          "pattern": "^[0-9a-f]{32}$"
+        },
+        "service_incarnation": {
+          "type": "string",
+          "minLength": 32,
+          "maxLength": 32,
+          "pattern": "^[0-9a-f]{32}$"
+        },
+        "request_digest": {
+          "type": "string",
+          "minLength": 64,
+          "maxLength": 64,
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "operation": {
+          "const": "issue"
+        },
+        "status": {
+          "const": "refused"
+        },
+        "code": {
+          "enum": [
+            "invalid-input",
+            "invalid-proof",
+            "wrong-policy",
+            "grant-used",
+            "window-closed",
+            "unavailable"
+          ]
+        }
+      },
+      "required": [
+        "contract_version",
+        "run_id",
+        "policy_digest",
+        "request_id",
+        "service_incarnation",
+        "request_digest",
+        "operation",
+        "status",
+        "code"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "contract_version": {
+          "const": "TF-PS024-REGIONAL-1.0.0"
+        },
+        "run_id": {
+          "type": "string",
+          "minLength": 32,
+          "maxLength": 32,
+          "pattern": "^[0-9a-f]{32}$"
+        },
+        "policy_digest": {
+          "type": "string",
+          "minLength": 64,
+          "maxLength": 64,
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "request_id": {
+          "type": "string",
+          "minLength": 32,
+          "maxLength": 32,
+          "pattern": "^[0-9a-f]{32}$"
+        },
+        "service_incarnation": {
+          "type": "string",
+          "minLength": 32,
+          "maxLength": 32,
+          "pattern": "^[0-9a-f]{32}$"
+        },
+        "request_digest": {
+          "type": "string",
+          "minLength": 64,
+          "maxLength": 64,
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "operation": {
+          "const": "verify"
+        },
+        "status": {
+          "const": "refused"
+        },
+        "code": {
+          "enum": [
+            "invalid-input",
+            "invalid-proof",
+            "wrong-policy",
+            "grant-used",
+            "window-closed",
+            "unavailable"
+          ]
+        }
+      },
+      "required": [
+        "contract_version",
+        "run_id",
+        "policy_digest",
+        "request_id",
+        "service_incarnation",
+        "request_digest",
+        "operation",
+        "status",
+        "code"
+      ],
+      "additionalProperties": false
+    }
+  ]
+}

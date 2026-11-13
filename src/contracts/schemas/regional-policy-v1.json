@@ -1,0 +1,346 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://tokenforge.invalid/contracts/regional-policy-v1.json",
+  "oneOf": [
+    {
+      "type": "object",
+      "properties": {
+        "contract_version": {
+          "const": "TF-PS024-REGIONAL-1.0.0"
+        },
+        "schema_version": {
+          "const": 1
+        },
+        "run_id": {
+          "type": "string",
+          "minLength": 32,
+          "maxLength": 32,
+          "pattern": "^[0-9a-f]{32}$"
+        },
+        "baseline_config_digest": {
+          "type": "string",
+          "minLength": 64,
+          "maxLength": 64,
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "profile": {
+          "const": "ip"
+        },
+        "window_start_ms": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "window_end_ms": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "quota": {
+          "const": 5
+        },
+        "admitted_entitlements": {
+          "const": 5
+        },
+        "resource_id": {
+          "const": "research-resource"
+        },
+        "method": {
+          "const": "GET"
+        },
+        "url": {
+          "const": "https://origin.lab.test/resource"
+        },
+        "type2_key_id": {
+          "const": null
+        },
+        "arc_key_id": {
+          "const": null
+        },
+        "arc_implementation_revision": {
+          "const": null
+        },
+        "arc_tag_encoding": {
+          "const": null
+        }
+      },
+      "required": [
+        "contract_version",
+        "schema_version",
+        "run_id",
+        "baseline_config_digest",
+        "profile",
+        "window_start_ms",
+        "window_end_ms",
+        "quota",
+        "admitted_entitlements",
+        "resource_id",
+        "method",
+        "url",
+        "type2_key_id",
+        "arc_key_id",
+        "arc_implementation_revision",
+        "arc_tag_encoding"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "contract_version": {
+          "const": "TF-PS024-REGIONAL-1.0.0"
+        },
+        "schema_version": {
+          "const": 1
+        },
+        "run_id": {
+          "type": "string",
+          "minLength": 32,
+          "maxLength": 32,
+          "pattern": "^[0-9a-f]{32}$"
+        },
+        "baseline_config_digest": {
+          "type": "string",
+          "minLength": 64,
+          "maxLength": 64,
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "profile": {
+          "const": "type2-bearer"
+        },
+        "window_start_ms": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "window_end_ms": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "quota": {
+          "const": 5
+        },
+        "admitted_entitlements": {
+          "const": 5
+        },
+        "resource_id": {
+          "const": "research-resource"
+        },
+        "method": {
+          "const": "GET"
+        },
+        "url": {
+          "const": "https://origin.lab.test/resource"
+        },
+        "type2_key_id": {
+          "type": "string",
+          "minLength": 64,
+          "maxLength": 64,
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "arc_key_id": {
+          "const": null
+        },
+        "arc_implementation_revision": {
+          "const": null
+        },
+        "arc_tag_encoding": {
+          "const": null
+        }
+      },
+      "required": [
+        "contract_version",
+        "schema_version",
+        "run_id",
+        "baseline_config_digest",
+        "profile",
+        "window_start_ms",
+        "window_end_ms",
+        "quota",
+        "admitted_entitlements",
+        "resource_id",
+        "method",
+        "url",
+        "type2_key_id",
+        "arc_key_id",
+        "arc_implementation_revision",
+        "arc_tag_encoding"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "contract_version": {
+          "const": "TF-PS024-REGIONAL-1.0.0"
+        },
+        "schema_version": {
+          "const": 1
+        },
+        "run_id": {
+          "type": "string",
+          "minLength": 32,
+          "maxLength": 32,
+          "pattern": "^[0-9a-f]{32}$"
+        },
+        "baseline_config_digest": {
+          "type": "string",
+          "minLength": 64,
+          "maxLength": 64,
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "profile": {
+          "const": "arc"
+        },
+        "window_start_ms": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "window_end_ms": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "quota": {
+          "const": 5
+        },
+        "admitted_entitlements": {
+          "const": 5
+        },
+        "resource_id": {
+          "const": "research-resource"
+        },
+        "method": {
+          "const": "GET"
+        },
+        "url": {
+          "const": "https://origin.lab.test/resource"
+        },
+        "type2_key_id": {
+          "const": null
+        },
+        "arc_key_id": {
+          "type": "string",
+          "minLength": 64,
+          "maxLength": 64,
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "arc_implementation_revision": {
+          "type": "string",
+          "minLength": 40,
+          "maxLength": 40,
+          "pattern": "^[0-9a-f]{40}$"
+        },
+        "arc_tag_encoding": {
+          "const": "SEC1-P256-compressed"
+        }
+      },
+      "required": [
+        "contract_version",
+        "schema_version",
+        "run_id",
+        "baseline_config_digest",
+        "profile",
+        "window_start_ms",
+        "window_end_ms",
+        "quota",
+        "admitted_entitlements",
+        "resource_id",
+        "method",
+        "url",
+        "type2_key_id",
+        "arc_key_id",
+        "arc_implementation_revision",
+        "arc_tag_encoding"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "contract_version": {
+          "const": "TF-PS024-REGIONAL-1.0.0"
+        },
+        "schema_version": {
+          "const": 1
+        },
+        "run_id": {
+          "type": "string",
+          "minLength": 32,
+          "maxLength": 32,
+          "pattern": "^[0-9a-f]{32}$"
+        },
+        "baseline_config_digest": {
+          "type": "string",
+          "minLength": 64,
+          "maxLength": 64,
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "profile": {
+          "const": "type2-holder"
+        },
+        "window_start_ms": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "window_end_ms": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "quota": {
+          "const": 5
+        },
+        "admitted_entitlements": {
+          "const": 5
+        },
+        "resource_id": {
+          "const": "research-resource"
+        },
+        "method": {
+          "const": "GET"
+        },
+        "url": {
+          "const": "https://origin.lab.test/resource"
+        },
+        "type2_key_id": {
+          "type": "string",
+          "minLength": 64,
+          "maxLength": 64,
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "arc_key_id": {
+          "const": null
+        },
+        "arc_implementation_revision": {
+          "const": null
+        },
+        "arc_tag_encoding": {
+          "const": null
+        }
+      },
+      "required": [
+        "contract_version",
+        "schema_version",
+        "run_id",
+        "baseline_config_digest",
+        "profile",
+        "window_start_ms",
+        "window_end_ms",
+        "quota",
+        "admitted_entitlements",
+        "resource_id",
+        "method",
+        "url",
+        "type2_key_id",
+        "arc_key_id",
+        "arc_implementation_revision",
+        "arc_tag_encoding"
+      ],
+      "additionalProperties": false
+    }
+  ]
+}
