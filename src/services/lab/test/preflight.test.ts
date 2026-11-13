@@ -1,0 +1,28 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { createPki } from '../src/pki.ts';
+import { localReadiness } from '../src/controller/preflight.ts';
+
+test('preflight detects expired certificates, wrong key pairs, invalid credentials and missing dependencies', t => {
+  const root = mkdtempSync(join(tmpdir(), 'tf-preflight-'));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  writeFileSync(join(root, '.node-version'), process.versions.node);
+  const pki = createPki('Preflight Test CA', 7);
+  const put = (p: string, v: string) => { const path = join(root, '.runtime/secrets', p); mkdirSync(join(path, '..'), { recursive: true, mode: 0o700 }); writeFileSync(path, v); };
+  put('client/ca.crt', pki.caPem);
+  for (const [role, name] of [['issuer', 'issuer.lab.test'], ['gateway', 'origin.lab.test']]) {
+    const leaf = pki.leaf(name!); put(`${role}/tls.crt`, leaf.cert); put(`${role}/tls.key`, leaf.key);
+  }
+  const password = 'a'.repeat(43); put('controller/redis-password', password); put('redis/redis-acl.conf', `user controller on >${password} ~* &* +@all\n`);
+  const result = (name: string, now?: number) => localReadiness(root, now).find(c => c.check === name)!.ok;
+  assert.equal(result('tls-validity-trust-and-key-pairs'), true);
+  assert.equal(result('redis-credential-and-acl'), true);
+  assert.equal(result('tls-validity-trust-and-key-pairs', Date.now() + 8 * 86400000), false);
+  put('gateway/tls.key', pki.leaf('origin.lab.test').key);
+  assert.equal(result('tls-validity-trust-and-key-pairs'), false);
+  put('controller/redis-password', 'invalid'); assert.equal(result('redis-credential-and-acl'), false);
+  assert.equal(result('lab-locked-dependencies'), false);
+});
