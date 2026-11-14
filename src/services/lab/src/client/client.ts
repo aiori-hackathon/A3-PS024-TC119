@@ -15,6 +15,8 @@ import { parseChallenge, plausibleEpochs, type ParsedChallenge } from './challen
 import { TunnelAgent, connectTls, type TunnelOptions } from './tunnel.ts';
 import { TokenInventory } from './inventory.ts';
 import type { ClientVouchers } from './vouchers.ts';
+import { REGIONAL } from '../../../../contracts/lib/regional.ts';
+import { canonicalJson } from '../../../../contracts/lib/index.ts';
 
 export type ClientErrorCode =
   | 'transport' | 'redirect-refused' | 'response-too-large' | 'unexpected-response' | 'challenge-unavailable'
@@ -59,7 +61,7 @@ class Gate {
     return () => { if (left) return; left = true; setImmediate(() => { const next = this.#waiting.shift(); if (next) next(); else this.#active -= 1; }); };
   }
 }
-type Reply = { status: number; headers: IncomingMessage['headers']; rawHeaders: string[]; body: Buffer };
+export type Reply = { status: number; headers: IncomingMessage['headers']; rawHeaders: string[]; body: Buffer };
 
 export class LabClient {
   readonly tokens: TokenInventory;
@@ -92,6 +94,24 @@ export class LabClient {
   #closed = false;
   /** After close() no new connection is opened: a scenario still running when the role is fenced cannot present anything. */
   close(): void { this.#closed = true; this.#issuerAgent.destroy(); this.#gatewayAgent.destroy(); this.tokens.clear(); this.#vouchers.clear(); }
+
+  /** Fixed regional public routes share the baseline CONNECT/TLS trust, bounds and socket gates. */
+  regionalPublic(route: keyof typeof REGIONAL.routes, body?: unknown): Promise<Reply> {
+    const url = new URL(REGIONAL.routes[route]);
+    const issuer = url.hostname === this.#m.issuer_name;
+    const wire = body === undefined ? undefined : Buffer.from(canonicalJson(body), 'utf8');
+    return this.#exchange(issuer ? this.#issuerAgent : this.#gatewayAgent, url.hostname, {
+      method: body === undefined ? 'GET' : 'POST', path: url.pathname,
+      ...(wire ? { body: wire, headers: { 'Content-Type': 'application/json', Accept: 'application/json' } } : {}),
+    }, REGIONAL.rpc_frame_max_bytes);
+  }
+
+  regionalResource(token?: Uint8Array): Promise<Reply> {
+    return this.#exchange(this.#gatewayAgent, this.#m.origin_name, {
+      method: 'GET', path: '/resource',
+      ...(token ? { headers: { Authorization: `PrivateToken token="${encodeBase64Url(token, false)}"` } } : {}),
+    }, PROTOCOL.gateway_common.origin_body_max_bytes);
+  }
 
   /** Public directory must be exactly what the manifest pinned; a different key or URI is refused, not adopted. */
   async checkDirectory(): Promise<void> {

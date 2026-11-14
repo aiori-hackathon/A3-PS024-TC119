@@ -6,6 +6,8 @@ import type { Duplex } from 'node:stream';
 import { PROTOCOL } from '../../../../contracts/lib/index.ts';
 import type { IssuanceService } from './issuance.ts';
 import { DIRECTORY_PATH, DIRECTORY_TYPE, directoryBody } from './directory.ts';
+import { REGIONAL } from '../../../../contracts/lib/regional.ts';
+import type { RegionalAdmission } from './regional.ts';
 
 export type IssuerTls = { key: string | Buffer; cert: string | Buffer };
 const ISSUE_PATH = new URL(PROTOCOL.issuer_request_uri).pathname;
@@ -28,7 +30,7 @@ function rawValues(req: IncomingMessage, name: string): string[] {
   return out;
 }
 
-export function createIssuerServer(service: IssuanceService, publicKeySpki: Uint8Array, tls: IssuerTls): Server {
+export function createIssuerServer(service: IssuanceService, publicKeySpki: Uint8Array, tls: IssuerTls, regional?: RegionalAdmission): Server {
   const limits = PROTOCOL.issuer_limits;
   const directory = directoryBody(publicKeySpki);
   const server = createServer({
@@ -52,11 +54,17 @@ export function createIssuerServer(service: IssuanceService, publicKeySpki: Uint
   async function route(req: IncomingMessage, res: ServerResponse): Promise<void> {
     if (req.rawHeaders.length / 2 > MAX_HEADERS) { req.resume(); return json(res, 431, 'headers-too-large', {}, true); }
     const url = req.url ?? '';
+    if (regional && url === new URL(REGIONAL.routes.arc_directory).pathname) {
+      if (req.method !== 'GET') return json(res, 405, 'method-not-allowed', { Allow: 'GET' });
+      const out = regional.directory();
+      return reply(res, out.status, out.contentType, out.body);
+    }
     if (url === DIRECTORY_PATH) {
       if (req.method !== 'GET') return json(res, 405, 'method-not-allowed', { Allow: 'GET' });
       return reply(res, 200, DIRECTORY_TYPE, directory);
     }
-    if (url !== ISSUE_PATH) return json(res, 404, 'not-found');
+    const enrollment = regional && url === new URL(REGIONAL.routes.enroll).pathname;
+    if (!enrollment && (regional || url !== ISSUE_PATH)) return json(res, 404, 'not-found');
     if (req.method !== 'POST') return json(res, 405, 'method-not-allowed', { Allow: 'POST' });
     // Controlled HTTP/1.1 client: exactly one decimal Content-Length, no Transfer-Encoding.
     const lengths = rawValues(req, 'content-length');
@@ -64,15 +72,21 @@ export function createIssuerServer(service: IssuanceService, publicKeySpki: Uint
       req.resume(); return json(res, 400, 'bad-request', {}, true);
     }
     const declared = Number(lengths[0]);
-    if (declared > MAX_BODY) { return json(res, 413, 'payload-too-large', {}, true); }
+    const maxBody = enrollment ? REGIONAL.rpc_frame_max_bytes : MAX_BODY;
+    if (declared > maxBody) { return json(res, 413, 'payload-too-large', {}, true); }
     const chunks: Buffer[] = []; let total = 0;
     for await (const chunk of req) {
       total += (chunk as Buffer).length;
-      if (total > MAX_BODY) return json(res, 413, 'payload-too-large', {}, true);
+      if (total > maxBody) return json(res, 413, 'payload-too-large', {}, true);
       chunks.push(chunk as Buffer);
     }
     if (total !== declared) return json(res, 400, 'bad-request', {}, true);
     const types = rawValues(req, 'content-type');
+    if (enrollment) {
+      if (types.length !== 1 || types[0] !== 'application/json') return json(res, 415, 'unsupported-media-type');
+      const out = await regional.handleEnrollment(Uint8Array.from(Buffer.concat(chunks)));
+      return reply(res, out.status, out.contentType, out.body);
+    }
     const out = await service.handle({
       contentType: types.length === 1 ? types[0] : undefined,
       voucherHeaders: rawValues(req, 'x-lab-voucher'),

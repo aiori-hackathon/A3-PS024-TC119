@@ -10,6 +10,9 @@ import {
 import { LabError, type ControlErrorResult } from '../errors.ts';
 import { ClientVouchers } from './vouchers.ts';
 import { LabClient } from './client.ts';
+import { RegionalClient } from './regional.ts';
+import { ProcessArcClientHelper } from './arc-helper.ts';
+import { validateRegionalPolicy, type RegionalPolicy } from '../../../../contracts/lib/regional.ts';
 import type { Counters as ReportCounters } from '../report/build.ts';
 import { networkBoundaries, voucherPolicy } from './scenarios.ts';
 import { epochBoundary } from './epoch-scenario.ts';
@@ -90,6 +93,7 @@ export class ClientRole {
   #proxy: { host: string; port: number } | null = null;
   #vouchers: ClientVouchers | null = null;
   #client: LabClient | null = null;
+  #regional: RegionalClient | null = null;
   #running: { promise: Promise<unknown>; abort: AbortController } | null = null;
   #measurements: Measurement[] = [];
   #counters: Counters = { issuance_successes: 0, issuance_failures: 0, observations: 0 };
@@ -102,6 +106,53 @@ export class ClientRole {
     this.#drainMs = options.drainMs ?? 8000;
   }
   get state(): State { return this.#state; }
+
+  /** Controller-only private pipe, before readiness. Vouchers still use the frozen provisioning lifecycle. */
+  installRegional(config: { policy: RegionalPolicy; arcHelperPath?: string }): void {
+    if (this.#state !== 'PREPARED' || this.#runClosed || this.#regional || !this.#manifest || !this.#vouchers || !this.#caPem || !this.#proxy) {
+      throw new LabError('ILLEGAL_STATE');
+    }
+    const policy = validateRegionalPolicy(config.policy, this.#manifest);
+    if ((policy.profile === 'arc') !== !!config.arcHelperPath) throw new LabError('BAD_MESSAGE');
+    this.#regional = new RegionalClient({ policy, manifest: this.#manifest, vouchers: this.#vouchers,
+      proxy: this.#proxy, caPem: this.#caPem,
+      ...(config.arcHelperPath ? { arcHelper: new ProcessArcClientHelper(config.arcHelperPath) } : {}) });
+  }
+
+  regionalStatus(): Json {
+    return { enabled: this.#state === 'ENABLED', estimated_remaining: this.#regional?.estimatedRemaining ?? 0,
+      measurements: this.#regional?.measurements ?? null };
+  }
+
+  /** Fixed laboratory actions. No credentials, URLs, key material or arbitrary commands enter or leave this API. */
+  async regionalAction(action: 'acquire' | 'access' | 'attack' | 'copy' | 'race' | 'abuse', count?: number): Promise<Json> {
+    if (this.#state !== 'ENABLED' || !this.#regional || this.#running) throw new LabError('ILLEGAL_STATE');
+    if (!['acquire', 'access', 'attack', 'copy', 'race', 'abuse'].includes(action)) throw new LabError('BAD_MESSAGE');
+    const client = this.#regional;
+    const abort = new AbortController();
+    const operation = (async (): Promise<Json> => {
+      if (action === 'acquire') {
+        await client.acquire();
+        this.#counters.issuance_successes += client.issuedCredentials;
+        return { action, results: [], ...this.regionalStatus() };
+      }
+      const results = action === 'race' ? await client.race(count) : action === 'abuse' ? await client.abuse(count)
+        : [await (action === 'attack' ? client.attack() : action === 'copy' ? client.copyAccess() : client.access())];
+      this.#counters.observations += results.length;
+      return { action, results, ...this.regionalStatus() };
+    })();
+    this.#running = { promise: operation, abort };
+    try {
+      const result = await operation;
+      if (abort.signal.aborted || this.#state !== 'ENABLED') throw new LabError('FAULTED');
+      return result;
+    } catch (error) {
+      if (action === 'acquire') this.#counters.issuance_failures++;
+      if (abort.signal.aborted || this.#state !== 'ENABLED') throw new LabError('FAULTED');
+      const empty = error instanceof Error && ['regional-no-token', 'regional-no-entitlement', 'regional-enrollment-already-attempted'].includes(error.message);
+      return { action, results: [], error: empty ? error.message : 'regional-operation-failed', ...this.regionalStatus() };
+    } finally { this.#running = null; }
+  }
 
   async handle(raw: unknown): Promise<Json> {
     const id = (raw as { request_id?: unknown } | null)?.request_id;
@@ -192,6 +243,7 @@ export class ClientRole {
   }
 
   async #runScenario(requestId: string, payload: Json): Promise<Json> {
+    if (this.#regional) throw new LabError('ILLEGAL_STATE');
     if (this.#state !== 'ENABLED' || !this.#client || !this.#manifest) throw new LabError('ILLEGAL_STATE');
     if (this.#running) throw new LabError('ILLEGAL_STATE'); // at most one scenario per client
     const scenarioId = payload['scenario_id'] as string;
@@ -224,6 +276,7 @@ export class ClientRole {
   #teardown(): void {
     this.#running?.abort.abort();
     this.#client?.close(); // destroys sockets (aborting in-flight requests) and clears tokens and vouchers
+    this.#regional?.close();
   }
 
   async #fence(requestId: string, reason: Fault): Promise<Json> {
@@ -232,8 +285,15 @@ export class ClientRole {
     this.#teardown();
     const running = this.#running?.promise;
     if (running) {
-      const settled = await Promise.race([running.then(() => true), new Promise<boolean>((r) => setTimeout(() => r(false), this.#drainMs).unref())]);
+      const settled = await Promise.race([running.then(() => true, () => true), new Promise<boolean>((r) => setTimeout(() => r(false), this.#drainMs).unref())]);
       if (!settled) return this.#error(requestId, 'FAULTED'); // cannot confirm: the controller must kill this process
+    }
+    if (this.#regional) {
+      let timer: NodeJS.Timeout | undefined;
+      const drained = await Promise.race([this.#regional.drain().then(() => true),
+        new Promise<boolean>(resolve => { timer = setTimeout(() => resolve(false), this.#drainMs); })]);
+      clearTimeout(timer);
+      if (!drained) return this.#error(requestId, 'FAULTED');
     }
     if (hadRun) { this.#runClosed = true; this.#fault = this.#fault ?? reason; }
     this.#state = 'FENCED';

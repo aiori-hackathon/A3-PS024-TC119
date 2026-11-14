@@ -14,6 +14,8 @@ import { LabIssuer, type IssuerSigner } from '../protocol.ts';
 import { VoucherStore } from './vouchers.ts';
 import { IssuanceService } from './issuance.ts';
 import { createIssuerServer, type IssuerTls } from './server.ts';
+import { validateRegionalPolicy, type RegionalPolicy } from '../../../../contracts/lib/regional.ts';
+import { RegionalAdmission, type RegionalArcIssueOptions } from './regional.ts';
 
 type State = 'FENCED' | 'PREPARED' | 'READY' | 'ENABLED' | 'CLOSING' | 'FAULTED';
 type Fault = (typeof PROTOCOL.faults)[number] | null;
@@ -51,6 +53,8 @@ export class IssuerRole {
   #tls: IssuerTls | null = null;
   #vouchers: VoucherStore | null = null;
   #service: IssuanceService | null = null;
+  #regional: RegionalAdmission | undefined;
+  #regionalConfig: { policy: RegionalPolicy; arc?: RegionalArcIssueOptions } | undefined;
   #server: Server | null = null;
   #leaseExpiry = 0;
   readonly #schedule: (ms: number, callback: () => void) => { cancel(): void };
@@ -71,6 +75,27 @@ export class IssuerRole {
   get state(): State { return this.#state; }
   /** Bound issuance listener address once enabled (tests and health only). */
   get address(): AddressInfo | null { return (this.#server?.address() as AddressInfo | null) ?? null; }
+
+  /** Trusted private startup pipe only. The public control schema carries no regional secrets. */
+  installRegional(config: { policy: RegionalPolicy; arc?: RegionalArcIssueOptions }): void {
+    if (!['FENCED', 'PREPARED'].includes(this.#state) || this.#runClosed || this.#regionalConfig || !this.#issuer) {
+      throw new LabError('ILLEGAL_STATE');
+    }
+    const policy = validateRegionalPolicy(config.policy, this.#manifest ?? undefined);
+    if (policy.run_id !== this.#runId) throw new LabError('WRONG_RUN');
+    this.#regionalConfig = { policy, ...(config.arc ? { arc: {
+      bootstrap: structuredClone(config.arc.bootstrap), endpoint: { ...config.arc.endpoint }, issueKey: Uint8Array.from(config.arc.issueKey),
+    } } : {}) };
+    if (this.#manifest && this.#vouchers) this.#prepareRegional();
+  }
+
+  #prepareRegional(): void {
+    const config = this.#regionalConfig!;
+    validateRegionalPolicy(config.policy, this.#manifest!);
+    this.#regional = new RegionalAdmission({ ...config, signer: this.#issuer!, vouchers: this.#vouchers!,
+      limits: this.#manifest!.limits.issuer, isLive: () => this.#leaseLive(), onFault: () => this.#faultNow('dependency-lost') });
+    config.arc?.issueKey.fill(0);
+  }
 
   async handle(raw: unknown): Promise<Json> {
     const id = (raw as { request_id?: unknown } | null)?.request_id;
@@ -161,6 +186,7 @@ export class IssuerRole {
     this.#digest = payload['proposed_config_digest'] as string;
     this.#vouchers = new VoucherStore(manifest.inventory_total);
     this.#service = new IssuanceService(this.#issuer, this.#vouchers, manifest.limits.issuer, () => this.#leaseLive());
+    if (this.#regionalConfig) this.#prepareRegional();
     this.#state = 'PREPARED';
     return this.#ok(requestId, 'PREPARED', {});
   }
@@ -186,7 +212,7 @@ export class IssuerRole {
     if (this.#state !== 'READY' || !this.#manifest || !this.#vouchers || !this.#service || !this.#issuer || !this.#tls) throw new LabError('ILLEGAL_STATE');
     this.#vouchers.lock();
     this.#leaseExpiry = this.#now() + this.#manifest.limits.gateway.controller_lease_ms;
-    this.#server = createIssuerServer(this.#service, this.#issuer.publicKeySpki, this.#tls);
+    this.#server = createIssuerServer(this.#service, this.#issuer.publicKeySpki, this.#tls, this.#regional);
     try {
       await new Promise<void>((resolve, reject) => { this.#server!.once('error', reject); this.#server!.listen(this.#listen.port, this.#listen.host, () => resolve()); });
     } catch { this.#faultNow('dependency-lost'); throw new LabError('FAULTED'); }
@@ -194,6 +220,7 @@ export class IssuerRole {
     if (this.#now() >= this.#leaseExpiry) { this.#faultNow('lease-expired'); throw new LabError('FAULTED'); }
     this.#state = 'ENABLED';
     this.#service.setOpen(true);
+    this.#regional?.setOpen(true);
     this.#armWatchdog();
     return this.#ok(requestId, 'ENABLED', { workers_enabled: 1 });
   }
@@ -239,6 +266,8 @@ export class IssuerRole {
   #closeAdmission(): void {
     if (this.#watchdog) { this.#watchdog.cancel(); this.#watchdog = null; }
     this.#service?.setOpen(false);
+    this.#regional?.setOpen(false);
+    this.#regionalConfig?.arc?.issueKey.fill(0);
     this.#vouchers?.clear();
     const server = this.#server;
     if (server) { server.closeAllConnections(); server.close(); }
@@ -257,6 +286,7 @@ export class IssuerRole {
       if (!settled) return this.#error(requestId, 'FAULTED');
     }
     if (this.#service && !(await this.#service.drain(this.#drainMs))) return this.#error(requestId, 'FAULTED');
+    if (this.#regional && !(await this.#regional.drain(this.#drainMs))) return this.#error(requestId, 'FAULTED');
     await this.#issuer?.close?.();
     if (this.#server?.listening) await new Promise<void>((resolve) => this.#server!.close(() => resolve()));
     if (hadRun) { this.#runClosed = true; this.#fault = this.#fault ?? reason; }
@@ -280,7 +310,7 @@ export class IssuerRole {
   /** REPORT payload: fixed allowlisted counters only. */
   report(requestId: string): Json {
     return this.#ok(requestId, 'REPORT', { resources: [this.#resources.summary()],
-      counters: { ...(this.#service?.counters ?? { issuance_successes: 0, issuance_failures: 0 }) },
+      counters: { ...(this.#regional?.counters ?? this.#service?.counters ?? { issuance_successes: 0, issuance_failures: 0 }) },
       measurements: [], same_source_observed: null, origin_counts_available: false, worker_verification_attempts: [],
     });
   }
