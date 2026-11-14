@@ -5,55 +5,69 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>TokenForge — Research access</title>
   <link rel="stylesheet" href="/style.css">
+  <script type="module" src="/app.js"></script>
 </head>
 <body>
-  <div class="preview">Layout preview <span>Live client controls await integration</span></div>
+  <div class="environment"><span id="mode">Layout preview</span><span id="connection">Connecting to laboratory status</span></div>
   <header class="masthead">
     <a class="brand" href="/" aria-label="TokenForge home"><span class="brand-mark" aria-hidden="true">T</span>TokenForge</a>
-    <nav aria-label="Page sections"><a href="#resource">Research</a><a href="#clients">Lab clients</a><a href="#evidence">Evidence</a></nav>
+    <nav aria-label="Page sections"><a href="#resource">Research</a><a href="#setup">Run setup</a><a href="#evidence">Evidence</a></nav>
     <span class="private-label">Private laboratory</span>
   </header>
   <main>
     <section class="intro" aria-labelledby="page-title">
       <div><p class="eyebrow">Research access laboratory</p><h1 id="page-title">A shared connection.<br>Each client's own allowance.</h1></div>
-      <p class="intro-note">Explore admission, access and replay protection through five controlled lab clients and a protected research resource.</p>
+      <p class="intro-note">Explore admission and replay protection through five controlled clients, a shared proxy and a protected research brief.</p>
+    </section>
+    <section class="setup" id="setup" aria-labelledby="setup-title">
+      <div class="section-heading"><div><p class="eyebrow">Laboratory configuration</p><h2 id="setup-title">Start a supervised run</h2></div><p>Each run uses one profile. Reset closes the current run.</p></div>
+      <fieldset id="profiles" disabled>
+        <legend class="visually-hidden">Run profile</legend>
+        <label class="profile"><input type="radio" name="profile" value="ip" checked><span><strong>IP baseline</strong><small>Shared-egress allowance</small></span></label>
+        <label class="profile"><input type="radio" name="profile" value="type2-bearer"><span><strong>Ordinary Type 2</strong><small>Blind-issued single-use tokens</small></span></label>
+        <label class="profile"><input type="radio" name="profile" value="arc"><span><strong>ARC</strong><small>Anonymous rate-limited credential</small></span></label>
+        <label class="profile"><input type="radio" name="profile" value="type2-holder"><span><strong>Holder-bound Type 2</strong><small>Separate possession-key scene</small></span></label>
+      </fieldset>
+      <div class="setup-bottom"><dl class="run-details"><div><dt>Server state</dt><dd id="server-state">Awaiting status</dd></div><div><dt>Active profile</dt><dd id="active-profile">—</dd></div><div><dt>Accepted window</dt><dd id="window">—</dd></div><div><dt>Updated</dt><dd id="updated">—</dd></div></dl><div class="setup-actions"><button id="reset" disabled>Reset run</button><button id="start" class="primary" disabled>Start run <span aria-hidden="true">↗</span></button></div></div>
     </section>
     <div class="workspace">
-      <article class="resource panel" id="resource" aria-labelledby="resource-title">
-        <div class="panel-heading"><span class="eyebrow">Protected research brief</span><span class="locked">Access required</span></div>
+      <article class="resource" id="resource" aria-labelledby="resource-title">
+        <div class="panel-heading"><span class="eyebrow">Protected research brief</span><span class="stamp" id="resource-state">Access required</span></div>
         <h2 id="resource-title">Shared egress<br>and fair access</h2>
-        <p class="resource-description">A short research brief examining access budgets for clients behind a shared proxy.</p>
-        <div class="resource-sheet"><span class="sheet-rule"></span><p>The full brief appears after an authorized access.</p><span class="sheet-rule short"></span></div>
-        <dl class="resource-meta"><div><dt>Resource</dt><dd>Research brief 01</dd></div><div><dt>Route</dt><dd>/resource</dd></div><div><dt>Delivery</dt><dd>Through the verification gateway</dd></div></dl>
+        <p class="resource-description">Research on access budgets for clients behind a shared connection.</p>
+        <div class="resource-sheet"><p id="resource-text">The full brief appears after an authorized access.</p></div>
+        <dl class="resource-meta"><div><dt>Resource</dt><dd>Research brief 01</dd></div><div><dt>Route</dt><dd>/resource</dd></div><div><dt>Delivery</dt><dd id="delivered-to">Through the verification gateway</dd></div></dl>
       </article>
       <section class="controls panel" aria-labelledby="access-title">
-        <div class="panel-heading"><h2 id="access-title">Access controls</h2><span class="status-dot">No active run</span></div>
+        <div class="panel-heading"><h2 id="access-title">Client access</h2><span class="eyebrow">One shared proxy</span></div>
         <label for="client">Laboratory client</label>
-        <select id="client" disabled><option>Client A</option><option>Client B</option><option>Client C</option><option>Client D</option><option>Client E</option></select>
-        <fieldset disabled>
-          <legend>Run profile</legend>
-          <label class="profile"><input type="radio" name="profile" value="ip"><span><strong>IP baseline</strong><small>Shared-egress policy</small></span></label>
-          <label class="profile"><input type="radio" name="profile" value="type2"><span><strong>Ordinary Type2</strong><small>Single-use tokens</small></span></label>
-          <label class="profile"><input type="radio" name="profile" value="arc"><span><strong>ARC</strong><small>Multi-use credential</small></span></label>
-          <label class="profile"><input type="radio" name="profile" value="holder"><span><strong>Holder-bound Type2</strong><small>Separate theft-protection scene</small></span></label>
-        </fieldset>
-        <dl class="allowance"><div><dt>Estimated uses left</dt><dd>—</dd></div><div><dt>Accepted window</dt><dd>Awaiting run</dd></div></dl>
-        <div class="actions"><button disabled>Acquire allowance</button><button class="primary" disabled>Access resource <span aria-hidden="true">↗</span></button></div>
-        <p class="control-note">Profiles are selected when a run starts. The server determines accepted allowance and window.</p>
-      </section>
-      <section class="evidence panel" id="evidence" aria-labelledby="evidence-title">
-        <div class="panel-heading"><h2 id="evidence-title">Independent evidence</h2><span class="eyebrow">Protected origin</span></div>
-        <div class="metrics"><div><span>Requests received</span><strong>—</strong></div><div><span>Resources served</span><strong>—</strong></div><div><span>Generation mismatches</span><strong>—</strong></div></div>
-        <p class="empty-state">Evidence will appear after a real run completes an action.</p>
+        <select id="client" disabled><option value="A">Client A</option><option value="B">Client B</option><option value="C">Client C</option><option value="D">Client D</option><option value="E">Client E</option></select>
+        <dl class="allowance"><div><dt>Estimated uses left</dt><dd id="estimate">—</dd></div><div><dt>Client state</dt><dd id="client-state">Awaiting run</dd></div></dl>
+        <div class="actions"><button id="acquire" disabled>Acquire allowance</button><button id="access" class="primary" disabled>Access resource <span aria-hidden="true">↗</span></button></div>
+        <p class="control-note">The server determines allowance and the accepted window. A client estimate may change after the next request.</p>
+        <section class="latest-result" aria-labelledby="result-title"><h3 id="result-title">Latest action</h3><p id="result">Choose a profile and start a run to begin.</p></section>
       </section>
       <section class="clients panel" id="clients" aria-labelledby="clients-title">
-        <div class="panel-heading"><h2 id="clients-title">Laboratory clients</h2><span class="eyebrow">One shared proxy</span></div>
-        <table><caption>Controlled client processes</caption><thead><tr><th>Client</th><th>Allowance estimate</th><th>State</th></tr></thead><tbody>
+        <div class="panel-heading"><h2 id="clients-title">Laboratory clients</h2><span class="eyebrow">A–E</span></div>
+        <table><caption>Current client estimates from the controller</caption><thead><tr><th scope="col">Client</th><th scope="col">Uses left</th><th scope="col">State</th></tr></thead><tbody id="clients-body">
           <tr><th scope="row">Client A</th><td>—</td><td>Awaiting run</td></tr><tr><th scope="row">Client B</th><td>—</td><td>Awaiting run</td></tr><tr><th scope="row">Client C</th><td>—</td><td>Awaiting run</td></tr><tr><th scope="row">Client D</th><td>—</td><td>Awaiting run</td></tr><tr><th scope="row">Client E</th><td>—</td><td>Awaiting run</td></tr>
         </tbody></table>
       </section>
     </div>
+    <section class="evidence" id="evidence" aria-labelledby="evidence-title">
+      <div class="section-heading"><div><p class="eyebrow">Independent protected-origin ledger</p><h2 id="evidence-title">What reached the protected server</h2></div><p id="evidence-state">Awaiting an observed snapshot</p></div>
+      <div class="metrics"><div><span>Requests received</span><strong id="received">—</strong></div><div><span>Resources served</span><strong id="served">—</strong></div><div><span>Generation mismatches</span><strong id="mismatches">—</strong></div><div><span>Snapshot updated</span><strong class="metric-time" id="evidence-time">—</strong></div></div>
+      <p class="control-note">Counts come from the protected origin. An unavailable observation appears as a dash.</p>
+    </section>
+    <section class="experiments" aria-labelledby="experiments-title">
+      <div class="section-heading"><div><p class="eyebrow">Controlled experiments</p><h2 id="experiments-title">Compare access, then examine theft</h2></div></div>
+      <div class="experiment-head"><div><h3>Shared-egress comparison</h3><p>Run the same controlled workload across IP baseline, ordinary Type 2 and ARC.</p></div><button id="compare" disabled>Run comparison</button></div>
+      <div class="table-scroll" tabindex="0" role="region" aria-label="Comparison results"><table class="comparison"><caption id="comparison-state">No comparison observed</caption><thead><tr><th scope="col">Profile</th><th scope="col">State</th><th scope="col">Accepted</th><th scope="col">Denied</th><th scope="col">Honest delivered</th><th scope="col">Origin arrivals</th><th scope="col">Issue bytes</th><th scope="col">Issue exchanges</th><th scope="col">Latency, ms</th></tr></thead><tbody id="comparison-body"></tbody></table></div>
+      <div class="theft-scene"><div><h3>Holder-bound theft scene</h3><p>A separate experiment compares a copied unused bearer credential with a copied token lacking the holder's private key.</p></div><button id="theft" disabled>Run theft scene</button></div>
+      <div class="theft-results"><div><h4>Copied bearer</h4><p id="bearer-outcome">Awaiting experiment</p></div><div><h4>Holder-bound token</h4><p id="holder-outcome">Awaiting experiment</p></div><div><h4>Origin observation</h4><p id="theft-origin">Awaiting experiment</p></div></div>
+    </section>
+    <p id="announcement" class="visually-hidden" role="status" aria-live="polite" aria-atomic="true"></p>
   </main>
-  <footer><span>TokenForge · A3-PS024-TC119</span><p>Credentials stay inside the lab client processes. This interface controls laboratory clients.</p></footer>
+  <footer><span>TokenForge · A3-PS024-TC119</span><p>Credentials stay inside laboratory client processes. This interface controls the supervised demonstration.</p></footer>
 </body>
 </html>
