@@ -109,6 +109,7 @@ export class RegionalLab {
   #originObservedAt: string | null = null;
   #enumerationUncertain = false;
   #creationUncertain = false;
+  #terminalUncertain = false;
   #windowTimer: NodeJS.Timeout | null = null;
   #comparison: Json[] = [];
   #theft: Json | null = null;
@@ -139,6 +140,7 @@ export class RegionalLab {
     };
   }
   execute(command: Json): Promise<Json> {
+    if (this.#terminalUncertain || this.#creationUncertain) return Promise.reject(Error('shutdown-unconfirmed'));
     if (this.#closing || this.#busy) return Promise.reject(Error('operation-in-progress'));
     if (command.action !== 'start_run' && command.revision !== this.#revision) throw Error('stale-run');
     const owned = structuredClone(command);
@@ -153,6 +155,7 @@ export class RegionalLab {
     return operation;
   }
   #guard(): void {
+    if (this.#terminalUncertain || this.#creationUncertain) throw Error('shutdown-unconfirmed');
     if (this.#closing || this.#session?.signal.aborted) throw Error('operation-cancelled');
   }
   async #executeCommand(command: Json): Promise<Json> {
@@ -274,7 +277,9 @@ export class RegionalLab {
     this.#instances = new Map();
     const adapters = this.#adapters = new DockerAdapters(this.#project, this.#links);
     const up = await this.#project.compose(['up', '-d', '--no-build', '--force-recreate', ...SERVICES, ...(profile === 'arc' ? ['arc'] : [])], { timeoutMs: 120000 });
-    this.#creationUncertain = up.timedOut || up.failed;
+    if (up.timedOut || up.failed) {
+      this.#creationUncertain = true;
+    }
     // Even a cancelled Compose operation can return newly created resources.
     await this.#reconcile(scope);
     this.#guard();
@@ -571,8 +576,13 @@ export class RegionalLab {
   }
   #resetGeneration(): Promise<void> {
     if (this.#resetting) return this.#resetting;
+    if (this.#terminalUncertain) { this.#state = 'error'; return Promise.reject(Error('shutdown-unconfirmed')); }
     if (!this.#scope && !this.#run && !this.#lock) { this.#state = 'idle'; return Promise.resolve(); }
-    const pending = Promise.resolve().then(() => this.#closeGeneration());
+    const pending = Promise.resolve().then(() => this.#closeGeneration()).catch(error => {
+      this.#terminalUncertain = true;
+      this.#state = 'error';
+      throw error;
+    });
     this.#resetting = pending;
     void pending.finally(() => { if (this.#resetting === pending) this.#resetting = null; }).catch(() => {});
     return pending;

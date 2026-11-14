@@ -4,7 +4,7 @@
 # Generate secrets first:  node infra/scripts/provision-secrets.ts      (writes the git-ignored .runtime/secrets/)
 # Check the boundaries:    node infra/scripts/check-network.mjs
 #
-# Rules this file enforces: five exclusive internal bridges (no default network, no host networking, no published
+# Rules this file enforces: five baseline internal bridges plus the private ARC bridge (no default network, no host networking, no published
 # ports), IPv6 off, no privileged containers, no Docker socket, read-only roots, all capabilities dropped,
 # no-new-privileges, no restart, no Docker-managed logs, per-role secret mounts only. Listeners bind a named interface.
 name: tokenforge

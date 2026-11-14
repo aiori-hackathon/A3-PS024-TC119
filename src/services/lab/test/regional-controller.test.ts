@@ -22,6 +22,7 @@ class DelayedDocker implements DockerCli {
   removedRedis = 0;
   spawned = 0;
   upCalls = 0;
+  timeOutCreation = false;
   async run(args: string[]): Promise<RunResult> {
     const reply = (stdout = '', status = 0, stderr = '') => ({ stdout, status, stderr, timedOut: false, failed: false });
     if (args[0] === 'compose') {
@@ -35,7 +36,7 @@ class DelayedDocker implements DockerCli {
       } else if (args[3] === 'ps') {
         return reply(this.containers.get(args.at(-1)!)?.id ?? '');
       } else throw Error('unexpected-compose-command');
-      return reply();
+      return this.timeOutCreation ? { ...reply(), status: null, timedOut: true } : reply();
     }
     const id = args.at(-1)!;
     const container = [...this.containers.values()].find(value => value.id === id);
@@ -128,6 +129,32 @@ test('unconfirmed late-resource cleanup retains the project lock and Redis', asy
   assert.ok(existsSync(lock));
   assert.equal(lab.status().state, 'error');
   assert.equal(docker.removedRedis, 0);
+  await assert.rejects(lab.execute({ action: 'start_run', profile: 'ip' }), /shutdown-unconfirmed/);
+  assert.equal(docker.upCalls, 1);
+  assert.equal(docker.removedRedis, 0);
+});
+
+test('creation uncertainty is terminal across authenticated startup and reset retries', async t => {
+  const { docker, lab, lock } = fixture(t);
+  docker.timeOutCreation = true;
+  const starting = lab.execute({ action: 'start_run', profile: 'ip' });
+  const failedStart = assert.rejects(starting, /shutdown-unconfirmed/);
+  await docker.entered.promise;
+  docker.release.resolve();
+  await failedStart;
+  assert.equal(lab.status().state, 'error');
+  assert.ok(existsSync(lock));
+  assert.equal(docker.upCalls, 1);
+  assert.equal(docker.removedRedis, 0);
+  for (const command of [
+    { action: 'start_run', profile: 'ip' },
+    { action: 'reset_run', revision: lab.status().revision },
+    { action: 'access', clientId: 'A', revision: lab.status().revision },
+  ]) await assert.rejects(lab.execute(command), /shutdown-unconfirmed/);
+  await assert.rejects(lab.close(), /shutdown-unconfirmed/);
+  assert.equal(docker.upCalls, 1);
+  assert.equal(docker.removedRedis, 0);
+  assert.ok(existsSync(lock));
 });
 
 test('verified delivery requires matching independently received and served deltas', () => {
