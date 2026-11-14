@@ -24,6 +24,11 @@ FROM build AS recovery-tests
 COPY src/services/gateway/test/recovery-phase.ts ./test/recovery-phase.ts
 CMD ["node", "test/recovery-phase.ts"]
 
+FROM build AS regional-tests
+COPY src/services/gateway/test/regional-integration.test.ts ./test/regional-integration.test.ts
+COPY src/services/gateway/test/helpers/holder.ts ./test/helpers/holder.ts
+CMD ["node", "--test-isolation=none", "--test", "test/regional-integration.test.ts"]
+
 FROM build AS production-dependencies
 RUN npm ci --omit=dev --ignore-scripts --no-audit --no-fund
 

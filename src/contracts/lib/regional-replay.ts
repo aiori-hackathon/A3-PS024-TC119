@@ -174,7 +174,10 @@ export async function verifyRegionalStoreReady(io:RedisIo,configuration:unknown,
 /** Separate account; no pp:spent access, policy writes, initializer loading or state administration. */
 export const REGIONAL_GATEWAY_ACL_RULES=Object.freeze([
   '%R~pp:policy','%RW~pp:clock','%R~tfr:policy','%RW~tfr:spent:*','-@all',
-  '+auth','+type','+pttl','+hlen','+hmget','+hget','+time','+get','+pexpiretime','+hset','+set','+evalsha','+script|exists'
+  '+auth','+type','+pttl','+hlen','+hmget','+hget','+time','+get','+pexpiretime','+hset','+set','+script|exists',
+  // EVALSHA declares all KEYS read/write. A command-only selector permits invocation,
+  // while inner HSET/SET still use the restrictive root command/key permissions.
+  '(+evalsha %RW~pp:policy %RW~pp:clock %RW~tfr:policy %RW~tfr:spent:*)'
 ]);
 export function regionalGatewayAclArguments(username:string,password:string):string[] {
   if(typeof username!=='string'||!/^tfr_[a-zA-Z0-9_-]{1,59}$/.test(username)

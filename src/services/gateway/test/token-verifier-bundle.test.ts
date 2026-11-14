@@ -7,7 +7,9 @@ import { REPLAY_SCRIPTS } from '../src/replay-scripts.ts';
 
 test('built verifier is a standalone project bundle and validates a fresh token', async () => {
   const directory = new URL('../dist/', import.meta.url);
-  assert.deepEqual(readdirSync(directory).sort(), ['bootstrap.mjs', 'control-helper.mjs', 'fixed-origin.mjs', 'flow-admission.mjs', 'gateway-supervisor.mjs', 'http-auth.mjs', 'https-gateway.mjs', 'redis-adapter.mjs', 'replay-scripts.mjs', 'request-coordinator.mjs', 'serve.mjs', 'token-verifier.mjs', 'worker-host.mjs', 'worker-lease.mjs', 'worker-process.mjs']);
+  assert.deepEqual(readdirSync(directory).sort(), ['bootstrap.mjs', 'control-helper.mjs', 'fixed-origin.mjs', 'flow-admission.mjs', 'gateway-supervisor.mjs', 'http-auth.mjs', 'https-gateway.mjs', 'redis-adapter.mjs', 'regional-gateway.mjs', 'replay-scripts.mjs', 'request-coordinator.mjs', 'serve.mjs', 'token-verifier.mjs', 'worker-host.mjs', 'worker-lease.mjs', 'worker-process.mjs']);
+  const {prepareRegionalGateway}=await import(new URL('regional-gateway.mjs',directory).href);
+  assert.equal(typeof prepareRegionalGateway,'function');
   const { GatewaySupervisor } = await import(new URL('gateway-supervisor.mjs', directory).href);
   assert.equal(new GatewaySupervisor(async () => { throw Error(); }).status.state, 'FENCED');
   const { HttpsGateway } = await import(new URL('https-gateway.mjs', directory).href);

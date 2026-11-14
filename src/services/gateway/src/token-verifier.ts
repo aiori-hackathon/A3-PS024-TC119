@@ -2,7 +2,7 @@ import { timingSafeEqual } from 'node:crypto';
 import { publicVerif, Token, TOKEN_TYPES } from '@cloudflare/privacypass-ts';
 import {
   PROTOCOL, ContractError, challengeBytes, decodeBase64Url, fromHex,
-  libraryBytes, sha256, spendId, validateManifest, type Manifest,
+  libraryBytes, sha256, spendId, validateManifest, hex, type Manifest,
 } from '../../../contracts/lib/index.ts';
 
 export type TokenRejection =
@@ -17,6 +17,7 @@ export type TokenVerification =
   | { kind: 'rejected'; reason: TokenRejection }
   | { kind: 'claim-candidate'; spend_id: string; epoch: number };
 export type TokenSignature = { kind: 'rejected'; reason: TokenRejection } | { kind: 'signature-valid'; receipt: object };
+export type TokenContext = {kind:'verified-token';spend_id:string;token_hash:string}|{kind:'rejected';reason:TokenRejection};
 
 const reject = (reason: TokenRejection): TokenVerification => ({ kind: 'rejected', reason });
 
@@ -103,6 +104,16 @@ export class TokenVerifier {
   }
 
   /** Consume once, on this verifier only, after an authoritative snapshot. */
+  consumeSignatureContext(receipt:object,expectedDigest:Uint8Array):TokenContext{
+    const verified=this.#receipts.get(receipt);this.#receipts.delete(receipt);
+    if(!verified||!(expectedDigest instanceof Uint8Array)||expectedDigest.length!==32)
+      return {kind:'rejected',reason:'authorization-unavailable'};
+    if(!timingSafeEqual(verified.digest,expectedDigest))return {kind:'rejected',reason:'token-context-mismatch'};
+    return {kind:'verified-token',spend_id:spendId(verified.bytes.subarray(0,PROTOCOL.auth_input_bytes)),
+      token_hash:hex(sha256(verified.bytes))};
+  }
+
+  /** Baseline epoch-based API remains unchanged. Regional callers compute their own trusted context. */
   checkContext(receipt: object, expectedEpoch: number): TokenVerification {
     const verified = this.#receipts.get(receipt);
     this.#receipts.delete(receipt);

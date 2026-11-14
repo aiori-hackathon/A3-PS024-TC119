@@ -16,6 +16,8 @@ This component enforces window-gated single-spend, not proof validity or five-us
 
 `tfr:policy` is a non-expiring hash with exactly seven fields: revision, run ID, baseline configuration digest, regional policy digest, selected profile, window start and window end. Each operation checks exact expected values and canonical integer encodings. The shared baseline hash/clock validation reuses the **unchanged baseline snapshot script source** inside a local Lua function with its original two-key/three-argument view. The baseline source hashes remain identical.
 
+K03's native restricted-account check corrected the outer EVALSHA permission: Redis treats its declared keys as read/write. A selector grants **only EVALSHA invocation** access to those declared key patterns. HSET/SET and the inner script commands still use restrictive command/key permissions, so neither a direct write nor an administrator-loaded script can modify policy through the gateway account. Do not replace policy read permissions globally with write permissions or flatten the selector into broad command grants. DRYRUN on GET/SET alone is insufficient; the native integration checks actual script execution and inner-write denial.
+
 This extension consumes existing shared-library Docker inputs. Regional constants are now at `src/contracts/lib/regional-v1.json`, instead of the K01 candidate's root JSON location, so both existing service Dockerfiles copy them without changes to Mihir-owned files. Schema and fixture generators follow that authoritative path; values and wire encodings are unchanged.
 
 ## Script ABI

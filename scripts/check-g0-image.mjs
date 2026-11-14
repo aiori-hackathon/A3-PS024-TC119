@@ -16,7 +16,7 @@ import {publicVerif,TokenChallenge} from '@cloudflare/privacypass-ts';
 import {spawn} from 'node:child_process';
 import {once} from 'node:events';
 if(readdirSync('/app').some(p=>!['dist','node_modules'].includes(p)))throw Error('Unexpected app payload');
-if(JSON.stringify(readdirSync('/app/dist').sort())!==JSON.stringify(['bootstrap.mjs', 'control-helper.mjs', 'fixed-origin.mjs', 'flow-admission.mjs', 'gateway-supervisor.mjs', 'http-auth.mjs', 'https-gateway.mjs', 'redis-adapter.mjs', 'replay-scripts.mjs', 'request-coordinator.mjs', 'serve.mjs', 'token-verifier.mjs', 'worker-host.mjs', 'worker-lease.mjs', 'worker-process.mjs']))throw Error('Unexpected build payload');
+if(JSON.stringify(readdirSync('/app/dist').sort())!==JSON.stringify(['bootstrap.mjs', 'control-helper.mjs', 'fixed-origin.mjs', 'flow-admission.mjs', 'gateway-supervisor.mjs', 'http-auth.mjs', 'https-gateway.mjs', 'redis-adapter.mjs', 'regional-gateway.mjs', 'replay-scripts.mjs', 'request-coordinator.mjs', 'serve.mjs', 'token-verifier.mjs', 'worker-host.mjs', 'worker-lease.mjs', 'worker-process.mjs']))throw Error('Unexpected build payload');
 const {GatewaySupervisor}=await import('/app/dist/gateway-supervisor.mjs');
 if(new GatewaySupervisor(async()=>{throw Error();}).status.state!=='FENCED')throw Error('Supervisor missing');
 const {HttpsGateway}=await import('/app/dist/https-gateway.mjs');
@@ -49,6 +49,8 @@ console.log(JSON.stringify({clock:'process.hrtime.bigint',same_container_childre
 const {openRedisReplayStore}=await import('/app/dist/redis-adapter.mjs');
 if(typeof openRedisReplayStore!=='function'||JSON.parse(readFileSync('/app/node_modules/ioredis/package.json','utf8')).version!=='6.0.0')throw Error('Pinned Redis adapter missing');
 const {REPLAY_SCRIPTS}=await import('/app/dist/replay-scripts.mjs');
+const {prepareRegionalGateway}=await import('/app/dist/regional-gateway.mjs');
+if(typeof prepareRegionalGateway!=='function')throw Error('Regional prepared API missing');
 for(const script of Object.values(REPLAY_SCRIPTS))if(!/^[0-9a-f]{40}$/.test(script.sha1)||typeof script.source!=='string')throw Error('Replay scripts missing');
 const {TokenVerifier}=await import('/app/dist/token-verifier.mjs');
 if(typeof TokenVerifier.prepare!=='function')throw Error('Verification component missing');

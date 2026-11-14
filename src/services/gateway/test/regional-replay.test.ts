@@ -127,6 +127,8 @@ test('reply parsing and separate ACL reject truthy, mistimed or administrative c
     assert.throws(()=>parseRegionalClaim(reply,m,p));
   assert.throws(()=>parseRegionalSnapshot(['REGIONAL_SNAPSHOT',m.run_id,regionalPolicyDigest(p),p.window_end_ms,p.window_start_ms,p.window_end_ms],m,p));
   assert.equal(REGIONAL_GATEWAY_ACL_RULES.some(r=>r.includes('pp:spent')),false);
+  assert.ok(!REGIONAL_GATEWAY_ACL_RULES.includes('+evalsha'));
+  assert.ok(REGIONAL_GATEWAY_ACL_RULES.some(r=>r.startsWith('(+evalsha ')));
   for(const forbidden of ['+script|load','+eval','+acl','+config','+flushdb','+del'])assert.ok(!REGIONAL_GATEWAY_ACL_RULES.includes(forbidden));
   assert.throws(()=>regionalGatewayAclArguments('default','f'.repeat(64)));
 });

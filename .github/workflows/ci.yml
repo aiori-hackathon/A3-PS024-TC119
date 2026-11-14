@@ -20,6 +20,7 @@ jobs:
       - run: npm run check:g0
       - run: npm run test:replay --prefix src/services/gateway
       - run: npm run test:regional-replay --prefix src/services/gateway
+      - run: npm run test:regional-integration --prefix src/services/gateway
       - run: npm run test:redis-adapter --prefix src/services/gateway
       - run: npm run test:recovery --prefix src/services/gateway
       - run: node scripts/check-secrets.mjs

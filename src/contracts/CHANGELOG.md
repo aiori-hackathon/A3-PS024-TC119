@@ -1,5 +1,11 @@
 # Contract changes
 
+## Holder gateway and regional ACL integration correction — 14 November 2026
+
+K03 adds real P-256/nonce/Type2-context verification and an explicit prepared gateway factory, reusing baseline RSA verification and the regional atomic claim. The final-runtime payload gains one inert regional library bundle. Real TLS/Redis/origin integration verifies token-only theft refusal, subsequent owner success, cross-pool behavior and single-spend racing. It remains separate from the pending deployed issuer/controller/UI flow.
+
+Native restricted EVALSHA revealed that Redis's outer key admission needs RW access for declared script keys. A command-only ACL selector fixes invocation without granting HSET/SET policy-write access; direct and script-based policy-write rejection are tested. Policy fields, Lua bytes/ABIs, baseline protocol and report schemas do not change in this correction.
+
 ## Additive regional wire/gateway revision — 14 November 2026
 
 Freezes ARC's inspected 99-byte public parameter bootstrap and adds strict public envelope schemas, canonical raw JSON/MAC validation and RFC Type2 regional challenge framing. Gateway components authenticate verify-only RPC replies and expose instance-owned once-consumed receipts to the regional claim pipeline. Bounded TLS POST support is enabled only by a prepared regional coordinator; baseline GET behavior and original manifests/reports remain unchanged. Public profile/window enforcement and the actual Rust service/controller deployment are distinct integration gates. No claim of full Rust-to-origin deployment follows from fixture-backed transport tests.
