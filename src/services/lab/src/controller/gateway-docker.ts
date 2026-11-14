@@ -9,7 +9,7 @@ import type { ChildProcess } from 'node:child_process';
 import type { DockerCli, Instance } from './docker.ts';
 import { HelperLink } from './link.ts';
 import { discovery } from './envelope.ts';
-import type { GatewayCredentials, GatewayLauncher, RoleLink } from './ports.ts';
+import type { GatewayCredentials, GatewayLauncher, RoleLink, Json } from './ports.ts';
 
 /** The gateway's frontend interface on proxy_gateway (infra/compose.yaml). A concrete address: wildcards are refused. */
 export const GATEWAY_LISTEN_HOST = '172.28.30.10';
@@ -27,10 +27,11 @@ export class DockerGatewayLauncher implements GatewayLauncher {
     this.#opts = { listenHost: GATEWAY_LISTEN_HOST, attempts: 60, retryMs: 250, ...options };
   }
 
-  async launch(input: { redis: GatewayCredentials }): Promise<RoleLink> {
+  async launch(input: { redis: GatewayCredentials; regional?: Json }): Promise<RoleLink> {
     if (this.#server) throw new Error('already-launched'); // one launch per container; no same-run restart
     const [key, cert] = await Promise.all([readFile(join(this.#opts.secretsDir, 'gateway', 'tls.key'), 'utf8'), readFile(join(this.#opts.secretsDir, 'gateway', 'tls.crt'), 'utf8')]);
-    const payload = JSON.stringify({ listen_host: this.#opts.listenHost, tls: { key, cert }, redis: { username: input.redis.username, password: input.redis.password } });
+    const payload = JSON.stringify({ listen_host: this.#opts.listenHost, tls: { key, cert }, redis: { username: input.redis.username, password: input.redis.password },
+      ...(input.regional ? { regional: input.regional } : {}) });
     if (Buffer.byteLength(payload, 'utf8') > MAX_STARTUP_INPUT) throw new Error('startup-input-too-large');
     // `docker exec -i`: stdin only. No -e, no secrets in the argument list.
     const server = this.#cli.spawn(['exec', '-i', this.#instance.container_id, 'node', '/app/dist/serve.mjs']);

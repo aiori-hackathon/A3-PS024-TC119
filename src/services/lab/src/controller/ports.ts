@@ -2,6 +2,7 @@
 // ResetBarrier / Redis bootstrap; tests use in-process roles and fakes. Nothing here carries a secret in a type that
 // could be logged: credentials are passed by value into the one function that needs them.
 import type { Manifest } from '../../../../contracts/lib/index.ts';
+import type { RegionalPolicy } from '../../../../contracts/lib/regional.ts';
 
 export type Json = Record<string, any>;
 export const CLIENT_IDS = ['A', 'B', 'C', 'D', 'E'] as const;
@@ -22,7 +23,7 @@ export interface RedisPort {
   /** Loads the exact scripts into the fenced store and reads its clock. Called once, before the manifest exists. */
   prepare(runId: string): Promise<{ run_start_ms: number; snapshot_script_sha1: string; claim_script_sha1: string }>;
   /** Installs immutable policy/clock for the accepted manifest and sets minimal ACLs. Returns the gateway account. */
-  install(manifest: Manifest, configDigest: string): Promise<GatewayCredentials>;
+  install(manifest: Manifest, configDigest: string, regionalPolicy?: RegionalPolicy): Promise<GatewayCredentials>;
 }
 
 /**
@@ -31,7 +32,7 @@ export interface RedisPort {
  * socket does not exist until that input has been validated, so discovery of the gateway can only follow this call.
  */
 export interface GatewayLauncher {
-  launch(input: { redis: GatewayCredentials }): Promise<RoleLink>;
+  launch(input: { redis: GatewayCredentials; regional?: Json }): Promise<RoleLink>;
 }
 
 /** Strong reset barrier. The production implementation is Krish's ResetBarrier driven by this controller's adapters. */

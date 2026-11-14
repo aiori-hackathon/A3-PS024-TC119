@@ -22,10 +22,17 @@ RUN npm run typecheck && npm run build
 FROM build AS production-dependencies
 RUN npm ci --omit=dev --ignore-scripts --no-audit --no-fund
 
-FROM node:24.22.1-bookworm-slim@sha256:55fb5f5a527ea2c5c4a95f963e48ef90aa38c7b346054fdc8ee9957a2b55d205 AS runtime
+FROM node:24.22.1-bookworm-slim@sha256:55fb5f5a527ea2c5c4a95f963e48ef90aa38c7b346054fdc8ee9957a2b55d205 AS runtime-base
 ENV NODE_ENV=production
 WORKDIR /app
 COPY --from=production-dependencies --chown=node:node /build/src/services/lab/node_modules ./node_modules
 COPY --from=build --chown=node:node /build/src/services/lab/dist ./dist
 USER node
 CMD ["node", "dist/bootstrap.mjs"]
+
+# Regional clients execute cryptography locally using the separately pinned ARC image.
+FROM runtime-base AS regional
+COPY --from=tokenforge-arc:local /usr/local/bin/arc-client-helper /usr/local/bin/arc-client-helper
+
+# The default baseline build has no dependency on the optional ARC image.
+FROM runtime-base AS runtime

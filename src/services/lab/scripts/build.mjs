@@ -8,6 +8,7 @@ const entries = {
   origin: 'src/roles/origin.ts',
   harness: 'src/roles/harness.ts',
   'control-helper': 'src/roles/control-helper.ts',
+  'regional-helper': 'src/roles/regional-helper.ts',
 };
 const { metafile } = await build({
   entryPoints: entries,

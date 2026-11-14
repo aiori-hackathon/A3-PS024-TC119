@@ -69,6 +69,11 @@ networks:
     internal: true
     enable_ipv6: false
     ipam: { config: [{ subnet: 172.28.50.0/24 }] }
+  arc_private:
+    driver: bridge
+    internal: true
+    enable_ipv6: false
+    ipam: { config: [{ subnet: 172.28.60.0/24 }] }
 
 # File secrets are mounted read-only at /run/secrets/<target> and only into the roles that list them.
 # The gateway's TLS key and Redis password are NOT mounted: the controller passes them over private stdin.
@@ -116,6 +121,7 @@ services:
         target: tls.key
     networks:
       proxy_issuer: { ipv4_address: 172.28.20.10, aliases: [issuer.lab.test] }
+      arc_private: { ipv4_address: 172.28.60.20 }
     sysctls:
       net.ipv4.ip_unprivileged_port_start: "0"
       net.ipv6.conf.all.disable_ipv6: "1"
@@ -140,11 +146,22 @@ services:
       proxy_gateway: { ipv4_address: 172.28.30.10, aliases: [origin.lab.test] }
       gateway_replay: { ipv4_address: 172.28.40.20 }
       gateway_origin: { ipv4_address: 172.28.50.20 }
+      arc_private: { ipv4_address: 172.28.60.30 }
     sysctls:
       net.ipv4.ip_unprivileged_port_start: "0"
       net.ipv4.ip_forward: "0"
       net.ipv6.conf.all.disable_ipv6: "1"
       net.ipv6.conf.default.disable_ipv6: "1"
+
+  arc:
+    <<: *hardened
+    profiles: [regional]
+    image: tokenforge-arc:local
+    user: "10001:10001"
+    command: ["sleep", "infinity"]
+    mem_limit: 256m
+    networks:
+      arc_private: { ipv4_address: 172.28.60.10 }
 
   redis:
     <<: *hardened

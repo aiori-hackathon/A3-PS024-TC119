@@ -12,6 +12,7 @@ import { batches, generateCohort } from './cohort.ts';
 import type { RunRecord, ScenarioRecord } from '../report/build.ts';
 import { mergeMeasurements, type Measurement } from '../report/histogram.ts';
 import { ORCHESTRATED, REDIS_FAULT_SCENARIOS, captureOldCredentials, type OrchestrationContext, type ScenarioData } from './orchestrated.ts';
+import { validateRegionalPolicy, type RegionalPolicy } from '../../../../contracts/lib/regional.ts';
 
 export type ControllerErrorCode =
   | 'discovery-failed' | 'role-not-fresh' | 'setup-failed' | 'readiness-failed' | 'enable-failed' | 'supervision-lost' | 'close-unconfirmed';
@@ -24,8 +25,18 @@ export class ControllerError extends Error {
 
 export type RunLinks = { issuer: RoleLink; origin: RoleLink; clients: Record<ClientId, RoleLink> };
 export type RunDeps = { links: RunLinks; redis: RedisPort; reset: ResetPort; gatewayLauncher?: GatewayLauncher; harness?: HarnessPort; faults?: FaultPort; vault?: Vault; retention?: RetentionPort;
+  regional?: RegionalRunHooks;
   /** Settled origin counters collected by the reset barrier, used only when supervision closed the run before the scenario could read them itself. */
   finalOriginCounts?: () => Delta | null };
+export type RegionalRunHooks = {
+  bootstrap(runId: string): Promise<void>;
+  policy(manifest: Manifest): RegionalPolicy;
+  install(policy: RegionalPolicy): Promise<void>;
+  gatewayStartup(policy: RegionalPolicy): Json;
+  prepareRoles(policy: RegionalPolicy): Promise<void>;
+  enable(): Promise<void>;
+  supervise(onFault: () => void): () => void;
+};
 export type RunConfig = {
   /** Vouchers (and thus tokens) per client. The issuer inventory is exactly clients x perClient. */
   perClient: number;
@@ -40,7 +51,7 @@ export type RunConfig = {
   /** Extra plaintext vouchers kept in controller memory for the security harness (theft, old-run and fault fixtures). */
   harnessVouchers?: number;
 };
-export type RunInfo = { run_id: string; config_digest: string; manifest: Manifest; incarnations: Record<string, string> };
+export type RunInfo = { run_id: string; config_digest: string; manifest: Manifest; incarnations: Record<string, string>; regional_policy?: RegionalPolicy };
 export type CloseResult = { reason: string; reset_confirmed: boolean; error: ControllerErrorCode | null };
 type Phase = 'idle' | 'setting-up' | 'enabled' | 'closing' | 'closed';
 
@@ -199,6 +210,10 @@ export class LabRun {
     for (const t of this.#targets.values()) t.runId = runId;
     const issuerTarget = this.#at('issuer');
     const key = await this.#call(d.links.issuer, request('CREATE_ISSUER_KEY', { ...issuerTarget, digest: null }), 'create-issuer-key', 'KEY_CREATED');
+    if (d.regional) {
+      await d.regional.bootstrap(runId);
+      this.#guard();
+    }
 
     // 3. Replay store: exact scripts loaded and clock read while everything is fenced.
     let store: Awaited<ReturnType<RedisPort['prepare']>>;
@@ -220,17 +235,23 @@ export class LabRun {
     }
     const digest = configurationDigest(manifest);
     this.#manifest = manifest;
+    const regionalPolicy = d.regional ? validateRegionalPolicy(d.regional.policy(manifest), manifest) : undefined;
+    if (regionalPolicy) {
+      await d.regional!.install(regionalPolicy);
+      this.#guard();
+    }
 
     // 5. Policy, clock and minimal ACLs for the accepted manifest; then the gateway's private startup input.
     let credentials: Awaited<ReturnType<RedisPort['install']>>;
     this.#guard(); // never install policy into a store once a reset may already be under way
-    try { credentials = await d.redis.install(manifest, digest); } catch { this.#guard(); throw new ControllerError('setup-failed', 'redis-install'); }
+    try { credentials = await d.redis.install(manifest, digest, regionalPolicy); } catch { this.#guard(); throw new ControllerError('setup-failed', 'redis-install'); }
     this.#guard();
     if (d.gatewayLauncher) {
       // The gateway creates its control socket only after it has received and validated its private startup input, so it
       // is launched first and discovered second. A launch that completes after close() is discarded, never adopted.
       let link: RoleLink;
-      try { link = await d.gatewayLauncher.launch({ redis: credentials }); } catch { this.#guard(); throw new ControllerError('setup-failed', 'gateway-launch'); }
+      try { link = await d.gatewayLauncher.launch({ redis: credentials,
+        ...(regionalPolicy ? { regional: d.regional!.gatewayStartup(regionalPolicy) } : {}) }); } catch { this.#guard(); throw new ControllerError('setup-failed', 'gateway-launch'); }
       if (this.#closing !== null) { try { link.close(); } catch { /* best effort */ } throw new ControllerError('setup-failed', 'cancelled'); }
       this.#gateway = link;
       let g: Json;
@@ -261,6 +282,10 @@ export class LabRun {
     for (const id of CLIENT_IDS) await this.#provision(d.links.clients[id], `client-${id}`, 'PROVISION_CLIENT', cohort.clientItems[id], cfg.perClient);
     for (const id of CLIENT_IDS) cohort.clientItems[id].length = 0; // drop plaintext references; JS gives no stronger erasure guarantee
     cohort.issuerDigests.length = 0; cohort.harness.length = 0;
+    if (regionalPolicy) {
+      await d.regional!.prepareRoles(regionalPolicy);
+      this.#guard();
+    }
 
     // 8. READY everywhere. The gateway must report exactly the profile's worker count.
     const ready = async (name: string, link: RoleLink, workers: number) => {
@@ -284,12 +309,18 @@ export class LabRun {
     this.#phase = 'enabled';
     this.#transitions.push({ state: 'ENABLED', reason: 'enabled' });
     this.#supervise('issuer', d.links.issuer);
+    if (d.regional) {
+      await d.regional.enable();
+      this.#guard();
+      this.#heartbeats.push({ stop: d.regional.supervise(() => { void this.close('control-lost'); }) });
+    }
     if (this.#gateway) {
       await enable('gateway', this.#gateway, manifest.limits.gateway.workers);
       this.#supervise('gateway', this.#gateway);
     }
     const incarnations = Object.fromEntries([...this.#targets].map(([n, t]) => [n, t.incarnation]));
-    this.#info = { run_id: runId, config_digest: digest, manifest, incarnations };
+    this.#info = { run_id: runId, config_digest: digest, manifest, incarnations,
+      ...(regionalPolicy ? { regional_policy: regionalPolicy } : {}) };
     return this.#info;
   }
 

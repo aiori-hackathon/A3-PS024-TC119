@@ -10,6 +10,8 @@ import {
 } from '../../../../contracts/lib/replay.ts';
 import type { DockerCli } from './docker.ts';
 import type { GatewayCredentials, RedisPort } from './ports.ts';
+import type { RegionalPolicy } from '../../../../contracts/lib/regional.ts';
+import { initializeRegionalStore, regionalGatewayAclArguments } from '../../../../contracts/lib/regional-replay.ts';
 
 const SOCKET = '/run/redis/redis.sock';
 export const GATEWAY_REDIS_USER = 'gateway';
@@ -71,10 +73,16 @@ export class DockerRedis implements RedisPort {
     return { run_start_ms, snapshot_script_sha1: REPLAY_SCRIPTS.snapshot.sha1, claim_script_sha1: REPLAY_SCRIPTS.claim.sha1 };
   }
 
-  async install(manifest: Manifest, digest: string): Promise<GatewayCredentials> {
+  async install(manifest: Manifest, digest: string, regionalPolicy?: RegionalPolicy): Promise<GatewayCredentials> {
     if (configurationDigest(manifest) !== digest) throw new Error('digest-mismatch');
     const password = this.#newPassword();
     await initializeStore(this.#io, manifest);
+    if (regionalPolicy) {
+      await initializeRegionalStore(this.#io, manifest, regionalPolicy);
+      const regionalPassword = randomBytes(32).toString('hex');
+      await this.#io.call('ACL', ...regionalGatewayAclArguments('tfr_gateway', regionalPassword));
+      return Object.freeze({ username: 'tfr_gateway', password: regionalPassword });
+    }
     await installGatewayAcl(this.#io, GATEWAY_REDIS_USER, password);
     await verifyStoreReady(this.#io, manifest, GATEWAY_REDIS_USER); // field-by-field, before anything is enabled
     return Object.freeze({ username: GATEWAY_REDIS_USER, password });

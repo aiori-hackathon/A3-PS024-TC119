@@ -76,10 +76,11 @@ export class DockerProject {
   /** Immutable 64-hex container ID for a role right now. A service name is never used as identity after this. */
   async instance(role: RoleName): Promise<Instance> { return { role, container_id: await this.#idFor(SERVICE_FOR_ROLE[role]) }; }
   async redisInstance(): Promise<string> { return this.#idFor('redis'); }
+  async arcInstance(): Promise<string> { return this.#idFor('arc'); }
   /** All containers (running or not) the project currently has, for the old-generation check before any recreate. */
   async existing(): Promise<{ service: string; container_id: string }[]> {
     const out: { service: string; container_id: string }[] = [];
-    for (const service of [...Object.values(SERVICE_FOR_ROLE), 'redis', 'proxy']) {
+    for (const service of [...Object.values(SERVICE_FOR_ROLE), 'redis', 'proxy', 'arc']) {
       const q = await this.compose(['ps', '-q', '-a', service], { timeoutMs: 20_000 });
       if (q.status !== 0) throw new Error('instance-unavailable'); // cannot enumerate: do not assume the project is empty
       for (const id of q.stdout.trim().split('\n').filter(Boolean)) {

@@ -40,7 +40,8 @@ ${leak ? `  client-a:
     networks:
       gateway_replay: { ipv4_address: 172.28.40.99 }
 ` : ''}`);
-const compose = (...args) => run('docker', ['compose', '-f', composeFile, '-f', join(dir, 'override.yaml'), ...args]);
+// The boundary baseline deliberately leaves the regional ARC process inactive.
+const compose = (...args) => run('docker', ['compose', '-f', composeFile, '-f', join(dir, 'override.yaml'), ...args], { env: { ...process.env, COMPOSE_PROFILES: '' } });
 
 let failures = 0, checks = 0;
 const check = (name, ok, detail = '') => { checks++; if (!ok) failures++; console.log(`${ok ? 'PASS' : 'FAIL'}  ${name}${detail && !ok ? `  [${detail}]` : ''}`); };
@@ -74,6 +75,16 @@ function viaProxy(request) {
 
 let up = false;
 try {
+  const configured = compose('--profile', 'regional', 'config', '--format', 'json');
+  if (configured.status !== 0) throw new Error('compose config failed');
+  const config = JSON.parse(configured.stdout);
+  const arc = config.services.arc;
+  check('ARC is regional-profile only, with no published ports',
+    JSON.stringify(arc?.profiles) === '["regional"]' && (arc.ports ?? []).length === 0);
+  check('ARC has only the private bridge at its fixed address',
+    JSON.stringify(Object.keys(arc?.networks ?? {})) === '["arc_private"]' && arc.networks.arc_private.ipv4_address === '172.28.60.10');
+  const arcMembers = Object.entries(config.services).filter(([, service]) => Object.hasOwn(service.networks ?? {}, 'arc_private')).map(([name]) => name).sort();
+  check('configured ARC bridge excludes clients, proxy, Redis and origin', JSON.stringify(arcMembers) === '["arc","gateway","issuer"]');
   console.log('Building and starting the stack (inert listeners for issuer, gateway and origin)...');
   const started = compose('up', '-d', '--build', '--remove-orphans');
   up = true;
@@ -97,6 +108,9 @@ try {
     ['client-a', 'proxy', PROXY_CLIENT, true],
     ['client-a', 'issuer (direct)', ISSUER, false], ['client-a', 'gateway (direct)', GATEWAY, false],
     ['client-a', 'redis', REDIS, false], ['client-a', 'protected origin', ORIGIN, false],
+    // ARC is inactive here. Exact bridge membership below supplies the isolation evidence.
+    ['client-a', 'ARC issue listener (inactive baseline)', ['172.28.60.10', 7101], false],
+    ['client-a', 'ARC verify listener (inactive baseline)', ['172.28.60.10', 7102], false],
     ['client-e', 'proxy', PROXY_CLIENT, true], ['client-e', 'redis', REDIS, false], ['client-e', 'protected origin', ORIGIN, false],
     ['proxy', 'issuer', ISSUER, true], ['proxy', 'gateway', GATEWAY, true],
     ['proxy', 'redis', REDIS, false], ['proxy', 'protected origin', ORIGIN, false],
@@ -115,7 +129,7 @@ try {
   check('gateway -> public internet blocked', !tcpOpen('gateway', '1.1.1.1', 443));
 
   // --- DNS isolation ----------------------------------------------------------------------------------------------
-  for (const name of ['issuer.lab.test', 'origin.lab.test', 'redis', 'protected-origin']) check(`client-a cannot resolve ${name}`, !resolves('client-a', name));
+  for (const name of ['issuer.lab.test', 'origin.lab.test', 'redis', 'protected-origin', 'arc']) check(`client-a cannot resolve ${name}`, !resolves('client-a', name));
   check('proxy resolves issuer.lab.test', resolves('proxy', 'issuer.lab.test'));
   check('proxy resolves origin.lab.test', resolves('proxy', 'origin.lab.test'));
   check('gateway resolves redis and protected-origin', resolves('gateway', 'redis') && resolves('gateway', 'protected-origin'));
@@ -125,7 +139,7 @@ try {
   const connect = (hostport) => viaProxy(`CONNECT ${hostport} HTTP/1.1\r\nHost: ${hostport}\r\n\r\n`);
   for (const ok of ['issuer.lab.test:443', 'origin.lab.test:443']) check(`CONNECT ${ok} allowed`, connect(ok) === '200', connect(ok));
   const denied = ['issuer.lab.test:80', 'issuer.lab.test:8443', 'issuer.lab.test:22', 'example.com:443', '172.28.20.10:443', '172.28.30.10:443',
-    '172.28.40.10:6379', '172.28.50.10:8080', 'redis:6379', 'protected-origin:8080', 'localhost:443', '127.0.0.1:443',
+    '172.28.40.10:6379', '172.28.50.10:8080', '172.28.60.10:7101', '172.28.60.10:7102', 'arc:7101', 'arc:7102', 'redis:6379', 'protected-origin:8080', 'localhost:443', '127.0.0.1:443',
     'issuer.lab.test.evil.example:443', 'evilissuer.lab.test:443', 'ISSUER.LAB.TEST.:443', 'issuer.lab.test:0443'];
   for (const target of denied) { const code = connect(target); check(`CONNECT ${target} refused`, /^(400|403|404|405|407|50\d)$/.test(code), code); }
   for (const req of ['GET http://issuer.lab.test/ HTTP/1.1\r\nHost: issuer.lab.test\r\n\r\n', 'GET http://origin.lab.test:443/resource HTTP/1.1\r\nHost: origin.lab.test\r\n\r\n',
@@ -138,7 +152,7 @@ try {
   const inspect = JSON.parse(run('docker', ['inspect', ...names]).stdout);
   const byService = Object.fromEntries(inspect.map((c) => [c.Config.Labels['com.docker.compose.service'], c]));
   const expectSecrets = { issuer: ['tls.crt', 'tls.key'], 'client-a': ['ca.crt'], 'client-b': ['ca.crt'], 'client-c': ['ca.crt'], 'client-d': ['ca.crt'], 'client-e': ['ca.crt'], redis: ['redis-acl.conf'], gateway: [], proxy: [], 'protected-origin': [] };
-  const expectNets = { proxy: ['client_proxy', 'proxy_gateway', 'proxy_issuer'], issuer: ['proxy_issuer'], gateway: ['gateway_origin', 'gateway_replay', 'proxy_gateway'],
+  const expectNets = { proxy: ['client_proxy', 'proxy_gateway', 'proxy_issuer'], issuer: ['arc_private', 'proxy_issuer'], gateway: ['arc_private', 'gateway_origin', 'gateway_replay', 'proxy_gateway'],
     redis: ['gateway_replay'], 'protected-origin': ['gateway_origin'], 'client-a': ['client_proxy'], 'client-b': ['client_proxy'], 'client-c': ['client_proxy'], 'client-d': ['client_proxy'], 'client-e': ['client_proxy'] };
   for (const [service, c] of Object.entries(byService)) {
     const h = c.HostConfig;
@@ -156,9 +170,16 @@ try {
     check(`${service}: member of exactly ${expectNets[service].join(', ')}`, JSON.stringify(nets) === JSON.stringify(expectNets[service]), nets.join(','));
     check(`${service}: environment carries no credentials`, !c.Config.Env.some((e) => /(PASSWORD|SECRET|PRIVATE|TOKEN|CREDENTIAL)/i.test(e.split('=')[0])));
   }
-  const nets = JSON.parse(run('docker', ['network', 'inspect', ...['client_proxy', 'proxy_issuer', 'proxy_gateway', 'gateway_replay', 'gateway_origin'].map((n) => `tokenforge_${n}`)]).stdout);
-  check('all five bridges are internal, IPv6-off, with the planned subnets', nets.length === 5 && nets.every((n) => n.Internal === true && n.EnableIPv6 === false) &&
-    JSON.stringify(nets.map((n) => n.IPAM.Config[0].Subnet).sort()) === JSON.stringify(['172.28.10.0/24', '172.28.20.0/24', '172.28.30.0/24', '172.28.40.0/24', '172.28.50.0/24']));
+  const nets = JSON.parse(run('docker', ['network', 'inspect', ...['client_proxy', 'proxy_issuer', 'proxy_gateway', 'gateway_replay', 'gateway_origin', 'arc_private'].map((n) => `tokenforge_${n}`)]).stdout);
+  check('all six bridges are internal, IPv6-off, with the planned subnets', nets.length === 6 && nets.every((n) => n.Internal === true && n.EnableIPv6 === false) &&
+    JSON.stringify(nets.map((n) => n.IPAM.Config[0].Subnet).sort()) === JSON.stringify(['172.28.10.0/24', '172.28.20.0/24', '172.28.30.0/24', '172.28.40.0/24', '172.28.50.0/24', '172.28.60.0/24']));
+  const privateNet = nets.find(n => n.Name === 'tokenforge_arc_private');
+  const privateMembers = Object.keys(privateNet?.Containers ?? {}).sort();
+  const expectedPrivateMembers = [byService.issuer.Id, byService.gateway.Id].sort();
+  check('inactive ARC bridge contains exactly issuer and gateway', JSON.stringify(privateMembers) === JSON.stringify(expectedPrivateMembers));
+  check('issuer and gateway use their fixed private ARC addresses',
+    byService.issuer.NetworkSettings.Networks.tokenforge_arc_private.IPAddress === '172.28.60.20' &&
+    byService.gateway.NetworkSettings.Networks.tokenforge_arc_private.IPAddress === '172.28.60.30');
   for (const svc of ['proxy', 'gateway']) {
     const fwd = inside(svc, ['cat', '/proc/sys/net/ipv4/ip_forward']).stdout.trim();
     check(`${svc}: IPv4 forwarding disabled between its networks`, fwd === '0', fwd);

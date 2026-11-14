@@ -44,6 +44,8 @@ import { verifyReportFile } from '../report/verify.ts';
 import { localReadiness, supportedVersion } from './preflight.ts';
 import { networkReadiness } from './network-readiness.ts';
 import { analyzeBenchmark } from '../../../../contracts/lib/benchmark.ts';
+import { RegionalLab } from './regional-runtime.ts';
+import { pathToFileURL } from 'node:url';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', '..', '..');
 const composeFile = join(root, 'infra', 'compose.yaml');
@@ -294,9 +296,22 @@ async function serve(): Promise<number> {
   } catch (e) { say({ error: 'serve-failed', reason: e instanceof ViewerError ? e.code : 'listen-failed' }); return 1; }
 }
 
+async function regional(): Promise<number> {
+  const lab = new RegionalLab(root);
+  await lab.prepare();
+  const portal = await import(pathToFileURL(join(root, 'src/services/portal/src/serve.mjs')).href);
+  const { server, port } = await portal.startPortal({ port: Number(option('--port', '4174')), backend: lab });
+  say({ event: 'regional-portal', url: `http://127.0.0.1:${port}` });
+  await new Promise<void>(resolve => { process.once('SIGINT', resolve); process.once('SIGTERM', resolve); });
+  await lab.close();
+  await new Promise<void>(resolve => server.close(() => resolve()));
+  return 0;
+}
+
 const command = process.argv[2];
 const code = command === 'preflight' ? await preflight() : command === 'run' ? await run() : command === 'fence' ? await fence() : command === 'verify-report' ? verify()
   : command === 'serve-report' ? await serve()
   : command === 'summarize-benchmark' ? summarizeBenchmark()
-  : (say({ error: 'usage', commands: ['preflight', 'run', 'fence', 'verify-report', 'serve-report'] }), 2);
+  : command === 'regional' ? await regional()
+  : (say({ error: 'usage', commands: ['preflight', 'run', 'fence', 'verify-report', 'serve-report', 'regional'] }), 2);
 process.exit(code);
