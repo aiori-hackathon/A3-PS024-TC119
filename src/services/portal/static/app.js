@@ -80,6 +80,12 @@ function render(next) {
   setText('mismatches', observed ? count(evidence.generationMismatches) : '—');
   setText('evidence-time', time(evidence?.observedAt));
   setText('evidence-state', observed ? ({ verified: 'Verified aggregate snapshot', incomplete: 'Incomplete observation', mismatch: 'Generation mismatch observed' }[evidence.state] ?? 'Observed aggregate snapshot') : 'Awaiting an observed snapshot');
+  const workers = evidence?.workerVerificationAttempts;
+  const source = evidence?.sameSourceObserved === true ? 'Shared proxy source observed'
+    : evidence?.sameSourceObserved === false ? 'Multiple sources observed' : 'Source observation pending';
+  setText('gateway-evidence', Array.isArray(workers)
+    ? `Gateway claims ${count(evidence.gatewayClaims)} · ${source} · Workers observed ${workers.filter(attempts => attempts > 0).length}/${workers.length}`
+    : 'Awaiting an authenticated gateway observation.');
   const comparison = Array.isArray(next.comparison) ? next.comparison : [];
   $('comparison-body').replaceChildren();
   for (const profile of ['ip', 'type2-bearer', 'arc']) {
@@ -88,7 +94,7 @@ function render(next) {
   }
   setText('comparison-state', comparison.length ? 'Latest observed comparison' : 'No comparison observed');
   const theft = next.theftScene;
-  setText('bearer-outcome', theft?.bearerOutcome ?? 'Awaiting experiment');
+  setText('bearer-outcome', 'Separate bearer theft experiment pending');
   setText('holder-outcome', theft?.holderOutcome ?? 'Awaiting experiment');
   setText('theft-origin', theft ? `${theft.state ?? 'Observed'} · Attack arrivals ${count(theft.attackOriginArrivals)} · Owner arrivals ${count(theft.ownerOriginArrivals)}` : 'Awaiting experiment');
   updateControls();

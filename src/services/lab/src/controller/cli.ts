@@ -303,8 +303,9 @@ async function regional(): Promise<number> {
   const { server, port } = await portal.startPortal({ port: Number(option('--port', '4174')), backend: lab });
   say({ event: 'regional-portal', url: `http://127.0.0.1:${port}` });
   await new Promise<void>(resolve => { process.once('SIGINT', resolve); process.once('SIGTERM', resolve); });
+  const closed = new Promise<void>(resolve => server.close(() => resolve()));
   await lab.close();
-  await new Promise<void>(resolve => server.close(() => resolve()));
+  await closed;
   return 0;
 }
 

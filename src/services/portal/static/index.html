@@ -58,13 +58,14 @@
       <div class="section-heading"><div><p class="eyebrow">Independent protected-origin ledger</p><h2 id="evidence-title">What reached the protected server</h2></div><p id="evidence-state">Awaiting an observed snapshot</p></div>
       <div class="metrics"><div><span>Requests received</span><strong id="received">—</strong></div><div><span>Resources served</span><strong id="served">—</strong></div><div><span>Generation mismatches</span><strong id="mismatches">—</strong></div><div><span>Snapshot updated</span><strong class="metric-time" id="evidence-time">—</strong></div></div>
       <p class="control-note">Counts come from the protected origin. An unavailable observation appears as a dash.</p>
+      <p class="control-note" id="gateway-evidence">Awaiting an authenticated gateway observation.</p>
     </section>
     <section class="experiments" aria-labelledby="experiments-title">
       <div class="section-heading"><div><p class="eyebrow">Controlled experiments</p><h2 id="experiments-title">Compare access, then examine theft</h2></div></div>
       <div class="experiment-head"><div><h3>Shared-egress comparison</h3><p>Run the same controlled workload across IP baseline, ordinary Type 2 and ARC.</p></div><button id="compare" disabled>Run comparison</button></div>
       <div class="table-scroll" tabindex="0" role="region" aria-label="Comparison results"><table class="comparison"><caption id="comparison-state">No comparison observed</caption><thead><tr><th scope="col">Profile</th><th scope="col">State</th><th scope="col">Accepted</th><th scope="col">Denied</th><th scope="col">Honest delivered</th><th scope="col">Origin arrivals</th><th scope="col">Issue bytes</th><th scope="col">Issue exchanges</th><th scope="col">Latency, ms</th></tr></thead><tbody id="comparison-body"></tbody></table></div>
-      <div class="theft-scene"><div><h3>Holder-bound theft scene</h3><p>A separate experiment compares a copied unused bearer credential with a copied token lacking the holder's private key.</p></div><button id="theft" disabled>Run theft scene</button></div>
-      <div class="theft-results"><div><h4>Copied bearer</h4><p id="bearer-outcome">Awaiting experiment</p></div><div><h4>Holder-bound token</h4><p id="holder-outcome">Awaiting experiment</p></div><div><h4>Origin observation</h4><p id="theft-origin">Awaiting experiment</p></div></div>
+      <div class="theft-scene"><div><h3>Holder-bound theft scene</h3><p>Attempt access with copied token bytes and an attacker-owned key, then access with the owner's key. The separate bearer theft experiment is pending.</p></div><button id="theft" disabled>Run theft scene</button></div>
+      <div class="theft-results"><div><h4>Bearer theft scene</h4><p id="bearer-outcome">Separate bearer theft experiment pending</p></div><div><h4>Holder-bound token</h4><p id="holder-outcome">Awaiting experiment</p></div><div><h4>Origin observation</h4><p id="theft-origin">Awaiting experiment</p></div></div>
     </section>
     <p id="announcement" class="visually-hidden" role="status" aria-live="polite" aria-atomic="true"></p>
   </main>
