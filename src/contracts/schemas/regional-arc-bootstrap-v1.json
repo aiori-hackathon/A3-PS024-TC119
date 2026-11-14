@@ -1,0 +1,49 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://tokenforge.invalid/contracts/regional-arc-bootstrap-v1.json",
+  "type": "object",
+  "properties": {
+    "contract_version": {
+      "const": "TF-PS024-REGIONAL-1.0.0"
+    },
+    "run_id": {
+      "type": "string",
+      "minLength": 32,
+      "maxLength": 32,
+      "pattern": "^[0-9a-f]{32}$"
+    },
+    "service_incarnation": {
+      "type": "string",
+      "minLength": 32,
+      "maxLength": 32,
+      "pattern": "^[0-9a-f]{32}$"
+    },
+    "arc_implementation_revision": {
+      "type": "string",
+      "minLength": 40,
+      "maxLength": 40,
+      "pattern": "^[0-9a-f]{40}$"
+    },
+    "issuer_params_b64url": {
+      "type": "string",
+      "minLength": 132,
+      "maxLength": 132,
+      "pattern": "^[A-Za-z0-9_-]{132}$"
+    },
+    "arc_key_id": {
+      "type": "string",
+      "minLength": 64,
+      "maxLength": 64,
+      "pattern": "^[0-9a-f]{64}$"
+    }
+  },
+  "required": [
+    "contract_version",
+    "run_id",
+    "service_incarnation",
+    "arc_implementation_revision",
+    "issuer_params_b64url",
+    "arc_key_id"
+  ],
+  "additionalProperties": false
+}

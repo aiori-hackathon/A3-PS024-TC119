@@ -1,9 +1,17 @@
 import { Redis } from 'ioredis';
 import { ContractError, validateManifest } from '../../../contracts/lib/index.ts';
 import { ReplayStore, type ReplayConnection, type ReplayFault } from './replay-store.ts';
+import { RegionalReplayStore } from './regional-replay-store.ts';
 
 /** Private deployment configuration, never request data. No URL/arbitrary ioredis options. */
 export type RedisEndpoint = { host: string; port: number; username: string; password: string };
+
+function validateEndpoint(endpoint:RedisEndpoint):void{
+  if(!endpoint||typeof endpoint.host!=='string'||!/^[a-zA-Z0-9.:-]{1,253}$/.test(endpoint.host)
+    ||!Number.isInteger(endpoint.port)||endpoint.port<1||endpoint.port>65535
+    ||typeof endpoint.username!=='string'||!/^[a-zA-Z0-9_-]{1,64}$/.test(endpoint.username)
+    ||typeof endpoint.password!=='string'||endpoint.password.length<1||endpoint.password.length>256)throw Error('endpoint');
+}
 
 class RedisConnection implements ReplayConnection {
   readonly #client: Redis;
@@ -34,10 +42,7 @@ export async function openRedisReplayStore(configuration: unknown, endpoint: Red
   let manifest;
   try {
     manifest = validateManifest(structuredClone(configuration));
-    if (!endpoint || typeof endpoint.host !== 'string' || !/^[a-zA-Z0-9.:-]{1,253}$/.test(endpoint.host) ||
-      !Number.isInteger(endpoint.port) || endpoint.port < 1 || endpoint.port > 65535 ||
-      typeof endpoint.username !== 'string' || !/^[a-zA-Z0-9_-]{1,64}$/.test(endpoint.username) ||
-      typeof endpoint.password !== 'string' || endpoint.password.length < 1 || endpoint.password.length > 256) throw Error('endpoint');
+    validateEndpoint(endpoint);
   } catch { throw new ContractError('replay-configuration-invalid'); }
   const connections: ReplayConnection[] = [];
   try {
@@ -48,5 +53,22 @@ export async function openRedisReplayStore(configuration: unknown, endpoint: Red
   } catch {
     for (const connection of connections) { try { connection.close(); } catch { /* close the remaining connections too */ } }
     throw new ContractError('replay-preparation-failed');
+  }
+}
+
+/** Regional account/bootstrap must already be installed while fenced. No baseline fallback. */
+export async function openRegionalRedisReplayStore(configuration:unknown,policy:unknown,endpoint:RedisEndpoint,
+  onFault:(reason:ReplayFault)=>void):Promise<RegionalReplayStore>{
+  let m;
+  try{m=validateManifest(structuredClone(configuration));validateEndpoint(endpoint);}
+  catch{throw new ContractError('regional-replay-configuration');}
+  const connections:ReplayConnection[]=[];
+  try{
+    for(let i=0;i<m.limits.gateway.redis_connections_per_worker;i++)
+      connections.push(new RedisConnection(endpoint,m.limits.gateway.redis_connect_timeout_ms,m.limits.gateway.redis_command_timeout_ms));
+    return await RegionalReplayStore.prepare(m,policy,connections,onFault);
+  }catch{
+    for(const connection of connections){try{connection.close();}catch{/* close every connection */}}
+    throw new ContractError('regional-replay-preparation');
   }
 }

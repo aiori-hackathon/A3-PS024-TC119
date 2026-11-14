@@ -16,14 +16,14 @@ let material: GatewayTls;
 before(async () => { material = await createTestTls(); });
 const request = 'GET /resource HTTP/1.1\r\nHost: origin.lab.test\r\n\r\n';
 async function fixture(t: TestContext, handle?: (view: RequestView, sink: ResponseSink) => Promise<void>,
-  runtime?: LeaseRuntime, listen = true, onClose?: () => void) {
+  runtime?: LeaseRuntime, listen = true, onClose?: () => void, bodyLimit?:number) {
   const m = validateManifest(structuredClone(golden.manifest)), digest = configurationDigest(m);
   const ids = { worker_incarnation: '1'.repeat(32), supervisor_incarnation: '2'.repeat(32) };
   const lease = WorkerLease.prepare(m, ids, () => onClose?.()); lease.markReady();
   const formatter = GatewayResponses.prepare(m);
   const snapshot = ['SNAPSHOT', m.run_id, m.token_key_id, digest, m.run_start_ms + 1, 0, m.run_start_ms, m.run_start_ms + m.epoch_ms];
   let handled = 0, closes = 0, seq = 0;
-  const coordinator = { binding: { run_id: m.run_id, config_digest: digest },
+  const coordinator = { binding: { run_id: m.run_id, config_digest: digest },...(bodyLimit?{requestBodyLimit:bodyLimit}:{}),
     async handle(view: RequestView, sink: ResponseSink) {
       handled++;
       if (handle) await handle(view, sink);
@@ -55,6 +55,28 @@ async function fixture(t: TestContext, handle?: (view: RequestView, sink: Respon
   }
   return { m, lease, server, coordinator, tls, exchange, clients, cleanup, port, handled: () => handled, closes: () => closes };
 }
+
+test('regional TLS body adapter waits for complete bounded POST bytes and carries the original deadline',async t=>{
+  let received='';
+  const f=await fixture(t,async(view,sink)=>{
+    received=Buffer.from(view.body!).toString();assert.ok(view.remainingMs!()>0);
+    await sink({status:200,headers:{'content-length':'2','cache-control':'no-store'},body:'ok'},view.signal);
+  },undefined,true,undefined,65536);
+  const socket=await f.tls(),parts:Buffer[]=[];socket.on('data',data=>parts.push(data));
+  socket.write('POST /regional/arc/redeem HTTP/1.1\r\nHost: origin.lab.test\r\nContent-Length: 4\r\nContent-Type: application/json\r\n\r\na');
+  await turn();assert.equal(f.handled(),0);
+  const closed=once(socket,'close');socket.write('bcd');await closed;
+  assert.equal(received,'abcd');assert.match(Buffer.concat(parts).toString(),/^HTTP\/1.1 200/);assert.equal(f.handled(),1);
+});
+
+test('regional TLS body adapter refuses excess, missing length and chunked framing without authorization',async t=>{
+  const f=await fixture(t,async()=>{throw Error('must not dispatch malformed transport');},undefined,true,undefined,65536);
+  for(const headers of ['Content-Length: 65537','Transfer-Encoding: chunked','Content-Length: 01','']){
+    const response=await f.exchange(`POST /regional/arc/redeem HTTP/1.1\r\nHost: origin.lab.test\r\n${headers}\r\n\r\n`);
+    assert.equal(response,'');
+  }
+  assert.equal(f.handled(),0);
+});
 
 test('validated CA/SNI/TLS1.3 HTTP1.1 returns a challenge and closes the connection', async t => {
   const f = await fixture(t), socket = await f.tls();

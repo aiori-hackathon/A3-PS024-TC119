@@ -1,0 +1,444 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://tokenforge.invalid/contracts/regional-public-request-v1.json",
+  "oneOf": [
+    {
+      "type": "object",
+      "properties": {
+        "route": {
+          "const": "enroll"
+        },
+        "body": {
+          "type": "object",
+          "properties": {
+            "contract_version": {
+              "const": "TF-PS024-REGIONAL-1.0.0"
+            },
+            "policy_digest": {
+              "type": "string",
+              "minLength": 64,
+              "maxLength": 64,
+              "pattern": "^[0-9a-f]{64}$"
+            },
+            "profile": {
+              "const": "arc"
+            },
+            "enrollment_voucher_b64url": {
+              "type": "string",
+              "minLength": 43,
+              "maxLength": 43,
+              "pattern": "^[A-Za-z0-9_-]{43}$"
+            },
+            "blinded_requests_b64url": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 1,
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 32768,
+                "pattern": "^[A-Za-z0-9_-]+$"
+              }
+            }
+          },
+          "required": [
+            "contract_version",
+            "policy_digest",
+            "profile",
+            "enrollment_voucher_b64url",
+            "blinded_requests_b64url"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "route",
+        "body"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "route": {
+          "const": "enroll"
+        },
+        "body": {
+          "type": "object",
+          "properties": {
+            "contract_version": {
+              "const": "TF-PS024-REGIONAL-1.0.0"
+            },
+            "policy_digest": {
+              "type": "string",
+              "minLength": 64,
+              "maxLength": 64,
+              "pattern": "^[0-9a-f]{64}$"
+            },
+            "profile": {
+              "const": "type2-bearer"
+            },
+            "enrollment_voucher_b64url": {
+              "type": "string",
+              "minLength": 43,
+              "maxLength": 43,
+              "pattern": "^[A-Za-z0-9_-]{43}$"
+            },
+            "blinded_requests_b64url": {
+              "type": "array",
+              "minItems": 5,
+              "maxItems": 5,
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 346,
+                "pattern": "^[A-Za-z0-9_-]+$"
+              }
+            }
+          },
+          "required": [
+            "contract_version",
+            "policy_digest",
+            "profile",
+            "enrollment_voucher_b64url",
+            "blinded_requests_b64url"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "route",
+        "body"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "route": {
+          "const": "enroll"
+        },
+        "body": {
+          "type": "object",
+          "properties": {
+            "contract_version": {
+              "const": "TF-PS024-REGIONAL-1.0.0"
+            },
+            "policy_digest": {
+              "type": "string",
+              "minLength": 64,
+              "maxLength": 64,
+              "pattern": "^[0-9a-f]{64}$"
+            },
+            "profile": {
+              "const": "type2-holder"
+            },
+            "enrollment_voucher_b64url": {
+              "type": "string",
+              "minLength": 43,
+              "maxLength": 43,
+              "pattern": "^[A-Za-z0-9_-]{43}$"
+            },
+            "blinded_requests_b64url": {
+              "type": "array",
+              "minItems": 5,
+              "maxItems": 5,
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 346,
+                "pattern": "^[A-Za-z0-9_-]+$"
+              }
+            }
+          },
+          "required": [
+            "contract_version",
+            "policy_digest",
+            "profile",
+            "enrollment_voucher_b64url",
+            "blinded_requests_b64url"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "route",
+        "body"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "route": {
+          "const": "arc-redeem"
+        },
+        "body": {
+          "type": "object",
+          "properties": {
+            "contract_version": {
+              "const": "TF-PS024-REGIONAL-1.0.0"
+            },
+            "policy_digest": {
+              "type": "string",
+              "minLength": 64,
+              "maxLength": 64,
+              "pattern": "^[0-9a-f]{64}$"
+            },
+            "presentation_b64url": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 32768,
+              "pattern": "^[A-Za-z0-9_-]+$"
+            }
+          },
+          "required": [
+            "contract_version",
+            "policy_digest",
+            "presentation_b64url"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "route",
+        "body"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "route": {
+          "const": "holder-challenge"
+        },
+        "body": {
+          "type": "object",
+          "properties": {
+            "contract_version": {
+              "const": "TF-PS024-REGIONAL-1.0.0"
+            },
+            "policy_digest": {
+              "type": "string",
+              "minLength": 64,
+              "maxLength": 64,
+              "pattern": "^[0-9a-f]{64}$"
+            },
+            "public_key_spki_b64url": {
+              "type": "string",
+              "minLength": 122,
+              "maxLength": 122,
+              "pattern": "^[A-Za-z0-9_-]{122}$"
+            }
+          },
+          "required": [
+            "contract_version",
+            "policy_digest",
+            "public_key_spki_b64url"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "route",
+        "body"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "route": {
+          "const": "holder-nonce"
+        },
+        "body": {
+          "type": "object",
+          "properties": {
+            "contract_version": {
+              "const": "TF-PS024-REGIONAL-1.0.0"
+            },
+            "policy_digest": {
+              "type": "string",
+              "minLength": 64,
+              "maxLength": 64,
+              "pattern": "^[0-9a-f]{64}$"
+            },
+            "token_hash": {
+              "type": "string",
+              "minLength": 64,
+              "maxLength": 64,
+              "pattern": "^[0-9a-f]{64}$"
+            },
+            "public_key_spki_b64url": {
+              "type": "string",
+              "minLength": 122,
+              "maxLength": 122,
+              "pattern": "^[A-Za-z0-9_-]{122}$"
+            }
+          },
+          "required": [
+            "contract_version",
+            "policy_digest",
+            "token_hash",
+            "public_key_spki_b64url"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "route",
+        "body"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "route": {
+          "const": "holder-redeem"
+        },
+        "body": {
+          "type": "object",
+          "properties": {
+            "contract_version": {
+              "const": "TF-PS024-REGIONAL-1.0.0"
+            },
+            "policy_digest": {
+              "type": "string",
+              "minLength": 64,
+              "maxLength": 64,
+              "pattern": "^[0-9a-f]{64}$"
+            },
+            "token_b64url": {
+              "type": "string",
+              "minLength": 472,
+              "maxLength": 472,
+              "pattern": "^[A-Za-z0-9_-]{472}$"
+            },
+            "proof": {
+              "type": "object",
+              "properties": {
+                "contract_version": {
+                  "const": "TF-PS024-REGIONAL-1.0.0"
+                },
+                "policy_digest": {
+                  "type": "string",
+                  "minLength": 64,
+                  "maxLength": 64,
+                  "pattern": "^[0-9a-f]{64}$"
+                },
+                "public_key_spki_b64url": {
+                  "type": "string",
+                  "minLength": 122,
+                  "maxLength": 122,
+                  "pattern": "^[A-Za-z0-9_-]{122}$"
+                },
+                "nonce": {
+                  "type": "object",
+                  "properties": {
+                    "body": {
+                      "type": "object",
+                      "properties": {
+                        "contract_version": {
+                          "const": "TF-PS024-REGIONAL-1.0.0"
+                        },
+                        "run_id": {
+                          "type": "string",
+                          "minLength": 32,
+                          "maxLength": 32,
+                          "pattern": "^[0-9a-f]{32}$"
+                        },
+                        "policy_digest": {
+                          "type": "string",
+                          "minLength": 64,
+                          "maxLength": 64,
+                          "pattern": "^[0-9a-f]{64}$"
+                        },
+                        "token_hash": {
+                          "type": "string",
+                          "minLength": 64,
+                          "maxLength": 64,
+                          "pattern": "^[0-9a-f]{64}$"
+                        },
+                        "holder_key_hash": {
+                          "type": "string",
+                          "minLength": 64,
+                          "maxLength": 64,
+                          "pattern": "^[0-9a-f]{64}$"
+                        },
+                        "issued_ms": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 9007199254740991
+                        },
+                        "expires_ms": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 9007199254740991
+                        },
+                        "random_b64url": {
+                          "type": "string",
+                          "minLength": 43,
+                          "maxLength": 43,
+                          "pattern": "^[A-Za-z0-9_-]{43}$"
+                        }
+                      },
+                      "required": [
+                        "contract_version",
+                        "run_id",
+                        "policy_digest",
+                        "token_hash",
+                        "holder_key_hash",
+                        "issued_ms",
+                        "expires_ms",
+                        "random_b64url"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "mac": {
+                      "type": "string",
+                      "minLength": 64,
+                      "maxLength": 64,
+                      "pattern": "^[0-9a-f]{64}$"
+                    }
+                  },
+                  "required": [
+                    "body",
+                    "mac"
+                  ],
+                  "additionalProperties": false
+                },
+                "signature_b64url": {
+                  "type": "string",
+                  "minLength": 86,
+                  "maxLength": 86,
+                  "pattern": "^[A-Za-z0-9_-]{86}$"
+                }
+              },
+              "required": [
+                "contract_version",
+                "policy_digest",
+                "public_key_spki_b64url",
+                "nonce",
+                "signature_b64url"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "contract_version",
+            "policy_digest",
+            "token_b64url",
+            "proof"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "route",
+        "body"
+      ],
+      "additionalProperties": false
+    }
+  ]
+}

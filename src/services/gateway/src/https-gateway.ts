@@ -7,6 +7,7 @@ import type { Socket, AddressInfo } from 'node:net';
 import { ContractError, configurationDigest, validateManifest, type Manifest } from '../../../contracts/lib/index.ts';
 import { monotonicRuntime, type LeaseRuntime, type WorkerLease } from './worker-lease.ts';
 import type { CoordinatorResponse, RequestCoordinator } from './request-coordinator.ts';
+import { REGIONAL } from '../../../contracts/lib/regional.ts';
 
 type Connection = {
   raw: Socket; tls: TLSSocket | null; rawClosed: boolean; tlsClosed: boolean;
@@ -15,13 +16,14 @@ type Connection = {
   cancelHeader: (() => void) | null; cancelRequest: (() => void) | null; client: AbortController;
 };
 export type GatewayTls = { key: string; cert: string };
-type Coordinator = Pick<RequestCoordinator, 'binding' | 'handle' | 'close'>;
+type Coordinator = Pick<RequestCoordinator, 'binding' | 'handle' | 'close'> & {readonly requestBodyLimit?:number};
 
 /** One worker's strict TLS1.3/HTTP1.1 ingress. One request per connection; no pipelining or keep-alive. */
 export class HttpsGateway {
   readonly #manifest: Manifest;
   readonly #lease: WorkerLease;
   readonly #coordinator: Coordinator;
+  readonly #bodyLimit:number;
   readonly #runtime: LeaseRuntime;
   readonly #source: SourceObservation | undefined;
   readonly #server: Server;
@@ -43,6 +45,7 @@ export class HttpsGateway {
   private constructor(m: Manifest, lease: WorkerLease, coordinator: Coordinator, tls: GatewayTls, runtime: LeaseRuntime, source?: SourceObservation) {
     this.#source = source;
     this.#manifest = m; this.#lease = lease; this.#coordinator = coordinator; this.#runtime = runtime;
+    this.#bodyLimit=coordinator.requestBodyLimit??0;
     const context = createSecureContext({ key: tls.key, cert: tls.cert, minVersion: 'TLSv1.3', maxVersion: 'TLSv1.3' });
     this.#server = createServer({
       minVersion: 'TLSv1.3', maxVersion: 'TLSv1.3', handshakeTimeout: m.limits.gateway.tls_header_timeout_ms,
@@ -74,6 +77,7 @@ export class HttpsGateway {
     runtime: LeaseRuntime = monotonicRuntime, source?: SourceObservation): HttpsGateway {
     try {
       const m = validateManifest(structuredClone(configuration)), digest = configurationDigest(m);
+      if(coordinator.requestBodyLimit!==undefined&&coordinator.requestBodyLimit!==REGIONAL.rpc_frame_max_bytes)throw Error('body-limit');
       for (const binding of [lease.status, coordinator.binding]) {
         if (binding.run_id !== m.run_id || binding.config_digest !== digest) throw Error('binding');
       }
@@ -183,11 +187,14 @@ export class HttpsGateway {
     const hasBody = req.rawHeaders.some((name, index) => index % 2 === 0 &&
       (name.toLowerCase() === 'transfer-encoding' || (name.toLowerCase() === 'content-length' && req.rawHeaders[index + 1] !== '0')));
     req.once('aborted', () => this.#destroy(record));
-    req.on('data', () => this.#destroy(record)); // No protected GET body is ever consumed or forwarded.
-    const run = async () => {
+    const bodyPromise=this.#bodyLimit?this.#readBody(req,record):null;
+    if(!bodyPromise)req.on('data', () => this.#destroy(record)); // Baseline GET behavior is unchanged.
+    const run = async (body?:Uint8Array) => {
       if (record.client.signal.aborted) return;
       await this.#coordinator.handle({ method: req.method ?? '', target: req.url ?? '', rawHeaders: req.rawHeaders,
-        hasBody, signal: record.client.signal, checkActive: () => {
+        hasBody,signal:record.client.signal,...(body?{body}:{}),remainingMs:()=>{
+          const now=this.#now();return now===null||now>=record.requestDeadline?0:Number((record.requestDeadline-now)/1000000n);
+        },checkActive: () => {
           const now = this.#now();
           if (this.#closed || record.client.signal.aborted || now === null || now >= record.requestDeadline || !this.#lease.checkActive()) {
             this.#destroy(record); return false;
@@ -198,6 +205,7 @@ export class HttpsGateway {
     };
     // Valid zero-body framing must actually finish before any authorization work begins.
     const task = (async () => {
+      if(bodyPromise){const body=await bodyPromise;if(body!==null){try{await run(body);}finally{body.fill(0);}}return;}
       if (!hasBody && !req.complete) await new Promise<void>(resolve => { req.once('end', resolve); record.client.signal.addEventListener('abort', () => resolve(), { once: true }); });
       await run();
     })();
@@ -207,6 +215,34 @@ export class HttpsGateway {
       this.#destroy(record);
     }).finally(() => { this.#tasks.delete(task); this.#settled(); });
     req.resume();
+  }
+
+  #readBody(req:IncomingMessage,record:Connection):Promise<Uint8Array|null>{
+    const values:string[]=[];let transfer=false;
+    for(let i=0;i<req.rawHeaders.length;i+=2){
+      if(req.rawHeaders[i]!.toLowerCase()==='content-length')values.push(req.rawHeaders[i+1]!);
+      if(req.rawHeaders[i]!.toLowerCase()==='transfer-encoding')transfer=true;
+    }
+    const text=values[0]??'0',size=Number(text);
+    if(transfer||values.length>1||(req.method==='POST'&&values.length!==1)||!/^(0|[1-9][0-9]*)$/.test(text)
+      ||!Number.isSafeInteger(size)||size>this.#bodyLimit){this.#destroy(record);return Promise.resolve(null);}
+    return new Promise(resolve=>{
+      const bytes=new Uint8Array(size);let received=0,done=false;
+      const finish=(ok:boolean)=>{
+        if(done)return;done=true;req.off('data',data);req.off('end',end);req.off('error',abort);
+        record.client.signal.removeEventListener('abort',abort);
+        if(!ok){bytes.fill(0);this.#destroy(record);}resolve(ok?bytes:null);
+      };
+      const abort=()=>finish(false);
+      const data=(chunk:Buffer)=>{
+        const now=this.#now();
+        if(record.client.signal.aborted||now===null||now>=record.requestDeadline||received+chunk.length>size){finish(false);return;}
+        bytes.set(chunk,received);received+=chunk.length;
+      };
+      const end=()=>finish(received===size);
+      req.on('data',data);req.once('end',end);req.once('error',abort);record.client.signal.addEventListener('abort',abort,{once:true});
+      if(record.client.signal.aborted)abort();else if(req.readableEnded)end();
+    });
   }
 
   #write(record: Connection, res: ServerResponse, response: CoordinatorResponse, signal: AbortSignal): Promise<void> {

@@ -1,5 +1,9 @@
 # Contract changes
 
+## Additive regional wire/gateway revision — 14 November 2026
+
+Freezes ARC's inspected 99-byte public parameter bootstrap and adds strict public envelope schemas, canonical raw JSON/MAC validation and RFC Type2 regional challenge framing. Gateway components authenticate verify-only RPC replies and expose instance-owned once-consumed receipts to the regional claim pipeline. Bounded TLS POST support is enabled only by a prepared regional coordinator; baseline GET behavior and original manifests/reports remain unchanged. Public profile/window enforcement and the actual Rust service/controller deployment are distinct integration gates. No claim of full Rust-to-origin deployment follows from fixture-backed transport tests.
+
 ## Additive API revision regional-replay-1 — 14 November 2026
 
 Adds a separately namespaced regional policy/spend store, controller initializer/readiness, constrained regional gateway ACL, exact reply/command helpers and bounded gateway pool. Atomic claims use Redis TIME to enforce regional window and authenticated holder nonce expiry. Observed window end latches shared terminal closure; snapshots/refusals record clock highwater. No baseline Lua bytes/hashes, manifests, report schemas or existing runtime path changed. ARC proof/holder verification and admission remain future integration dependencies.

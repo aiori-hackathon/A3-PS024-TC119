@@ -15,6 +15,8 @@ Regional candidate **TF-PS024-REGIONAL-1.0.0** is additive and explicitly import
 
 Additive `lib/regional-replay.ts` supplies the controller-only regional initializer, readiness, separate ACL, and authoritative window/nonce-aware Lua. The [regional replay guide](../../docs/implementation/REGIONAL_REPLAY.md) defines bootstrap order and the internal trusted-candidate boundary. It is not enabled by the existing serving process.
 
+`lib/regional-wire.ts` and the bootstrap/public schemas define the inspected ARC parameter format, canonical raw frames, request-bound HMAC replies and public envelope validation. See [regional gateway integration](../../docs/implementation/REGIONAL_GATEWAY.md) for the prepared ARC client, regional request pipeline, TLS body capability and remaining service/controller integration.
+
 Consumer requirements:
 
 1. Initial PREPARE envelope uses `config_digest:null`; payload carries manifest, proposed digest, role and role_config. Helper validates the manifest's actual RSA-PSS parameters/key ID and matching run/digest. Receiver still enforces role-specific mounts/state/incarnation.

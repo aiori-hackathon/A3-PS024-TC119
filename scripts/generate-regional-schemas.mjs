@@ -35,12 +35,38 @@ const reply = either(
   envelope({...replyBase,operation:c('verify'),status:c('verified'),spend_tag_b64url:text(44,'^[A-Za-z0-9_-]{44}$',44)}),
   ...['issue','verify'].map(operation=>envelope({...replyBase,operation:c(operation),status:c('refused'),code:{enum:codes}}))
 );
+const publicBase={contract_version:c(p.contract_version),policy_digest:hex(64)};
+const spki=text(122,'^[A-Za-z0-9_-]{122}$',122);
+const nonceEnvelope=obj({body:nonce,mac:hex(64)});
+const bootstrap=envelope({run_id:hex(32),service_incarnation:hex(32),arc_implementation_revision:hex(40),
+  issuer_params_b64url:text(132,'^[A-Za-z0-9_-]{132}$',132),arc_key_id:hex(64)});
+const publicCase=(route,body)=>obj({route:c(route),body});
+const enrollment=profile=>obj({...publicBase,profile:c(profile),enrollment_voucher_b64url:text(43,'^[A-Za-z0-9_-]{43}$',43),
+  blinded_requests_b64url:{type:'array',minItems:profile==='arc'?1:5,maxItems:profile==='arc'?1:5,items:b64(profile==='arc'?32768:346)}});
+const publicRequests=either(
+  ...['arc','type2-bearer','type2-holder'].map(profile=>publicCase('enroll',enrollment(profile))),
+  publicCase('arc-redeem',obj({...publicBase,presentation_b64url:b64(32768)})),
+  publicCase('holder-challenge',obj({...publicBase,public_key_spki_b64url:spki})),
+  publicCase('holder-nonce',obj({...publicBase,token_hash:hex(64),public_key_spki_b64url:spki})),
+  publicCase('holder-redeem',obj({...publicBase,token_b64url:text(472,'^[A-Za-z0-9_-]{472}$',472),proof}))
+);
+const publicResponses=either(
+  ...['arc','type2-bearer','type2-holder'].map(profile=>publicCase('enroll',obj({...publicBase,profile:c(profile),
+    responses_b64url:{type:'array',minItems:profile==='arc'?1:5,maxItems:profile==='arc'?1:5,items:b64(profile==='arc'?32768:342)}}))),
+  publicCase('holder-challenge',obj({...publicBase,challenge_b64url:b64(1024),token_key_spki_b64url:b64(1024)})),
+  publicCase('holder-nonce',nonceEnvelope),
+  publicCase('arc-directory',obj({...publicBase,arc_key_id:hex(64),arc_implementation_revision:hex(40),
+    issuer_params_b64url:text(132,'^[A-Za-z0-9_-]{132}$',132)}))
+);
 const schemas = {
   'regional-policy-v1.json':policy,
   'regional-holder-nonce-v1.json':nonce,
   'regional-holder-proof-v1.json':proof,
   'regional-arc-request-v1.json':request,
-  'regional-arc-response-v1.json':reply
+  'regional-arc-response-v1.json':reply,
+  'regional-arc-bootstrap-v1.json':bootstrap,
+  'regional-public-request-v1.json':publicRequests,
+  'regional-public-response-v1.json':publicResponses
 };
 let drift=false;
 for(const [name,body] of Object.entries(schemas)) {
