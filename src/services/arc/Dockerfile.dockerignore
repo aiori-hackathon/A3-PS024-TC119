@@ -4,6 +4,16 @@
 !src/services/arc/
 !src/services/arc/Cargo.toml
 !src/services/arc/Cargo.lock
+!src/services/arc/build.rs
+!src/contracts/
+!src/contracts/lib/
+!src/contracts/lib/regional-v1.json
+!src/contracts/protocol-v1.json
+!src/contracts/schemas/
+!src/contracts/schemas/regional-policy-v1.json
+!src/contracts/schemas/regional-arc-request-v1.json
+!src/contracts/fixtures/
+!src/contracts/fixtures/regional-golden.json
 !src/services/arc/src/
 !src/services/arc/src/**
 !src/services/arc/tests/

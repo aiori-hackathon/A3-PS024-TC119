@@ -1,6 +1,6 @@
 # ARC P256 component
 
-The locally corrected P256/N=5 cryptographic adapter is available for K02-B consumption. `Issuer::verify_and_tag` returns the verified 33-byte protocol tag from the same parsed presentation. The reproduced upstream identity forgery is rejected by decoding and direct verification. Live RPC, installed-policy admission, client-helper transport and origin-backed authorization still require integration. The executable reports `integration_ready=false`.
+The locally corrected P256/N=5 adapter supplies an isolated issuer/verifier service and a client-owned cryptographic helper. `Issuer::verify_and_tag` returns the verified 33-byte protocol tag from the same parsed presentation. The reproduced upstream identity forgery is rejected by decoding and direct verification. Process tests exercise blind issuance, finalization and randomized presentations through authenticated TCP and private helper pipes. Gateway replay claims and origin-backed authorization require the surrounding lab integration. The separate feasibility executable reports `integration_ready=false`.
 
 ## Pinned inputs
 
@@ -33,7 +33,7 @@ The original unpatched dependency exists only in dev-dependencies to preserve th
 
 Canonical public parameters are 99 bytes, ordered X0 commitment, X1, X2, each a nonidentity 33-byte compressed SEC1 P256 point. Canonical unpadded base64url has 132 characters. The key ID is lowercase hex SHA-256 of those exact 99 bytes. `fixtures/public-parameters.json` contains public-only draft-vector data. The Node check independently validates points, encoding and digest against the unchanged upstream vector; the Rust vector test validates the same serialization.
 
-`PendingIssuance` creates the client secret and consumes it on finalization. A wallet retains the credential in the client. Its returned upstream `State<P256>` can serialize client secrets and must remain behind the owning client helper's memory/opaque handles. Bootstrap exposes public parameters. The issuer/verifier receives blinded requests and presentations through the eventual authenticated channels.
+`PendingIssuance` creates the client secret and consumes it on finalization. A wallet retains the credential in the client. Its returned upstream `State<P256>` can serialize client secrets and must remain behind the owning client helper's memory/opaque handles. Bootstrap exposes public parameters. The issuer/verifier receives blinded requests and presentations through independent authenticated channels.
 
 At N=5, the measured request is 226 bytes, response 454 bytes and presentation 744 bytes. These fit K01's existing bounded blob and frame sizes. Fresh keys per run/window and server-selected contexts remain required by the surrounding regional policy.
 
@@ -42,11 +42,11 @@ At N=5, the measured request is 226 bytes, response 454 bytes and presentation 7
 From the repository root with Linux-container Docker running,
 
 ```sh
-docker build -f src/services/arc/Dockerfile -t tokenforge-arc-feasibility:local .
+docker build --build-arg TF_ARC_SOURCE_REVISION=$(git rev-parse HEAD) -f src/services/arc/Dockerfile -t tokenforge-arc-feasibility:local .
 docker run --rm --network none --read-only --cap-drop ALL --security-opt no-new-privileges --memory 128m --pids-limit 32 tokenforge-arc-feasibility:local
 ```
 
-The verification stage runs root adapter regressions, corrected vendor unit/protocol/vector tests and unmodified pinned upstream protocol/vector tests. The runtime image contains only the aggregate-output executable and its system runtime.
+The verification stage runs adapter/process regressions, corrected vendor unit/protocol/vector tests and unmodified pinned upstream protocol/vector tests. The runtime image contains `arc-service`, `arc-client-helper`, `arc-feasibility` and their system runtime.
 
 With native Rust 1.89.0 and Node 24,
 
@@ -65,3 +65,31 @@ cargo +stable-x86_64-pc-windows-gnu test --locked --manifest-path src/services/a
 ```
 
 Verify that this override selects Rust 1.89.0. The compatibility scope is P256 with quota five. Regional authorization evidence still requires the authenticated exact-request-bound verifier reply, authoritative shared-store claim, current lease and independent origin counters.
+
+## Private process integration
+
+Every control/helper frame uses sorted-key canonical JSON followed by one newline. Bounds and canonical rules come directly from the shared contracts. The owning controller/client retains the pipes. Pipe closure terminates the component. Keep pipe contents out of process logs, reports and UI output.
+
+Start `/usr/local/bin/arc-service` with stdin/stdout piped. Send the initial control frame with all of these fields.
+
+```json
+{"implementation_revision":"<40 lowercase hex source revision>","issue_key":"<64 lowercase hex>","issue_listen":"0.0.0.0:7101","operation":"bootstrap","run_id":"<32 lowercase hex>","verify_key":"<independent 64 lowercase hex>","verify_listen":"0.0.0.0:7102"}
+```
+
+The response is the exact shared `ArcBootstrap` object, including fresh incarnation, 99-byte public parameters, their SHA-256 key ID and compiled implementation revision. `TF_ARC_SOURCE_REVISION` supplies the source identity at build time. Native builds resolve Git HEAD when the variable is absent. Startup requires the supplied revision to equal the compiled revision. Build release artifacts from the committed source revision selected for the run.
+
+Send `{"operation":"install-policy","policy":<shared RegionalPolicy>}` once. Success returns `{"policy_digest":"<digest>","status":"installed"}`. The service validates shared ARC policy structure, window length and bootstrap run/key/revision bindings. The controller performs baseline-manifest validation before installation.
+
+Send `{"lease_expires_ms":<absolute epoch milliseconds>,"lease_sequence":0,"operation":"enable"}` after the window opens. Success returns `{"status":"enabled"}`. Renew with `heartbeat`, the next sequence, and the original bounded absolute expiry from the controller. Success returns `{"status":"renewed"}`. The maximum lease comes from the baseline's `gateway_common.controller_lease_ms`. Expiry uses both monotonic and wall clocks. Observed clock regression and expired leases permanently fence the generation. Send `{"operation":"fence"}` to close it explicitly. `status` returns a sanitized lifecycle label. Renewals after fencing are refused. Control refusals use `{"code":"<fixed label>","status":"refused"}`.
+
+Issue and verify TCP listeners accept their corresponding shared request schema and operation key. Each connection carries one request and one response, each bounded to the shared frame size and 1,500 ms total RPC deadline. Responses start immediately after a complete newline frame arrives. Each listener admits at most four active connections. The service serializes cryptographic work and grant reservations. Five unique grant reservations fit the run budget. Reservation occurs before signing, and failure keeps that reservation consumed. Every successful response carries the exact request digest and bindings. Invalid authentication receives a closed connection. Dependency failures require the controller/gateway to close the dependent run. These private TCP links use plaintext within the isolated deployment network, with HMAC authentication.
+
+Start `/usr/local/bin/arc-client-helper` separately inside each owning client. It supports one pending issuance and one finalized wallet. All client secrets remain in helper memory. Operations and successful replies follow this table.
+
+| Operation fields | Reply fields |
+|---|---|
+| `operation="create-request"`, `policy`, `issuer_params_b64url` | `status="created"`, `pending_handle`, `blinded_request_b64url` |
+| `operation="finalize-credential"`, `pending_handle`, `credential_response_b64url` | `status="finalized"`, `wallet_handle` |
+| `operation="present"`, `wallet_handle`, optional `slot` | `status="presented"`, `presentation_b64url` |
+
+Handles contain 16 fresh random bytes encoded lowercase hex. Finalization consumes its pending handle before processing the response. Public parameters are validated and hashed against the trusted installed policy before client request creation. Every operation enforces the selected window. Presentations use shared policy-derived contexts and quota. Omitting `slot` advances a local five-use estimate. Explicit slots 0–4 recreate that credential's selected spend with fresh proof randomness for controlled copy/rollback/race scenes. Authoritative gateway tag claims decide acceptance. Repeated-slot support exports only the presentation through the owning client's private pipe. Refusals return fixed labels. Process tests validate MAC fixture parity, separate channel keys, terminal grant use, concurrent duplicate signing, five-grant bounds, lease expiry and fencing.

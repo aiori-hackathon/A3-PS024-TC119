@@ -8,6 +8,8 @@ use arc::{
 use rand_core::OsRng;
 use std::num::NonZeroU32;
 
+pub mod wire;
+
 pub const UPSTREAM_REVISION: &str = "4f023d349a552d019ee0d8d7f73921da8d035165";
 pub const SPECIFICATION: &str = "draft-ietf-privacypass-arc-crypto-01";
 pub const ADAPTER_REVISION: &str = "tf-arc-p256-1";

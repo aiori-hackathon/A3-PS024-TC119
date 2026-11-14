@@ -8,6 +8,11 @@ publish = false
 [dependencies]
 arc = { path = "vendor/arc", default-features = false, features = ["suite_p256"] }
 rand_core = { version = "=0.6.4", features = ["getrandom"] }
+serde_json = "=1.0.145"
+sha2 = "=0.10.9"
+hmac = "=0.12.1"
+base64 = "=0.22.1"
+regex = "=1.12.2"
 
 [dev-dependencies]
 arc-unpatched = { package = "arc", git = "https://github.com/cloudflareresearch/arc", rev = "4f023d349a552d019ee0d8d7f73921da8d035165", default-features = false, features = ["suite_p256"] }
@@ -15,3 +20,11 @@ arc-unpatched = { package = "arc", git = "https://github.com/cloudflareresearch/
 [[bin]]
 name = "arc-feasibility"
 path = "src/main.rs"
+
+[[bin]]
+name = "arc-service"
+path = "src/service.rs"
+
+[[bin]]
+name = "arc-client-helper"
+path = "src/helper.rs"
