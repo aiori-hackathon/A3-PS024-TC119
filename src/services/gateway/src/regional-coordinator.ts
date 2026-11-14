@@ -1,6 +1,6 @@
 import { Histogram } from '../../../contracts/lib/measurements.ts';
 import { performance } from 'node:perf_hooks';
-import { ContractError, configurationDigest, encodeBase64Url, validateManifest, type Manifest } from '../../../contracts/lib/index.ts';
+import { ContractError, canonicalJson, configurationDigest, encodeBase64Url, validateManifest, type Manifest } from '../../../contracts/lib/index.ts';
 import { REGIONAL, regionalContext, regionalPolicyDigest, validateRegionalPolicy, type RegionalPolicy } from '../../../contracts/lib/regional.ts';
 import { regionalType2Challenge, decodeRegionalPublicRequest, type RegionalPublicRoute } from '../../../contracts/lib/regional-wire.ts';
 import { FlowAdmission, type FlowPermit } from './flow-admission.ts';
@@ -23,7 +23,7 @@ export interface RegionalProofVerifier {
 type Replay=Pick<RegionalReplayStore,'binding'|'status'|'signal'|'snapshot'|'claim'|'close'>;
 type Origin=Pick<FixedOrigin,'binding'|'status'|'forwardAfterClaim'|'close'>;
 const json=(status:number,value:unknown)=>{
-  const body=JSON.stringify(value);
+  const body=canonicalJson(value);
   return {status,headers:{'content-type':'application/json','cache-control':'no-store','x-content-type-options':'nosniff','content-length':String(Buffer.byteLength(body))},body};
 };
 const failure=(status:number)=>json(status,{error:status===403?'authorization-refused':status===503?'authorization-unavailable':'request-malformed'});

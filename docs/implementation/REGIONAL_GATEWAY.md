@@ -109,3 +109,19 @@ Source observation now includes regional resource/redeem operations as well as t
 The isolated integration command now checks both the earlier two-instance flow and three separate production `serve.mjs` runs. Each production run proves two distinct child OS workers, the shared TLS listener, restricted Redis enforcement, existing control responses and confirmed worker exit after FENCE. Tests cover IP 25/26 and concurrent exhaustion despite forged forwarding headers; Type2 challenge and copied-token races; holder token theft followed by owner success and cross-worker replay; wrong-profile routing; and state-loss fencing without live repair. Actual HTTP origin counters independently bound the accepted arrivals.
 
 These tests use genuine cryptographic blind issuance through a test-local issuer API and a counted private test origin. They do not prove the deployed voucher/entitlement cap, actual Rust service/client interoperability, portal controls, direct-origin network isolation, complete ARC quota/copy scenes, renewal or end-to-end product deployment. Those require the real controller/issuer/ARC/helper/Compose integrations and focused follow-up validation.
+
+### Consumer compatibility gate
+
+Regional JSON responses now use the shared canonical writer, including nested holder nonce bodies. This preserves the existing schema, status codes and HTTP headers while making actual challenge/nonce bytes acceptable to the regional client's canonical decoder. The native holder transport check validates those exact response bytes before using them.
+
+After the regional issuer/client and Rust service sources are integrated, run:
+
+```powershell
+node scripts/check-regional-consumers.mjs
+```
+
+This command refuses missing/uncommitted ARC prerequisites, builds the pinned ARC image with its committed source revision, and runs two required Linux consumer tests with zero skips. It uses isolated Redis and an unprivileged read-only test container without published ports, host mounts or external network access. Test assertions are captured rather than printed because failures can contain ephemeral credentials/proofs. Build diagnostics remain visible. Test files/dependencies belong only to this test image, not the production images.
+
+The ARC test exercises the actual Rust service, helper, issuer admission and Node client through its explicitly labelled substitute gateway. The holder test exercises the actual Node client, issuer admission, holder gateway, restricted Redis and independently counted test origin: five-token acquisition, failed theft without consumption, owner success, replay refusal, a duplicate race and exhaustion. It would reject the previous noncanonical gateway responses. Neither test proves the full deployed ARC gateway/controller/UI path or shutdown safety.
+
+CI enables this gate when the ARC service implementation exists in the checked-out branch. On a branch that has not integrated those files, it emits an explicit pending-integration notice; that absence is not regional acceptance. The runner itself never reports success for missing prerequisites or skipped tests. The ordinary gateway startup regression tests also run under `check:g0`.
