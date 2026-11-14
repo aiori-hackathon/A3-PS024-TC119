@@ -21,6 +21,19 @@ jobs:
       - run: npm run test:replay --prefix src/services/gateway
       - run: npm run test:regional-replay --prefix src/services/gateway
       - run: npm run test:regional-integration --prefix src/services/gateway
+      - name: Detect regional service implementation
+        id: regional
+        shell: bash
+        run: |
+          if test -f src/services/arc/src/service.rs; then
+            echo "available=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "available=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::ARC service is absent on this branch; native consumer acceptance awaits integration."
+          fi
+      - name: Verify actual regional consumers without skipped tests
+        if: steps.regional.outputs.available == 'true'
+        run: node scripts/check-regional-consumers.mjs
       - run: npm run test:redis-adapter --prefix src/services/gateway
       - run: npm run test:recovery --prefix src/services/gateway
       - run: node scripts/check-secrets.mjs

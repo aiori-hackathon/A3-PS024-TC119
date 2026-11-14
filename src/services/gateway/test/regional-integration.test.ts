@@ -13,7 +13,7 @@ import { Redis } from 'ioredis';
 import { publicVerif, TokenChallenge } from '@cloudflare/privacypass-ts';
 import { PROTOCOL, validateControlResponse, canonicalJson, configurationDigest, hex, sha256 } from '../../../contracts/lib/index.ts';
 import { REGIONAL, holderProofInput, regionalPolicyDigest, validateRegionalPolicy, type RegionalProfile, type HolderNonce } from '../../../contracts/lib/regional.ts';
-import { validateRegionalPublicResponse } from '../../../contracts/lib/regional-wire.ts';
+import { decodeCanonicalRegionalJson, validateRegionalPublicResponse } from '../../../contracts/lib/regional-wire.ts';
 import { initializeStore, loadReplayScripts, parseRedisTime } from '../../../contracts/lib/replay.ts';
 import { initializeRegionalStore, regionalGatewayAclArguments, verifyRegionalStoreReady } from '../../../contracts/lib/regional-replay.ts';
 import { prepareRegionalGateway } from '../src/regional-gateway.ts';
@@ -73,7 +73,7 @@ test('real TLS, genuine issuance, two regional pools and Redis preserve owner ac
       const req=request({host:'127.0.0.1',port,servername:m.origin_name,ca:tls.cert,minVersion:'TLSv1.3',maxVersion:'TLSv1.3',
         method:'POST',path,headers:{host:m.origin_name,'content-type':'application/json','content-length':bytes.length},agent:false},res=>{
         const chunks:Buffer[]=[];res.on('data',chunk=>chunks.push(chunk));
-        res.once('end',()=>resolve({status:res.statusCode!,body:Buffer.concat(chunks)}));res.once('error',reject);
+        res.once('end',()=>{try{const body=Buffer.concat(chunks);if(res.statusCode===200&&path!=='/regional/holder/redeem')decodeCanonicalRegionalJson(body);resolve({status:res.statusCode!,body});}catch(error){reject(error);}});res.once('error',reject);
       });req.once('error',reject);req.end(bytes);
     });
   }
