@@ -178,7 +178,7 @@ export class HttpsGateway {
   #request(req: IncomingMessage, res: ServerResponse): void {
     const record = this.#find(req.socket);
     if (!record || !record.tls || record.tls !== req.socket || record.tlsClosed || record.started || this.#closed || req.httpVersion !== '1.1') { req.socket.destroy(); return; }
-    if (req.rawHeaders.some((v, i) => i % 2 === 0 && v.toLowerCase() === 'authorization')) this.#source?.observe(record.raw.remoteAddress);
+    if ((this.#bodyLimit&&((req.url??'')==='/resource'||(req.url??'').endsWith('/redeem')))||req.rawHeaders.some((v, i) => i % 2 === 0 && v.toLowerCase() === 'authorization')) this.#source?.observe(record.raw.remoteAddress);
     record.started = true; res.shouldKeepAlive = false; res.sendDate = false;
     const now = this.#now();
     if (now === null || now >= record.headerDeadline || !this.#lease.checkActive()) { this.#destroy(record); return; }
@@ -192,7 +192,7 @@ export class HttpsGateway {
     const run = async (body?:Uint8Array) => {
       if (record.client.signal.aborted) return;
       await this.#coordinator.handle({ method: req.method ?? '', target: req.url ?? '', rawHeaders: req.rawHeaders,
-        hasBody,signal:record.client.signal,...(body?{body}:{}),remainingMs:()=>{
+        hasBody,remoteAddress:record.raw.remoteAddress,signal:record.client.signal,...(body?{body}:{}),remainingMs:()=>{
           const now=this.#now();return now===null||now>=record.requestDeadline?0:Number((record.requestDeadline-now)/1000000n);
         },checkActive: () => {
           const now = this.#now();

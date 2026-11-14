@@ -63,9 +63,9 @@ The gateway build includes `dist/regional-gateway.mjs`, exporting `prepareRegion
 - ARC: `{profile:"arc", bootstrap, endpoint, verify_key}`.
 - Holder: `{profile:"type2-holder", context_key, nonce_key}`.
 
-The factory validates bindings, prepares the profile verifier and native restricted Redis pool, connects the shared coordinator and existing fixed-origin transport, and creates the TLS adapter. It returns `{gateway, coordinator}`. The caller must already have completed fenced fresh-generation provisioning and must install the existing all-worker original-expiry lease grants before calling `gateway.listen`. The factory never enables a lease, chooses an upstream from a request, resets Redis or publishes a listener on import.
+The factory validates bindings, prepares the profile verifier and native restricted Redis pool, connects the shared coordinator and existing fixed-origin transport, and creates the TLS adapter. It returns `{gateway, coordinator, replay}`. The caller must already have completed fenced fresh-generation provisioning and must install the existing all-worker original-expiry lease grants before calling `gateway.listen`. The factory never enables a lease, chooses an upstream from a request, resets Redis or publishes a listener on import.
 
-Existing `serve`/controller/Compose startup remains baseline-only until K04 and Mihir's lifecycle wiring install this explicit path. Do not try to activate it with an HTTP header or arbitrary environment flag. The factory is not a replacement for the reset barrier. Runtime evidence/report extensions, shared-proxy observation for regional POSTs, comparison modes, admission and the product UI remain K04/M integration work.
+The production `serve` entry point now accepts the optional private regional startup branch described below and uses the existing worker lifecycle. The factory is not a replacement for the reset barrier. Controller/Compose provisioning, admission and the product UI still require integration by their service owner.
 
 ### Verified native integration scope
 
@@ -76,3 +76,36 @@ The client requests its challenge and nonce over TLS and signs using only its ow
 The same test executes the regional Lua through the actual restricted account and verifies both direct and administrator-loaded-script policy writes are denied. It exposed a Redis ACL integration issue that DRYRUN alone missed: EVALSHA's declared keys require read/write admission. The fix is a command-only EVALSHA selector over the declared keys, while real inner commands retain read-only policy permissions. No policy-write permission is added to HSET/SET. [Redis ACL selectors](https://redis.io/docs/latest/operate/oss_and_stack/management/security/acl/)
 
 The final runtime image contains only production bundles/dependencies. Its explicit payload allowlist includes the regional library; test helpers/credentials exist only in the isolated test build target or private stdin. There is no claim of full regional deployment until the remaining controller/service/client/UI work is connected and checked.
+
+## Runtime selection and comparison profiles
+
+The existing private stdin object `{listen_host,redis,tls}` remains valid and produces the unchanged baseline behavior. An optional `regional:{policy,auth}` selects exactly one immutable regional policy before workers fork. The public `PREPARE_RUN` payload remains unchanged, including empty gateway `role_config`. Public requests, headers and environment variables cannot select another profile. A policy/manifest/profile mismatch refuses preparation; it never falls back.
+
+`auth` is a strict JSON-safe object with exactly these fields (keys are 64-character lowercase hex in stdin/IPC):
+
+| Profile | Private auth fields | Public resource operation |
+| --- | --- | --- |
+| `arc` | `profile`, `bootstrap`, `endpoint:{host,port}`, `verify_key` | Canonical POST `/regional/arc/redeem` |
+| `type2-holder` | `profile`, `context_key`, `nonce_key` (distinct keys) | Existing holder challenge/nonce/redeem POST routes |
+| `type2-bearer` | `profile` | GET `/resource`, standard PrivateToken Authorization |
+| `ip` | `profile`, `source_key` | GET `/resource`, TCP-source budget |
+
+The library factory takes the same authentication choices with binary `Uint8Array` keys instead of hex strings; it also accepts an optional private `SourceObservation`. Startup values are copied before asynchronous preparation. Neither status nor report serializes startup objects. Operators must supply fresh per-run keys, complete `initializeRegionalStore` while fenced and use its restricted-account ACL, then retain the existing PREPARE/READY/ENABLE/HEARTBEAT/FENCE sequence. Both workers use the same policy and private keys. Fresh processes and fresh generation state remain mandatory for resets; do not run baseline fresh-store readiness after regional provisioning.
+
+The ordinary Type2 challenge is `regionalType2Challenge(regionalContext(policy))`; a baseline epoch challenge cannot authorize this profile. Standard bearer tokens remain transferable: a thief who redeems first can win. The separate holder profile mitigates token-only theft, not theft of the private signing key or a complete valid signed request.
+
+IP comparison uses a run-keyed, policy-scoped HMAC of the actual accepted TCP source. It normalizes mapped IPv4 addresses and ignores Forwarded/X-Forwarded-For values. No raw address or HMAC identifier enters reports. With the demo proxy this intentionally creates one shared budget for the five admitted clients: 25 accepted uses per fixed window. It is **not** five requests per person. The Lua claim validates method/route beforehand, atomically increments an exact-expiry counter only through 25, then returns 429. Invalid routes do not consume budget. Confirmed claims are never refunded after uncertain upstream delivery. Missing/corrupt state fences the generation and cannot recreate an allowance.
+
+### Aggregate evidence and its limits
+
+REPORT retains the existing version/schema and allowed fields. Regional runs add existing allowed counters `claims_successful`, `replays_rejected`, `requests_rejected`, `queue_rejected`, `transport_failures` inside `counters`; baseline runs omit these additions. Claims count confirmed Redis consumption even if the request deadline is lost immediately afterward. Rejections count attempted HTTP refusal responses; queue refusals are a subset. `transport_failures` counts an unavailable claim result, not every possible network failure. Redis `rpc_outcomes` conservatively records failed claim outcomes as uncertain, with actual timer expirations counted separately. No source tags, proof bodies or keys are exported. The profile/policy identity comes from the controller's own frozen startup policy and the ordinary run/config envelope, not a client declaration.
+
+`verification_ms` samples successful complete profile verification (including holder proof or ARC RPC as applicable), and counts non-success separately as failures. `authorization_ms` samples successful admission-through-claim only, excluding origin and response delivery; non-authorized requests count as failures. Challenge/nonce control requests do not produce a successful authorization sample. `snapshot_rpc_ms`/`claim_rpc_ms` sample completed RPCs, including ordinary refusals; failed RPCs contribute failure counts. Compare successful timings with their denominators, refusal counts and profile costs rather than treating unlike verification work as identical crypto benchmarks.
+
+Source observation now includes regional resource/redeem operations as well as the original Authorization observations. `origin_counts_available` stays false at the gateway. The controller must obtain settled before/after counters from the independent origin, check run/incarnation/generation and attribute them to each scenario phase. A theft claim requires attack-phase zero arrivals followed by owner-phase success; one total arrival alone cannot distinguish the thief winning. Missing admission, origin or integration evidence remains INCONCLUSIVE. Do not reuse baseline saved-report schemas to assert unimplemented regional scenarios.
+
+### Focused native validation
+
+The isolated integration command now checks both the earlier two-instance flow and three separate production `serve.mjs` runs. Each production run proves two distinct child OS workers, the shared TLS listener, restricted Redis enforcement, existing control responses and confirmed worker exit after FENCE. Tests cover IP 25/26 and concurrent exhaustion despite forged forwarding headers; Type2 challenge and copied-token races; holder token theft followed by owner success and cross-worker replay; wrong-profile routing; and state-loss fencing without live repair. Actual HTTP origin counters independently bound the accepted arrivals.
+
+These tests use genuine cryptographic blind issuance through a test-local issuer API and a counted private test origin. They do not prove the deployed voucher/entitlement cap, actual Rust service/client interoperability, portal controls, direct-origin network isolation, complete ARC quota/copy scenes, renewal or end-to-end product deployment. Those require the real controller/issuer/ARC/helper/Compose integrations and focused follow-up validation.

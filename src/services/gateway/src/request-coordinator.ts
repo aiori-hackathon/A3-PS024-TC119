@@ -10,7 +10,7 @@ import type { WorkerLease } from './worker-lease.ts';
 
 /** Trusted adapter view. checkActive enforces absolute transport deadlines even before delayed timers run. */
 export type RequestView = { method: string; target: string; rawHeaders: unknown; hasBody: boolean; signal: AbortSignal; checkActive?: () => boolean;
-  body?:Uint8Array;remainingMs?:()=>number };
+  body?:Uint8Array;remoteAddress?:string|undefined;remainingMs?:()=>number };
 export type CoordinatorResponse = HttpRejection | Extract<OriginResult, { kind: 'response' | 'upstream-error' }>;
 /** Resolve only after actual downstream write/abort cleanup. Never throw to request a second response. */
 export type ResponseSink = (response: CoordinatorResponse, signal: AbortSignal) => Promise<void>;

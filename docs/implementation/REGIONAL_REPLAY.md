@@ -40,7 +40,7 @@ All integrity/argument/type checks precede writes. Redis errors after a mutation
 
 `claim({kind:"regional-claim-candidate",spend_id,not_after_ms})` owns primitive values before awaiting. This is an internal structural contract, not a cryptographic receipt. `snapshot()` returns authoritative time for current regional policy. Bounded slots produce `busy` instead of creating an offline queue. Connect/command deadlines use the existing manifest limits, including monotonic checks after promise resolution. Loss, timeout, malformed reply or unsafe state latches closure, closes every connection and suppresses late successful results. The pool exposes an abort signal for future coordinator cancellation.
 
-The first expired-window request receives an ordinary refusal; later workers see the terminal shared clock. Nonce expiry/replay alone does not consume a previously unspent token. A successful Redis claim still requires current lease/cancellation/deadline checks before exactly one fixed-origin send. No controller/gateway runtime routing, actual ARC MAC verification, holder signature validation, five-use admission, IP-mode budget or new UI is enabled here.
+The first expired-window request receives an ordinary refusal; later workers see the terminal shared clock. Nonce expiry/replay alone does not consume a previously unspent token. A successful Redis claim still requires current lease/cancellation/deadline checks before exactly one fixed-origin send. The gateway now connects this pool to the shared profile coordinator; see [regional gateway runtime](REGIONAL_GATEWAY.md). Issuer admission, the actual ARC service and product controller/UI integration remain separate responsibilities.
 
 ## Checks
 
@@ -52,4 +52,10 @@ npm.cmd run check:g0
 
 The focused Redis harness creates one disposable pinned server with no host port, external network, persistence or host data mount. It checks genuine Lua initialization, concurrent single-spend, regional expiry inside a still-valid baseline epoch, nonce refusal without spending, guard corruption and ACL separation. A test-only source copy substitutes exactly one TIME expression to exercise observed expiry/rollback; no host clock is changed and no production test-clock option exists. It does not prove ARC cryptography or end-to-end origin behavior.
 
-Mihir can consume the shared initializer after contract review and before enabling a regional run. Preserve the baseline readiness order; do not weaken its two-key gate. K02-B still waits for accepted ARC public-parameter bootstrap, verified tag extraction and client-helper interfaces.
+Mihir can consume the shared initializer after contract review and before enabling a regional run. Preserve the baseline readiness order; do not weaken its two-key gate. The gateway consumes accepted ARC bootstrap and verified tag extraction through the authenticated private RPC client; actual Rust service/helper and deployed controller interoperability still require integration.
+
+## IP comparison claims
+
+The same guarded regional script now accepts the `ip` policy. Its fourth key is `tfr:ip-budget:<policy_digest>:<run-keyed-source-hmac>`, never a raw network address. A live record must be a canonical integer string in 1..25 with exactly the window-end-plus-guard absolute expiry. Missing records begin at one only while intact policy/clock guards admit the current window. At 25 the claim returns `LIMIT_REACHED` without increment; the HTTP coordinator maps this to 429. Malformed counts, wrong types, changed expiry or missing policy close access rather than reset an allowance. Token profiles retain their distinct `tfr:spent:` single-use keys and reject IP-only replies.
+
+The regional ACL additionally permits only this budget prefix, including the existing EVALSHA-only selector. It does not grant policy writes, DEL, INCR, EVAL or SCRIPT LOAD. The trusted initializer must load the current regional script hashes before workers start. Existing baseline script bytes/hashes and two-key initialization order are unchanged.

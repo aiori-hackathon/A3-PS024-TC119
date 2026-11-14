@@ -1,3 +1,4 @@
+import { validateRegionalStartup, type RegionalStartup } from './regional-startup.ts';
 import type { ResourceMeasurement, RpcOutcome } from '../../../contracts/lib/resources.ts';
 import type { SourceSummary } from './source-observation.ts';
 import type { Measurement } from '../../../contracts/lib/measurements.ts';
@@ -9,7 +10,7 @@ import type { GatewayTls } from './https-gateway.ts';
 import type { WorkerCloseReason, WorkerLeaseGrant } from './worker-lease.ts';
 import type { SupervisorWorker, WorkerFactory } from './gateway-supervisor.ts';
 
-export type WorkerConfiguration = { endpoint: RedisEndpoint; tls: GatewayTls; listen_host: string; listen_port: number };
+export type WorkerConfiguration = { endpoint: RedisEndpoint; tls: GatewayTls; listen_host: string; listen_port: number; regional?:RegionalStartup };
 const reasons = new Set(['operator-stop', 'test-cleanup', 'unsafe-state', 'lease-expired', 'dependency-lost',
   'clock-unsafe', 'process-exited', 'control-lost', 'configuration-mismatch']);
 
@@ -25,6 +26,8 @@ class ClusterWorker implements SupervisorWorker {
   #measurements: Measurement[] = [];
   #resources: ResourceMeasurement[] = [];
   #rpc: RpcOutcome[] = [];
+  #counters: Record<string,number>|undefined;
+  counters(){return this.#counters;}
   resources() { return this.#resources; }
   rpcOutcomes() { return this.#rpc; }
   #source: SourceSummary = { observations: 0, consistent: null, tag: null };
@@ -57,7 +60,7 @@ class ClusterWorker implements SupervisorWorker {
         if (m['kind'] === 'fault' && Object.keys(m).length === 2 && reasons.has(m['reason'] as string)) { fault(m['reason'] as WorkerCloseReason); return; }
         const pending = this.#pending;
         if (m['kind'] !== 'reply' || !pending || m['id'] !== pending.id || m['ok'] !== true ||
-          Object.keys(m).some(key => !['kind', 'id', 'ok', 'attempts', 'measurements', 'source', 'resources', 'rpc_outcomes'].includes(key))) { if (!this.#stopping) fault('unsafe-state'); return; }
+          Object.keys(m).some(key => !['kind', 'id', 'ok', 'attempts', 'measurements', 'source', 'resources', 'rpc_outcomes', 'counters'].includes(key))) { if (!this.#stopping) fault('unsafe-state'); return; }
         this.#pending = null; pending.cancel(); pending.resolve(m);
       });
     });
@@ -82,7 +85,7 @@ class ClusterWorker implements SupervisorWorker {
   async enable(grant: WorkerLeaseGrant): Promise<void> { await this.#call('ENABLE', { grant }); }
   async listen(): Promise<void> { await this.#call('LISTEN'); }
   async heartbeat(grant: WorkerLeaseGrant): Promise<void> { await this.#call('HEARTBEAT', { grant }); }
-  async attempts(): Promise<number> { const r = await this.#call('REPORT'); this.#measurements = r['measurements'] as Measurement[]; this.#source = r['source'] as SourceSummary; this.#resources = r['resources'] as ResourceMeasurement[]; this.#rpc = r['rpc_outcomes'] as RpcOutcome[]; return r['attempts'] as number; }
+  async attempts(): Promise<number> { const r = await this.#call('REPORT'); this.#measurements = r['measurements'] as Measurement[]; this.#source = r['source'] as SourceSummary; this.#resources = r['resources'] as ResourceMeasurement[]; this.#rpc = r['rpc_outcomes'] as RpcOutcome[]; this.#counters=r['counters'] as Record<string,number>|undefined; return r['attempts'] as number; }
   close(): Promise<void> {
     if (this.#drain) return this.#drain;
     let resolve!: () => void;
@@ -99,6 +102,8 @@ class ClusterWorker implements SupervisorWorker {
 /** Configure once before any fork. SCHED_NONE avoids the primary's unbounded round-robin accepted-socket queue. */
 export function clusterWorkerFactory(configuration: WorkerConfiguration): WorkerFactory {
   if (!cluster.isPrimary || Object.keys(cluster.workers ?? {}).length) throw Error('cluster-configuration-invalid');
+  configuration=structuredClone(configuration);
+  if(configuration.regional)configuration.regional=validateRegionalStartup(configuration.regional);
   cluster.schedulingPolicy = cluster.SCHED_NONE;
   cluster.setupPrimary({ exec: new URL('./worker-process.mjs', import.meta.url).pathname, silent: true, execArgv: [] });
   return async (_index, fault) => {

@@ -1,9 +1,8 @@
 import { randomBytes } from 'node:crypto';
 import { isIP } from 'node:net';
+import type { WorkerConfiguration } from './cluster-worker.ts';
 import { WorkerHost } from './worker-host.ts';
 import type { WorkerCloseReason, WorkerLeaseGrant } from './worker-lease.ts';
-import type { RedisEndpoint } from './redis-adapter.ts';
-import type { GatewayTls } from './https-gateway.ts';
 
 const incarnation = randomBytes(16).toString('hex');
 let host: WorkerHost | null = null, busy = false, stopping = false, listenHost = '', listenPort = 443;
@@ -38,18 +37,18 @@ process.on('message', (raw: unknown) => {
     try {
       if (message['command'] === 'PREPARE') {
         if (host) throw Error();
-        const config = message['configuration'] as { endpoint: RedisEndpoint; tls: GatewayTls; listen_host: string; listen_port: number };
+        const config = message['configuration'] as WorkerConfiguration;
         if (!config || !isIP(config.listen_host) || !Number.isInteger(config.listen_port) || config.listen_port < 1 || config.listen_port > 65535 ||
           typeof message['supervisor'] !== 'string') throw Error();
         listenHost = config.listen_host; listenPort = config.listen_port;
-        host = WorkerHost.prepare(message['manifest'], incarnation, message['supervisor'], config.endpoint, config.tls, fault, message['source_key'] as string);
+        host = WorkerHost.prepare(message['manifest'], incarnation, message['supervisor'], config.endpoint, config.tls, fault, message['source_key'] as string, config.regional);
         await host.ready();
       } else if (!host) throw Error();
       else if (message['command'] === 'ENABLE') { if (!host.enable(message['grant'] as WorkerLeaseGrant)) throw Error(); }
       else if (message['command'] === 'HEARTBEAT') { if (!host.heartbeat(message['grant'] as WorkerLeaseGrant)) throw Error(); }
       else if (message['command'] === 'LISTEN') await host.listen(listenHost, listenPort);
       else if (message['command'] === 'REPORT') {
-        send({ kind: 'reply', id, ok: true, attempts: host.attempts, measurements: host.measurements, source: host.source, resources: host.resources, rpc_outcomes: host.rpcOutcomes }); return;
+        send({ kind: 'reply', id, ok: true, attempts: host.attempts, measurements: host.measurements, source: host.source, resources: host.resources, rpc_outcomes: host.rpcOutcomes, ...(host.counters?{counters:host.counters}:{}) }); return;
       } else throw Error();
       if (stopping) return;
       send({ kind: 'reply', id, ok: true });

@@ -1,3 +1,7 @@
+import { prepareRegionalGateway } from './regional-gateway.ts';
+import { validateRegionalStartup, type RegionalStartup } from './regional-startup.ts';
+import type { RegionalCoordinator } from './regional-coordinator.ts';
+import type { RegionalReplayStore } from './regional-replay-store.ts';
 import { ResourceProbe } from '../../../contracts/lib/resources.ts';
 import { SourceObservation } from './source-observation.ts';
 import { ContractError, validateManifest, type Manifest } from '../../../contracts/lib/index.ts';
@@ -13,11 +17,11 @@ export class WorkerHost {
   readonly lease: WorkerLease;
   readonly #resources = new ResourceProbe('gateway-worker');
   get resources() { return [this.#resources.summary()]; }
-  get rpcOutcomes() { return this.#store?.rpcOutcomes ?? []; }
+  get rpcOutcomes() { return this.#store&&'rpcOutcomes' in this.#store?this.#store.rpcOutcomes:[]; }
   readonly #manifest: Manifest;
-  #store: ReplayStore | null = null;
+  #store: ReplayStore | RegionalReplayStore | null = null;
   #origin: FixedOrigin | null = null;
-  #coordinator: RequestCoordinator | null = null;
+  #coordinator: RequestCoordinator | RegionalCoordinator | null = null;
   #https: HttpsGateway | null = null;
   #preparation: Promise<void> = Promise.resolve();
   #drain: Promise<void> | null = null;
@@ -33,14 +37,26 @@ export class WorkerHost {
     });
   }
   static prepare(manifest: unknown, worker: string, supervisor: string, endpoint: RedisEndpoint, tls: GatewayTls,
-    onFault: (reason: WorkerCloseReason) => void, sourceKey?: string): WorkerHost {
+    onFault: (reason: WorkerCloseReason) => void, sourceKey?: string, regional?: RegionalStartup): WorkerHost {
     const host = new WorkerHost(validateManifest(structuredClone(manifest)), worker, supervisor, onFault);
     if (sourceKey) host.#source = new SourceObservation(sourceKey);
-    host.#preparation = host.#prepare(endpoint, tls);
+    host.#preparation = host.#prepare({...endpoint}, {...tls}, regional?validateRegionalStartup(regional):undefined);
     host.#preparation.catch(() => { host.lease.requestClose('dependency-lost'); });
     return host;
   }
-  async #prepare(endpoint: RedisEndpoint, tls: GatewayTls): Promise<void> {
+  async #prepare(endpoint: RedisEndpoint, tls: GatewayTls, regional?:RegionalStartup): Promise<void> {
+    if(regional){
+      const a=regional.auth,keys:Buffer[]=[];
+      const key=(text:string)=>{const bytes=Buffer.from(text,'hex');keys.push(bytes);return bytes;};
+      try{
+        const auth=a.profile==='arc'?{...a,verify_key:key(a.verify_key)}:a.profile==='type2-holder'?{...a,context_key:key(a.context_key),nonce_key:key(a.nonce_key)}:
+          a.profile==='ip'?{...a,source_key:key(a.source_key)}:a;
+        const prepared=await prepareRegionalGateway(this.#manifest,regional.policy,this.lease,{redis:endpoint,tls,auth,...(this.#source?{source:this.#source}:{})});
+        this.#store=prepared.replay;this.#coordinator=prepared.coordinator;this.#https=prepared.gateway;
+        if(this.#closed)throw new ContractError('worker-closed');
+        return;
+      }finally{keys.forEach(bytes=>bytes.fill(0));}
+    }
     this.#store = await openRedisReplayStore(this.#manifest, endpoint, reason => this.lease.requestClose(reason));
     if (this.#closed) throw new ContractError('worker-closed');
     this.#origin = FixedOrigin.prepare(this.#manifest, this.lease);
@@ -59,7 +75,8 @@ export class WorkerHost {
     await this.#https.listen(host, port);
     if (!this.lease.checkActive() || this.#closed) throw new ContractError('worker-not-enabled');
   }
-  get measurements() { return [...(this.#coordinator?.measurements ?? []), ...(this.#store?.measurements ?? [])]; }
+  get counters(){return this.#coordinator&&'counters' in this.#coordinator?this.#coordinator.counters:undefined;}
+  get measurements() { return [...(this.#coordinator?.measurements ?? []), ...(this.#store&&'measurements' in this.#store?this.#store.measurements:[])]; }
   get attempts(): number { return this.#coordinator?.verificationAttempts ?? 0; }
   close(): Promise<void> {
     if (this.#drain) return this.#drain;

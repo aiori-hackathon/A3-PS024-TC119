@@ -22,6 +22,6 @@ try{
   let ready=false;
   for(let n=0;n<20;n++){try{ready=docker(['exec',id,'redis-cli','PING'])==='PONG';}catch{/* bounded test startup */}if(ready)break;await delay(100);}
   if(!ready)throw Error('Regional test Redis startup failed');
-  docker(['run','--rm','-i','--network',`container:${id}`,'--user','node','--read-only','--cap-drop','ALL',
+  docker(['run','--rm','-i','--network',`container:${id}`,'--user','node','--read-only','--tmpfs','/run/ps024:rw,noexec,nosuid,mode=0700,uid=1000,gid=1000,size=1m','--cap-drop','ALL',
     '--security-opt','no-new-privileges','--memory','256m','--pids-limit','64','--log-driver','none',image],true,JSON.stringify(tls));
 }finally{if(id)docker(['rm','-f',id]);}

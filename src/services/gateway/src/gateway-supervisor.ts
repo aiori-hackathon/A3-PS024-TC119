@@ -17,6 +17,7 @@ export interface SupervisorWorker {
   source?(): SourceSummary;
   resources?(): ResourceMeasurement[];
   rpcOutcomes?(): RpcOutcome[];
+  counters?(): Record<string,number>|undefined;
   close(): Promise<void>;
 }
 export type WorkerFactory = (index: number, fault: (reason: WorkerCloseReason) => void) => Promise<SupervisorWorker>;
@@ -135,8 +136,20 @@ export class GatewaySupervisor {
       if (command === 'REPORT') {
         const attempts = await Promise.all(this.#workers.map(worker => worker.attempts()));
         if (this.#closed || attempts.some(n => !Number.isSafeInteger(n) || n < 0) || !Number.isSafeInteger(attempts.reduce((a, b) => a + b, 0))) throw Error();
+        const regionalCounters=this.#workers.map(w=>w.counters?.());
+        const extra:Record<string,number>={};
+        if(regionalCounters.some(c=>c!==undefined)){
+          if(regionalCounters.some(c=>c===undefined))throw Error();
+          for(const counters of regionalCounters){
+            if(!counters||Object.keys(counters).sort().join(',')!=='claims_successful,queue_rejected,replays_rejected,requests_rejected,transport_failures')throw Error();
+            for(const [key,value] of Object.entries(counters)){
+              if(!Number.isSafeInteger(value)||value<0)throw Error();extra[key]=(extra[key]??0)+value;
+              if(!Number.isSafeInteger(extra[key]))throw Error();
+            }
+          }
+        }
         const source = combineSources(this.#workers.map(w => w.source?.() ?? { observations: 0, consistent: null, tag: null }));
-        return this.#reply(id, true, 'REPORT', { counters: { observations: source.observations, verification_attempts: attempts.reduce((a, b) => a + b, 0) },
+        return this.#reply(id, true, 'REPORT', { counters: { ...extra, observations: source.observations, verification_attempts: attempts.reduce((a, b) => a + b, 0) },
           resources: [this.#resources.summary(), ...this.#workers.flatMap((w,i) => (w.resources?.() ?? []).map(r => ({...r, worker_index:i})))],
           rpc_outcomes: ['snapshot','claim'].map(operation => { const rows = this.#workers.flatMap(w => w.rpcOutcomes?.() ?? []).filter(r => r.operation === operation); return { operation, failures: rows.reduce((n,r)=>n+r.failures,0), timeouts: rows.reduce((n,r)=>n+r.timeouts,0), uncertain: rows.reduce((n,r)=>n+r.uncertain,0) }; }),
           measurements: mergeMeasurements(this.#workers.map(w => w.measurements?.() ?? [])), same_source_observed: source.same, origin_counts_available: false,

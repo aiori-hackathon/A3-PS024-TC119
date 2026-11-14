@@ -44,11 +44,18 @@ test('regional coordinator verifies, refreshes authoritative time, consumes once
     assert.equal((await f.run())?.status,200);
     assert.deepEqual(f.events,['snapshot','verify','snapshot','consume','claim','origin']);
     assert.equal((await f.run())?.status,403);assert.equal(f.counts(),1);
+    assert.deepEqual(f.coordinator.counters,{claims_successful:1,replays_rejected:1,requests_rejected:1,queue_rejected:0,transport_failures:0});
+    const metrics=f.coordinator.measurements;
+    assert.equal(metrics.find(m=>m.metric==='verification_ms')!.count,2);
+    assert.equal(metrics.find(m=>m.metric==='authorization_ms')!.count,1);
+    assert.equal(metrics.find(m=>m.metric==='authorization_ms')!.failures,1);
   }finally{await f.coordinator.close();}
 });
 test('invalid proof and wrong route/authority/JSON consume no allowance; valid owner request remains usable',async()=>{
   const f=setup();try{
     f.reject(true);assert.equal((await f.run())?.status,403);assert.equal(f.spent.size,0);
+    assert.equal(f.coordinator.measurements.find(m=>m.metric==='verification_ms')!.count,0);
+    assert.equal(f.coordinator.measurements.find(m=>m.metric==='verification_ms')!.failures,1);
     assert.equal((await f.run({target:'/resource',method:'GET'}))?.status,400);
     assert.equal((await f.run({body:Buffer.from('{}')}))?.status,400);
     assert.equal((await f.run({rawHeaders:['Host','attacker.example']}))?.status,400);

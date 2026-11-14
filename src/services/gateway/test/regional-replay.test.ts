@@ -101,6 +101,8 @@ test('transport uncertainty is terminal, bounded and never retried',async()=>{
   assert.deepEqual(await store.claim(candidate()),{kind:'unavailable'});
   assert.deepEqual(faults,['dependency-lost']);assert.equal(c.calls.length,before+1);assert.equal(c.closed,1);
   assert.deepEqual(await store.claim(candidate()),{kind:'unavailable'});assert.equal(c.calls.length,before+1);
+  assert.deepEqual(store.rpcOutcomes.find(r=>r.operation==='claim'),{operation:'claim',failures:1,timeouts:1,uncertain:1});
+  const metric=store.measurements.find(m=>m.metric==='claim_rpc_ms')!;assert.equal(metric.count,0);assert.equal(metric.failures,1);
 });
 
 test('readiness rejects altered policy, missing script and duplicate connections without repair',async()=>{
