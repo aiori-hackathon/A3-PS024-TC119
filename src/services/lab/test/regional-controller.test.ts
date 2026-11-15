@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { existsSync, mkdirSync, mkdtempSync, rmSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { EventEmitter } from 'node:events';
@@ -9,6 +9,7 @@ import type { ChildProcess } from 'node:child_process';
 import { DockerAdapters, DockerProject, SERVICE_FOR_ROLE, type DockerCli, type RunResult } from '../src/controller/docker.ts';
 import { RegionalLab, regionalEvidenceState, arcLeaseControl, ArcProcess, settleGatewaySnapshot, type GatewaySnapshot } from '../src/controller/regional-runtime.ts';
 import type { RoleLink } from '../src/controller/ports.ts';
+import { acquireProjectLock } from '../src/controller/lock.ts';
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
@@ -112,6 +113,24 @@ function fixture(t: { after: (cleanup: () => void) => void }) {
   const lab = new RegionalLab(root, { docker, prepareImages: async () => {} });
   return { root, docker, lab, lock: join(root, '.runtime', 'project.lock') };
 }
+
+test('a held project lock reports blocked startup without changing ownership or touching Docker', async t => {
+  const { docker, lab, lock } = fixture(t);
+  const owner = acquireProjectLock(lock);
+  const original = readFileSync(lock, 'utf8');
+  t.after(() => owner.release());
+  const result = await lab.execute({action:'start_run',profile:'type2-bearer'});
+  assert.equal(result.outcome, 'blocked');
+  assert.match(result.message, /existing controller lock/);
+  assert.equal(lab.status().state, 'idle');
+  assert.equal(lab.status().revision, 0);
+  assert.equal(lab.status().profile, null);
+  assert.equal(lab.status().manualEvents.at(-1).evidence, 'not-started');
+  assert.equal(readFileSync(lock, 'utf8'), original);
+  assert.equal(docker.upCalls, 0);
+  assert.equal(docker.spawned, 0);
+  assert.equal(docker.removedRedis, 0);
+});
 
 test('close drains delayed Compose and late resources before releasing ownership, then allows a fresh experiment', async t => {
   const { docker, lab, lock } = fixture(t);

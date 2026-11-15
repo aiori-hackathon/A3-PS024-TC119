@@ -13,7 +13,7 @@ import { DockerGatewayLauncher } from './gateway-docker.ts';
 import { CleanupScope, ScopeBarrier, stopRoles, discardRedis } from './scope.ts';
 import { LabRun, type RegionalRunHooks } from './run.ts';
 import { discovery, newId, request } from './envelope.ts';
-import { acquireProjectLock, type ProjectLock } from './lock.ts';
+import { acquireProjectLock, LockHeldError, type ProjectLock } from './lock.ts';
 import { DEMO_AUDIT_MARKER, DEMO_AUDIT_PATH } from '../../../../contracts/lib/demo-audit.ts';
 
 const wait = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
@@ -250,7 +250,13 @@ export class RegionalLab {
         : `Client ${command.clientId} request results and independent origin evidence`,result);
       if (command.action !== 'acquire') result.message = `Client ${command.clientId}: ${result.attempts} sent, ${result.accepted} accepted, ${result.denied} refused. Origin arrivals: ${result.originArrivals ?? 'unconfirmed'}. Evidence: ${result.evidenceState}.`;
       return { ...result, status: this.status() };
-    } catch {
+    } catch (error) {
+      if (error instanceof LockHeldError && !this.#lock && !this.#scope && !this.#run) {
+        this.#state = 'idle';
+        const message = 'Demo startup blocked by an existing controller lock. Stop the other controller; if it has exited, fence the previous services before clearing the abandoned lock.';
+        this.#manualEvent(message, {outcome:'blocked',evidenceState:'not-started'});
+        return {outcome:'blocked',message,status:this.status()};
+      }
       if (['start_run','reset_run','acquire','access','send_requests'].includes(command.action)) this.#manualEvent(
         'Operation interrupted; allowance may already be consumed',{outcome:'uncertain',evidenceState:'incomplete'});
       if (!this.#manualSession || Date.now() < Date.parse(this.#manualSession.endsAt)) this.#manualSession = null;

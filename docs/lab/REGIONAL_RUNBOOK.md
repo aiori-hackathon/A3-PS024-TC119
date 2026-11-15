@@ -79,6 +79,8 @@ docker compose -f infra/compose.yaml --profile regional down --volumes --remove-
 
 If the controller reports `shutdown-unconfirmed`, retain its lock and replay state. Restore Docker access, inspect the exact recorded container identities and use the fence command to confirm their process trees have exited. Inspect the lock owner and confirm that controller has exited before recovering an abandoned lock. An absent UI or stale lock timestamp alone cannot establish safe reset. Preserve unresolved state for diagnosis whenever exit cannot be confirmed.
 
+If Start demo reports `Demo startup blocked by an existing controller lock`, no new generation has started. A previous controller may still own the project, or an abrupt process exit may have left `.runtime/project.lock` behind. Read its PID and check the process owner first. Stop a live owning controller normally. If that owner has exited, run the fence command and require every reported role, including ARC when present, to be confirmed fenced. Recheck that the lock has not changed before deliberately removing only the abandoned lock file. Then retry Start demo. Do not delete the lock merely because the page says Idle; startup refusal intentionally leaves another controller's services and lock untouched.
+
 ARC renewals carry only a strictly increasing private sequence. Its receiver owns the 3000ms monotonic lease, and the controller accepts ACKs within 1500ms. Expiry is terminal. The guarantee is measured from the last accepted heartbeat, including any delayed in-flight heartbeat accepted after controller death. Policy UTC windows and observed clock-regression checks still apply. Gateway worker grants keep their shared-OS monotonic original-expiry contract.
 
 ## Human rehearsal checklist
