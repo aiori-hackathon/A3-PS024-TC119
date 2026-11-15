@@ -2,6 +2,47 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
+test('theft controls prepare explicitly, repeat without starting services, and disable at exhaustion', async () => {
+  const elements=new Map(), commands=[];
+  const el=id=>{
+    if(!elements.has(id))elements.set(id,{value:'A',textContent:'',handlers:{},append(){},replaceChildren(){},addEventListener(event,fn){this.handlers[event]=fn;}});
+    return elements.get(id);
+  };
+  const document={getElementById:el,createElement:()=>({append(){}}),querySelector:()=>({value:'type2-holder'})};
+  let current={mode:'live',state:'idle',revision:0};
+  const fetch=async(path,init)=>{
+    if(path==='/api/status')return {ok:true,json:async()=>current};
+    if(path==='/api/command'){
+      const command=JSON.parse(init.body);commands.push(command);
+      if(command.action==='prepare_theft_demo')current={...current,state:'active',profile:'type2-holder',revision:1,
+        window:{label:'Five-minute manual allowance',endsAt:new Date(Date.now()+300000).toISOString()},
+        theftDemo:{attemptsUsed:0,attemptsRemaining:5},clients:[{clientId:'A',allowanceAcquired:true}]};
+      else if(command.action==='run_theft_demo')current={...current,theftDemo:{attemptsUsed:current.theftDemo.attemptsUsed+1,attemptsRemaining:current.theftDemo.attemptsRemaining-1}};
+      else current={mode:'live',state:'idle',revision:2};
+      return {ok:true,json:async()=>({operationId:'c'.repeat(48)})};
+    }
+    return {ok:true,json:async()=>({state:'complete',result:{status:current}})};
+  };
+  const AsyncFunction=Object.getPrototypeOf(async function(){}).constructor;
+  await new AsyncFunction('document','fetch','setInterval','setTimeout',readFileSync(new URL('../static/app.js',import.meta.url),'utf8'))(
+    document,fetch,()=>{},fn=>queueMicrotask(fn));
+  assert.equal(el('theft').disabled,true);
+  await el('prepare-theft').handlers.click();
+  assert.deepEqual(commands[0],{action:'prepare_theft_demo',revision:0});
+  assert.equal(el('prepare-theft').disabled,true);
+  assert.equal(el('theft').disabled,false);
+  assert.equal(el('access').disabled,true,'manual access cannot spend the reserved test inventory');
+  const end=current.window.endsAt;
+  for(let i=0;i<5;i++)await el('theft').handlers.click();
+  assert.equal(current.window.endsAt,end);
+  assert.equal(commands.filter(command=>command.action==='prepare_theft_demo').length,1);
+  assert.equal(el('theft').disabled,true);
+  assert.match(el('theft-session').textContent,/0\/5/);
+  assert.equal(el('reset').disabled,false);
+  await el('reset').handlers.click();
+  assert.equal(el('prepare-theft').disabled,false);
+});
+
 // Execute the actual UI module with a minimal DOM and the public command transport.
 test('expired allowance retains evidence, disables access and permits explicit renewal or stop', async () => {
   const elements = new Map();

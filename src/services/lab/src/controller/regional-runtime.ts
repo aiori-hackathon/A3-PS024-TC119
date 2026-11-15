@@ -139,6 +139,7 @@ export class RegionalLab {
   #comparison: Json[] = [];
   #theft: Json | null = null;
   #theftEvents: Json[] = [];
+  #theftDemo: { attemptsUsed: number } | null = null;
   #manualEvents: Json[] = [];
   constructor(root: string, options: { docker?: DockerCli; prepareImages?: () => Promise<void> } = {}) {
     this.#root = root;
@@ -173,6 +174,8 @@ export class RegionalLab {
       comparison: this.#comparison,
       ...(this.#theft ? { theftScene: this.#theft } : {}),
       theftEvents: this.#theftEvents,
+      theftDemo: this.#theftDemo ? { attemptsUsed: this.#theftDemo.attemptsUsed,
+        attemptsRemaining: 5 - this.#theftDemo.attemptsUsed } : null,
       manualEvents: this.#manualEvents,
     };
   }
@@ -228,6 +231,9 @@ export class RegionalLab {
       }
       if (command.action === 'run_comparison') return await this.#compare();
       if (command.action === 'run_theft_scene') return await this.#theftScene();
+      if (command.action === 'prepare_theft_demo') return await this.#prepareTheftDemo();
+      if (command.action === 'run_theft_demo') return await this.#theftScene(true);
+      if (this.#theftDemo) return {outcome:'refused',message:'Use Run theft test or Stop demo while the theft session is prepared.',status:this.status()};
       if (!['acquire', 'access', 'send_requests'].includes(command.action) || !CLIENT_IDS.includes(command.clientId)) throw Error('command-invalid');
       if (command.action === 'acquire' && this.#profile === 'ip') {
         this.#manualEvent('IP profile uses the shared budget without credential issuance',{outcome:'not-required',evidenceState:'not-applicable'});
@@ -676,8 +682,31 @@ export class RegionalLab {
     }
     return { outcome: 'comparison-complete', status: this.status() };
   }
-  async #theftScene(): Promise<Json> {
+  async #prepareTheftDemo(): Promise<Json> {
+    if (this.#run) return {outcome:'refused',message:'Stop the current demo before preparing a theft session.',status:this.status()};
     this.#manualSession = null;
+    await this.#resetGeneration();
+    this.#theft = null;
+    this.#theftEvents = [];
+    await this.#start('type2-holder',REGIONAL.manual_window_ms,true,10);
+    const acquisition = await this.#action('A','acquire');
+    this.#theftEvents.push({at:new Date().toISOString(),step:'Prepared session: Client A acquires ten blind-issued tokens, each with a fresh holder key',
+      outcome:acquisition.outcome,evidence:acquisition.evidenceState});
+    if (acquisition.outcome !== 'acquired' || acquisition.evidenceState !== 'verified') {
+      await this.#resetGeneration();
+      return {outcome:'uncertain',message:'Theft preparation was not confirmed. No test was run and no allowance was refunded.',status:this.status()};
+    }
+    this.#theftDemo = {attemptsUsed:0};
+    return {outcome:'theft-ready',message:'Theft demo ready: five tests using fresh token pairs within this five-minute window. Services remain running between tests.',status:this.status()};
+  }
+  async #theftScene(reusable = false): Promise<Json> {
+    if (reusable && (!this.#theftDemo || this.#state !== 'active' || this.#run?.phase !== 'enabled'
+      || !this.#manualSession || Date.now() >= Date.parse(this.#manualSession.endsAt))) {
+      return {outcome:'refused',message:'Prepare a theft demo first. An expired window requires explicit preparation of a new session.',status:this.status()};
+    }
+    if (reusable && this.#theftDemo!.attemptsUsed >= 5) return {
+      outcome:'refused',message:'All five fresh token pairs are used. Stop demo, then explicitly prepare a new session.',status:this.status()};
+    if (!reusable) this.#manualSession = null;
     this.#theft = null;
     this.#theftEvents = [];
     const event = (step: string, result?: Json) => this.#theftEvents.push({
@@ -685,14 +714,22 @@ export class RegionalLab {
       originArrivals: result?.originArrivals ?? null, accepted: result?.accepted ?? null, refused: result?.denied ?? null,
       claims: result?.gatewayCounters?.claims_successful ?? null, evidence: result?.evidenceState ?? 'pending',
     });
-    event('Preparing a fresh holder-bound Type2 experiment');
-    await this.#resetGeneration();
-    // This scene needs exactly one owner token and one fresh race token.
-    await this.#start('type2-holder',REGIONAL.window_ms,false,2);
-    event('Client requests two blind-issued tokens with a fresh holder key for each token');
-    const acquisition = await this.#action('A', 'acquire');
-    event(acquisition.outcome==='acquired' ? 'Issuer response finalized; holder-bound tokens acquired'
-      : 'Token acquisition did not complete; inspect the uncertain/refused outcome', acquisition);
+    let acquisition: Json;
+    if (reusable) {
+      this.#theftDemo!.attemptsUsed++;
+      event(`Test ${this.#theftDemo!.attemptsUsed}/5 uses a fresh pair from the ten tokens already issued; services and allowance window are unchanged`,
+        {outcome:'ready',evidenceState:'issuance-previously-confirmed'});
+      acquisition = {outcome:'acquired',evidenceState:'verified'};
+    } else {
+      event('Preparing a fresh holder-bound Type2 experiment');
+      await this.#resetGeneration();
+      // This scene needs exactly one owner token and one fresh race token.
+      await this.#start('type2-holder',REGIONAL.window_ms,false,2);
+      event('Client requests two blind-issued tokens with a fresh holder key for each token');
+      acquisition = await this.#action('A', 'acquire');
+      event(acquisition.outcome==='acquired' ? 'Issuer response finalized; holder-bound tokens acquired'
+        : 'Token acquisition did not complete; inspect the uncertain/refused outcome', acquisition);
+    }
     if (acquisition.outcome!=='acquired' || acquisition.evidenceState!=='verified') {
       this.#theft={state:'INCONCLUSIVE',holderOutcome:'not tested: acquisition unavailable',
         attackOriginArrivals:null,ownerOriginArrivals:null,raceOriginArrivals:null,workerVerificationAttempts:[]};
@@ -721,8 +758,10 @@ export class RegionalLab {
       raceScope: 'Cross-worker duplicate requests', workerVerificationAttempts: workers,
       holderOutcome: owner.outcome, attackOriginArrivals: attack.originArrivals, ownerOriginArrivals: owner.originArrivals,
       raceOriginArrivals: race.originArrivals };
-    await this.#resetGeneration();
-    return { outcome: 'theft-complete', status: this.status() };
+    if (!reusable || this.#theft.state !== 'PASS') await this.#resetGeneration();
+    return { outcome: 'theft-complete', message: reusable && this.#theftDemo
+      ? `Theft test ${this.#theftDemo.attemptsUsed}/5 passed. Services remain running; ${5-this.#theftDemo.attemptsUsed} fresh pairs remain in this window.`
+      : undefined, status: this.status() };
   }
   close(): Promise<void> {
     if (this.#closing) return this.#closing;
@@ -743,6 +782,7 @@ export class RegionalLab {
     return pending;
   }
   #resetGeneration(): Promise<void> {
+    this.#theftDemo = null;
     if (this.#resetting) return this.#resetting;
     if (this.#terminalUncertain) { this.#state = 'error'; return Promise.reject(Error('shutdown-unconfirmed')); }
     if (!this.#scope && !this.#run && !this.#lock) {

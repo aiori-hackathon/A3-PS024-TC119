@@ -24,7 +24,7 @@ function validCommand(value) {
   if (value.action === 'start_run') return profiles.includes(value.profile) && (keys === 'action,profile'
     || (keys === 'action,limit,profile' && Number.isSafeInteger(value.limit) && value.limit >= 1
       && value.limit <= (value.profile === 'ip' ? regional.max_ip_quota : regional.max_quota)));
-  if (['reset_run', 'run_comparison', 'run_theft_scene'].includes(value.action)) return keys === 'action,revision' && Number.isSafeInteger(value.revision) && value.revision >= 0;
+  if (['reset_run', 'run_comparison', 'run_theft_scene', 'prepare_theft_demo', 'run_theft_demo'].includes(value.action)) return keys === 'action,revision' && Number.isSafeInteger(value.revision) && value.revision >= 0;
   if (value.action === 'send_requests') return keys === 'action,clientId,count,revision' && clientIds.includes(value.clientId)
     && Number.isSafeInteger(value.revision) && value.revision >= 0 && Number.isSafeInteger(value.count)
     && value.count >= 1 && value.count <= regional.max_batch_requests;

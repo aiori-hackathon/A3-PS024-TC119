@@ -62,9 +62,13 @@ Exact command shapes are enforced. Clients are `A` through `E`. Revisions are no
 { action: 'access', clientId: 'A', revision: 1 }
 { action: 'run_comparison', revision: 1 }
 { action: 'run_theft_scene', revision: 1 }
+{ action: 'prepare_theft_demo', revision: 1 }
+{ action: 'run_theft_demo', revision: 2 }
 ```
 
 Execution resolves to `{ outcome, message?, status?, authorizedAccess? }`. Common outcome labels include `started`, `reset`, `delivered`, `refused`, `uncertain`, `comparison-complete`, `theft-complete` and `unavailable`. The backend includes `authorizedAccess: { clientId, text }` only when that access actually delivered the protected resource. The portal exposes this field only for an `access` command. Browser presentation uses text nodes. Resource text clears when the run revision changes and identifies previous delivery.
+
+The live theft buttons use `prepare_theft_demo` once, then `run_theft_demo` up to five times within the same five-minute window. Preparation issues ten tokens to A once with independent holder keys. Each test spends a fresh pair, retains real per-attempt evidence and keeps services running on PASS. `status.theftDemo` exposes only attempts used/remaining. Stop, expiry or an unconfirmed test closes the session. Repetition cannot reissue tokens or renew the window. Manual acquisition/access is refused while this inventory is reserved. `run_theft_scene` retains its original one-shot start/test/cleanup behavior for validation.
 
 ## HTTP boundary
 

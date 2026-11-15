@@ -29,6 +29,7 @@ function updateControls() {
   const ready = live && !busy;
   const active = ready && status?.state === 'active' && (!status.window?.endsAt || Date.now() < Date.parse(status.window.endsAt));
   const ip = status?.profile === 'ip';
+  const theftPrepared = !!status?.theftDemo;
   const acquired = status?.clients?.find(item => item.clientId === $('client').value)?.allowanceAcquired === true;
   $('ip-limit').disabled = !ready || !['idle', 'expired'].includes(status?.state);
   $('client-limit').disabled = $('ip-limit').disabled;
@@ -36,16 +37,21 @@ function updateControls() {
   $('start').disabled = !ready || !['idle', 'expired'].includes(status?.state);
   $('start').textContent = status?.state === 'expired' ? 'Start new window' : 'Start demo';
   $('reset').disabled = !ready || !['active', 'expired', 'error', 'uncertain'].includes(status?.state);
-  $('client').disabled = !active;
-  $('acquire').disabled = !active || ip || acquired;
+  $('client').disabled = !active || theftPrepared;
+  $('acquire').disabled = !active || ip || acquired || theftPrepared;
   $('acquire').textContent = ip ? 'No tokens needed (IP)' : acquired ? 'Allowance acquired' : 'Acquire allowance';
-  $('access').disabled = !active || (!ip && !acquired);
+  $('access').disabled = !active || (!ip && !acquired) || theftPrepared;
   $('request-count').disabled = !ready;
   $('send-requests').disabled = $('access').disabled;
   setText('acquire-help', ip ? 'IP needs no acquisition. Every client spends the same shared IP budget.'
     : acquired ? 'Existing credentials are ready. Acquisition cannot refill this window.' : 'Acquire allowance once for this client before sending requests.');
   $('compare').disabled = !ready || !['idle', 'active', 'expired'].includes(status?.state);
-  $('theft').disabled = !ready || !['idle', 'active', 'expired'].includes(status?.state);
+  $('prepare-theft').disabled = !ready || !['idle', 'expired'].includes(status?.state);
+  $('theft').disabled = !active || !theftPrepared || status.theftDemo.attemptsRemaining < 1;
+  $('theft').textContent = theftPrepared && status.theftDemo.attemptsUsed > 0 ? 'Run theft test again' : 'Run theft test';
+  setText('theft-session', theftPrepared
+    ? `${status.theftDemo.attemptsRemaining}/5 fresh token pairs remaining. Services stay running; the original allowance countdown continues.`
+    : 'Prepare once, then run up to five tests within a five-minute window. Each test uses fresh tokens and holder keys. Stop demo closes the session.');
 }
 function renderWindow() {
   const end = Date.parse(status?.window?.endsAt ?? '');
@@ -217,7 +223,8 @@ $('access').addEventListener('click', () => execute({ action: 'access', clientId
 $('send-requests').addEventListener('click', () => execute({ action: 'send_requests', clientId: $('client').value,
   count: Number($('request-count').value), revision: status.revision }, `Sending requests from Client ${$('client').value}…`));
 $('compare').addEventListener('click', () => execute({ action: 'run_comparison', revision: status.revision }, 'Running the controlled comparison…'));
-$('theft').addEventListener('click', () => execute({ action: 'run_theft_scene', revision: status.revision }, 'Running the separate theft scene…'));
+$('prepare-theft').addEventListener('click', () => execute({ action: 'prepare_theft_demo', revision: status.revision }, 'Preparing theft services and issuing fresh tokens…'));
+$('theft').addEventListener('click', () => execute({ action: 'run_theft_demo', revision: status.revision }, 'Testing a fresh token pair on the running services…'));
 await loadBenchmark();
 await loadStatus();
 setInterval(loadStatus, 3000);

@@ -114,6 +114,20 @@ function fixture(t: { after: (cleanup: () => void) => void }) {
   return { root, docker, lab, lock: join(root, '.runtime', 'project.lock') };
 }
 
+test('reusable theft tests require explicit preparation and never silently start a new allowance', async t => {
+  const { docker, lab, lock } = fixture(t);
+  for (let attempt=0;attempt<2;attempt++) {
+    const result = await lab.execute({action:'run_theft_demo',revision:0});
+    assert.equal(result.outcome,'refused');
+    assert.match(result.message,/Prepare a theft demo first/);
+    assert.equal(lab.status().state,'idle');
+    assert.equal(lab.status().theftDemo,null);
+    assert.equal(lab.status().revision,0);
+    assert.equal(existsSync(lock),false);
+  }
+  assert.equal(docker.upCalls,0);
+});
+
 test('a held project lock reports blocked startup without changing ownership or touching Docker', async t => {
   const { docker, lab, lock } = fixture(t);
   const owner = acquireProjectLock(lock);

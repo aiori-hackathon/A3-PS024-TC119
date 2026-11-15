@@ -114,12 +114,12 @@ test('only exact bounded fixed commands reach backend', async t => {
   assert.equal((await fetchPortal(port, '/api/command', headers, 'POST', '{')).status, 400);
   assert.equal((await fetchPortal(port, '/api/command', headers, 'POST', 'x'.repeat(4097))).status, 413);
   assert.equal(calls, 0);
-  for (const command of [{ action: 'reset_run', revision: 0 }, { action: 'run_comparison', revision: 0 }, { action: 'run_theft_scene', revision: 0 }, { action: 'acquire', clientId: 'E', revision: 0 }]) {
+  for (const command of [{ action: 'reset_run', revision: 0 }, { action: 'run_comparison', revision: 0 }, { action: 'run_theft_scene', revision: 0 }, {action:'prepare_theft_demo',revision:0}, {action:'run_theft_demo',revision:0}, { action: 'acquire', clientId: 'E', revision: 0 }]) {
     const response = await fetchPortal(port, '/api/command', headers, 'POST', JSON.stringify(command));
     assert.equal(response.status, 202);
     await operationResult(port, headers, response.json().operationId);
   }
-  assert.equal(calls, 4);
+  assert.equal(calls, 6);
 });
 
 test('operations are session-scoped, asynchronous and single-flight with authorized resource only on access', async t => {
