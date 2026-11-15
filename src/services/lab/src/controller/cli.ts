@@ -111,6 +111,15 @@ async function fence(): Promise<number> {
     try { await adapters.terminate({ role, incarnation: '0'.repeat(32), instance_id: instance.container_id }, ctl.signal); say({ role, fenced: true, method: 'terminated' }); }
     catch { say({ role, fenced: false }); failed++; } finally { clearTimeout(t); }
   }
+  for (const arc of existing.filter(instance => instance.service === 'arc')) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 12_000);
+    try {
+      await adapters.terminate({ role: 'issuer', incarnation: '0'.repeat(32), instance_id: arc.container_id }, controller.signal);
+      say({ role: 'arc', fenced: true, method: 'terminated' });
+    } catch { say({ role: 'arc', fenced: false }); failed++; }
+    finally { clearTimeout(timer); }
+  }
   return failed === 0 ? 0 : 1;
 }
 

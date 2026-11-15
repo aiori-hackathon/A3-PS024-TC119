@@ -532,6 +532,7 @@ export class RegionalLab {
       this.#comparison.push({ profile, runId: policy.run_id, policyDigest: regionalPolicyDigest(policy),
         state: mismatch ? 'FAIL' : incomplete || arrivals === null || sourceObservations < 46 || workers.some(value => value === 0) ? 'INCONCLUSIVE' : workloadMatches ? 'PASS' : 'FAIL',
         accepted: abuser.accepted + honest, honestDelivered: honest, denied, originArrivals: arrivals,
+        originServed: this.#counts?.resources_served ?? null, generationMismatches: this.#counts?.generation_mismatches ?? null,
         issuanceBytes: sum('issuance_request_bytes') + sum('issuance_response_bytes'), issuanceInteractions: sum('issuance_interactions'),
         preparationInteractions: sum('preparation_interactions'), latencyMs: Math.ceil(sum('redemption_ms') / 46) });
       Object.assign(this.#comparison.at(-1)!, { sameSourceObserved: sameSource, sourceObservations,

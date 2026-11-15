@@ -24,7 +24,7 @@ export interface DockerCli {
 const MAX_OUTPUT = 8 * 1024 * 1024;
 export const realDocker: DockerCli = {
   run: (args, options = {}) => new Promise((resolve) => {
-    const child = spawn('docker', args, { stdio: ['pipe', 'pipe', 'pipe'], shell: false, ...(options.env ? { env: options.env } : {}) });
+    const child = spawn('docker', args, { stdio: ['pipe', 'pipe', 'pipe'], shell: false, windowsHide: true, ...(options.env ? { env: options.env } : {}) });
     let stdout = '', stderr = '', timedOut = false, settled = false;
     const done = (status: number | null, failed: boolean) => {
       if (settled) return; settled = true; clearTimeout(timer); options.signal?.removeEventListener('abort', abort);
@@ -42,7 +42,7 @@ export const realDocker: DockerCli = {
     child.stdin.on('error', () => undefined);
     child.stdin.end(options.input ?? '');
   }),
-  spawn: (args, env) => spawn('docker', args, { stdio: ['pipe', 'pipe', 'pipe'], shell: false, ...(env ? { env } : {}) }),
+  spawn: (args, env) => spawn('docker', args, { stdio: ['pipe', 'pipe', 'pipe'], shell: false, windowsHide: true, ...(env ? { env } : {}) }),
 };
 
 export const SERVICE_FOR_ROLE: Record<RoleName, string> = {
