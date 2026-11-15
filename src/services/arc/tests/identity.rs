@@ -95,7 +95,7 @@ fn unsupported_limits_and_malformed_parameters_are_rejected() {
         .unwrap();
     assert!(
         wallet
-            .presentation_state(NonZeroU32::new(1).unwrap(), b"resource")
+            .presentation_state(NonZeroU32::new(11).unwrap(), b"resource")
             .is_err()
     );
 }

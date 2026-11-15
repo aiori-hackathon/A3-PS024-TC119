@@ -60,7 +60,7 @@ impl Wallet {
         limit: NonZeroU32,
         presentation_context: &[u8],
     ) -> Result<State<P256>, ArcError> {
-        if limit.get() != 5 {
+        if limit.get() > wire::spec_number("max_quota") as u32 {
             return Err(ArcError::VerificationFailed);
         }
         self.credential
@@ -122,7 +122,7 @@ impl Issuer {
         limit: NonZeroU32,
         presentation_context: &[u8],
     ) -> Result<[u8; 33], ArcError> {
-        if limit.get() != 5 {
+        if limit.get() > wire::spec_number("max_quota") as u32 {
             return Err(ArcError::VerificationFailed);
         }
         if wire.len() != Presentation::<P256>::bytes_len(limit) {
