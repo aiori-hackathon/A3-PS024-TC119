@@ -30,6 +30,30 @@ We will reject forged/modified credentials, genuine wrong-context credentials an
 Mitigate exposure through validated TLS, memory-only token inventory, no credential logs, restricted networks and bounded context lifetime. Demonstrate the theft limit explicitly. Do not claim “an attacker cannot break anything,” absolute anonymity, exactly-once delivery, anti-Sybil identity, or theft-proof tokens. Adding device/channel binding would require a separate compatible design and privacy analysis; it is not hidden inside this baseline.
 
 
+## Regional profiles added to the baseline
+
+The baseline contracts and saved report versions below remain unchanged. Regional policy is separately versioned as `TF-PS024-REGIONAL-1.0.0`; its precise schemas/fixtures, fixed 60-second window, quota of five and five admitted entitlements are defined in [regional contracts](REGIONAL_CONTRACTS.md). [Gateway runtime](REGIONAL_GATEWAY.md) describes public routes, canonical JSON, private startup, HMAC-bound ARC RPC, holder proof and aggregate counter semantics. [Regional replay](REGIONAL_REPLAY.md) describes atomic claims, exact retention and state-loss refusal.
+
+```mermaid
+flowchart LR
+  C["Five lab clients: private wallets/holder keys"] --> P["Shared CONNECT proxy"]
+  P --> I["Issuer: one entitlement enrollment"]
+  P --> G["Gateway: one fixed profile per run"]
+  I -->|"Issuance MAC key"| A["Private ARC service: issuer secret and verifier"]
+  G -->|"Distinct verification MAC key"| A
+  G --> R["Redis: policy, clock, atomic spends/IP budget"]
+  G --> O["Private research resource: independent counters"]
+  L["Trusted local controller and loopback portal"] -. "prepare / enable / supervise / fence" .-> G
+  L -. "prepare / supervise / fence" .-> I
+  L -. "fresh generation and scoped evidence" .-> R
+```
+
+The ARC service exists only for ARC runs. Its issuer/verifier share an operator and private verification state. Ordinary and holder Type2 retain public RSA verification at the gateway; the private RSA signing key stays at the issuer. A holder key is generated for each token, authenticated into its issuance challenge, then used to sign the token, fixed request and short-lived server nonce. Verification precedes any shared spend claim. IP comparison uses a run-keyed HMAC of the accepted TCP source and an aggregate 25-use allowance; forwarding headers never select a budget.
+
+The regional controller drives the existing control/lease/reset machinery and a separate private regional socket for bounded provisioning/actions. The loopback portal accepts only fixed actions with exact Host/Origin/session/CSRF checks. Client credentials remain in client processes/helper memory. A comparison is three separately reset experiments, not a weaker fallback after exhaustion. The browser's remaining allowance is an estimate; atomic gateway state decides acceptance.
+
+Regional evidence requires agreement between the client result, settled origin received/served deltas and confirmed gateway claims. Cross-worker races need participation evidence for that race. Missing/uncertain observations remain INCONCLUSIVE. Native consumer tests exercise actual clients and cryptography but do not alone prove the complete deployed controller/network/UI path; record full deployment evidence separately. The current [validation checkpoint](REGIONAL_VALIDATION.md) records incomplete ARC supervision and remaining acceptance items. No universal theft prevention, anti-Sybil identity, production capacity or absolute anonymity is claimed.
+
 ## 1. Contract A — Public protocol and shared policy
 
 The schemas, fixtures and helpers in `src/contracts/` define the accepted executable interface baseline. These sections describe the implemented HTTP, replay-store and lifecycle interfaces; historical bootstrap evidence is separate from current deployment evidence.
