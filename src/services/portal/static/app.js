@@ -117,9 +117,11 @@ function render(next) {
     const item = comparison.find(row => row.profile === profile);
     appendRow($('comparison-body'), [names[profile], item?.state ?? 'Unobserved', count(item?.accepted), count(item?.denied), count(item?.honestDelivered), count(item?.originArrivals), count(item?.issuanceBytes), count(item?.issuanceInteractions), typeof item?.latencyMs === 'number' && item.latencyMs >= 0 ? item.latencyMs.toFixed(1) : '—'], true);
   }
-  setText('comparison-state', comparison.length ? 'Latest observed comparison' : 'No comparison observed');
+  setText('comparison-state', comparison.length ? 'Latest observed comparison' : '');
+  $('comparison-state').hidden = comparison.length === 0;
   const notes = comparison.flatMap(row => (row.evidenceNotes ?? []).map(note => `${names[row.profile]}: ${note}`));
-  setText('comparison-notes', notes.length ? notes.join(' ') : 'Live results are separate from the recorded benchmark above. Missing evidence remains inconclusive.');
+  setText('comparison-notes', notes.join(' '));
+  $('comparison-notes').hidden = notes.length === 0;
   const theft = next.theftScene;
   setText('active-limit', next.rateLimit ? `Enforced limit: ${next.rateLimit.limit} accepted requests per ${next.rateLimit.scope} in this window. Changing a field applies only to a new window.` : 'No active rate limit.');
   $('request-history').replaceChildren();

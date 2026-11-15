@@ -17,7 +17,6 @@
   <main>
     <section class="intro" aria-labelledby="page-title">
       <div><p class="eyebrow">Research access laboratory</p><h1 id="page-title">A shared connection.<br>Each client's own allowance.</h1></div>
-      <p class="intro-note">Explore admission and replay protection through five controlled clients, a shared proxy and a protected research brief.</p>
     </section>
     <section class="setup" id="setup" aria-labelledby="setup-title">
       <div class="section-heading"><div><p class="eyebrow">Laboratory configuration</p><h2 id="setup-title">Start a supervised demo</h2></div><p>Manual allowance: five minutes. Expiry preserves the results; Stop demo closes the session.</p></div>
@@ -88,8 +87,8 @@ node src/services/lab/src/controller/cli.ts logs --service origin --tail 5</code
         <p><a href="/benchmark-evidence.md" target="_blank" rel="noopener">View recorded evidence and limitations</a> · <a href="/benchmark.json" target="_blank" rel="noopener">View benchmark data and run identifiers</a></p>
       </section>
       <div class="experiment-head"><div><h3>Shared-egress comparison — live run</h3><p>Run the same controlled workload across IP baseline, ordinary Type 2 and ARC. Manual limit fields do not change this fixed benchmark workload.</p></div><button id="compare" disabled>Run comparison</button></div>
-      <p id="comparison-notes" class="control-note">Missing evidence remains inconclusive; a saved benchmark does not change the live result.</p>
-      <div class="table-scroll" tabindex="0" role="region" aria-label="Comparison results"><table class="comparison"><caption id="comparison-state">No comparison observed</caption><thead><tr><th scope="col">Profile</th><th scope="col">State</th><th scope="col">Accepted</th><th scope="col">Denied</th><th scope="col">Honest delivered</th><th scope="col">Origin arrivals</th><th scope="col">Issue bytes</th><th scope="col">Issue exchanges</th><th scope="col">Latency, ms</th></tr></thead><tbody id="comparison-body"></tbody></table></div>
+      <p id="comparison-notes" class="control-note" hidden></p>
+      <div class="table-scroll" tabindex="0" role="region" aria-label="Comparison results"><table class="comparison"><caption id="comparison-state" hidden></caption><thead><tr><th scope="col">Profile</th><th scope="col">State</th><th scope="col">Accepted</th><th scope="col">Denied</th><th scope="col">Honest delivered</th><th scope="col">Origin arrivals</th><th scope="col">Issue bytes</th><th scope="col">Issue exchanges</th><th scope="col">Latency, ms</th></tr></thead><tbody id="comparison-body"></tbody></table></div>
       <div class="theft-scene"><div><h3>Holder-bound theft scene</h3><p>Copied token rejected. Owner access preserved.</p><p id="theft-session">Five tests per five-minute session. Fresh tokens for each test.</p></div><div class="setup-actions"><button id="prepare-theft" disabled>Prepare theft demo</button><button id="theft" disabled>Run theft test</button></div></div>
       <div class="theft-results"><div><h4>Holder-bound token</h4><p id="holder-outcome">Awaiting experiment</p></div><div><h4>Origin observation</h4><p id="theft-origin">Awaiting experiment</p></div></div>
       <h3>Live theft-scene event timeline</h3>
