@@ -72,7 +72,6 @@
     <section class="experiments" aria-labelledby="experiments-title">
       <h2>Live request results</h2>
       <h3>Manual demo event timeline</h3>
-      <p>Controller-observed lifecycle, acquisition and access results. Completed entries include independent origin and gateway-claim evidence. Native server audit logs can be inspected separately in a terminal.</p>
       <div class="table-scroll"><table><thead><tr><th>Time</th><th>Step</th><th>Outcome</th><th>Accepted</th><th>Refused</th><th>Origin arrivals</th><th>Claims</th><th>Evidence</th></tr></thead><tbody id="manual-events"></tbody></table></div>
       <details><summary>Show native server audit logs in a terminal</summary><p>Run from the repository root after starting a new demo. These are actual service-written events, separate from the controller timeline.</p><pre><code>node src/services/lab/src/controller/cli.ts logs --service issuer --tail 5
 node src/services/lab/src/controller/cli.ts logs --service gateway --tail 15
@@ -91,14 +90,13 @@ node src/services/lab/src/controller/cli.ts logs --service origin --tail 5</code
       <div class="experiment-head"><div><h3>Shared-egress comparison — live run</h3><p>Run the same controlled workload across IP baseline, ordinary Type 2 and ARC. Manual limit fields do not change this fixed benchmark workload.</p></div><button id="compare" disabled>Run comparison</button></div>
       <p id="comparison-notes" class="control-note">Missing evidence remains inconclusive; a saved benchmark does not change the live result.</p>
       <div class="table-scroll" tabindex="0" role="region" aria-label="Comparison results"><table class="comparison"><caption id="comparison-state">No comparison observed</caption><thead><tr><th scope="col">Profile</th><th scope="col">State</th><th scope="col">Accepted</th><th scope="col">Denied</th><th scope="col">Honest delivered</th><th scope="col">Origin arrivals</th><th scope="col">Issue bytes</th><th scope="col">Issue exchanges</th><th scope="col">Latency, ms</th></tr></thead><tbody id="comparison-body"></tbody></table></div>
-      <div class="theft-scene"><div><h3>Holder-bound theft scene</h3><p>Attempt access with copied token bytes and an attacker-owned key, then access with the owner's key. The separate bearer theft experiment is pending.</p><p id="theft-session">Prepare once, then run up to five tests within a five-minute window. Each test uses fresh tokens and holder keys. Stop demo closes the session.</p></div><div class="setup-actions"><button id="prepare-theft" disabled>Prepare theft demo</button><button id="theft" disabled>Run theft test</button></div></div>
-      <div class="theft-results"><div><h4>Bearer theft scene</h4><p id="bearer-outcome">Separate bearer theft experiment pending</p></div><div><h4>Holder-bound token</h4><p id="holder-outcome">Awaiting experiment</p></div><div><h4>Origin observation</h4><p id="theft-origin">Awaiting experiment</p></div></div>
+      <div class="theft-scene"><div><h3>Holder-bound theft scene</h3><p>Copied token rejected. Owner access preserved.</p><p id="theft-session">Five tests per five-minute session. Fresh tokens for each test.</p></div><div class="setup-actions"><button id="prepare-theft" disabled>Prepare theft demo</button><button id="theft" disabled>Run theft test</button></div></div>
+      <div class="theft-results"><div><h4>Holder-bound token</h4><p id="holder-outcome">Awaiting experiment</p></div><div><h4>Origin observation</h4><p id="theft-origin">Awaiting experiment</p></div></div>
       <h3>Live theft-scene event timeline</h3>
-      <p>Events come from the controller's real phase results. Pending steps are labelled started; token bytes, private keys and nonce contents are never displayed. Owner success implies the gateway accepted its holder proof before making the claim.</p>
       <div class="table-scroll"><table><thead><tr><th>Time</th><th>Step</th><th>Outcome</th><th>Accepted</th><th>Refused</th><th>Origin arrivals</th><th>Claims</th><th>Evidence</th></tr></thead><tbody id="theft-events"></tbody></table></div>
     </section>
     <p id="announcement" class="visually-hidden" role="status" aria-live="polite" aria-atomic="true"></p>
   </main>
-  <footer><span>TokenForge · A3-PS024-TC119</span><p>Credentials stay inside laboratory client processes. This interface controls the supervised demonstration.</p></footer>
+  <footer><span>TokenForge · A3-PS024-TC119</span></footer>
 </body>
 </html>

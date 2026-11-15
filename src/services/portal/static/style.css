@@ -84,7 +84,7 @@ tbody tr:last-child th,tbody tr:last-child td { border-bottom:0; }
 .table-scroll { overflow-x:auto; }
 .comparison { min-width:900px; }
 .theft-scene { border-top:1px solid var(--line); padding-top:26px; margin-top:30px; }
-.theft-results { display:grid; grid-template-columns:repeat(3,1fr); gap:24px; }
+.theft-results { display:grid; grid-template-columns:repeat(2,1fr); gap:24px; }
 .theft-results > div { border-top:1px solid var(--line); padding-top:16px; }
 .theft-results h4 { font-size:12px; }
 .theft-results p { font-size:12px; color:var(--muted); margin:8px 0 0; }

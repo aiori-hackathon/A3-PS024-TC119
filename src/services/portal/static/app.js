@@ -50,8 +50,8 @@ function updateControls() {
   $('theft').disabled = !active || !theftPrepared || status.theftDemo.attemptsRemaining < 1;
   $('theft').textContent = theftPrepared && status.theftDemo.attemptsUsed > 0 ? 'Run theft test again' : 'Run theft test';
   setText('theft-session', theftPrepared
-    ? `${status.theftDemo.attemptsRemaining}/5 fresh token pairs remaining. Services stay running; the original allowance countdown continues.`
-    : 'Prepare once, then run up to five tests within a five-minute window. Each test uses fresh tokens and holder keys. Stop demo closes the session.');
+    ? `${status.theftDemo.attemptsRemaining}/5 tests remaining in this window.`
+    : 'Five tests per five-minute session. Fresh tokens for each test.');
 }
 function renderWindow() {
   const end = Date.parse(status?.window?.endsAt ?? '');
@@ -130,7 +130,6 @@ function render(next) {
   for (const row of next.requestHistory ?? []) appendRow($('request-history'), [
     `Client ${row.clientId}`, count(row.attempts), count(row.accepted), count(row.refused), count(row.originArrivals), row.evidenceState,
   ]);
-  setText('bearer-outcome', 'Separate bearer theft experiment pending');
   setText('holder-outcome', theft?.holderOutcome ?? 'Awaiting experiment');
   setText('theft-origin', theft ? `${theft.state ?? 'Observed'} · Attack arrivals ${count(theft.attackOriginArrivals)} · Owner arrivals ${count(theft.ownerOriginArrivals)}` : 'Awaiting experiment');
   $('theft-events').replaceChildren();
