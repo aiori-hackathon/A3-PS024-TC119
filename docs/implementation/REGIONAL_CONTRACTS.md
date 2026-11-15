@@ -106,9 +106,11 @@ Public evidence uses aggregate decisions, issuance counts, cross-worker attempts
 
 K01 checks cover schema parity, exact Python/Node encoding and MAC vectors, window/nonce boundaries, response swapping, canonical key/tag validation, and real P-256 signing interoperability. They do not prove ARC cryptography, atomic quotas, runtime HTTP routes, private channel authentication, reset safety or the UI. Counterpart acceptance and those runtime checks remain necessary.
 
-## Counterpart handoff
+## Integrated consumers
 
-Mihir can start pinned ARC feasibility and dependency/build work immediately. Review this candidate and the fixtures, especially bootstrap/public parameters, tag extraction and opaque client state, before implementing consumer interfaces. Return exact incompatibilities; Krish owns shared changes. Once accepted, implement M01/M02 and coordinate K02, then product/holder consumers. No main merge or baseline runtime enablement occurs merely because this candidate is pushed.
+The regional issuer, client, gateway and pinned Rust service consume these interfaces. Public proof framing and authenticated issue/verify RPC bindings remain unchanged. The ARC service's private stdin control accepts `enable` or `heartbeat` with `lease_sequence` only. Initial sequence is zero and renewals use exactly the next integer. The receiver installs a 3000ms monotonic lease and refuses renewal after expiry. The controller caps ACK acceptance at 1500ms and closes its pipe on uncertainty. UTC policy windows remain enforced independently.
+
+The ARC lease is measured from the last accepted heartbeat, including a delayed in-flight heartbeat accepted after controller death. Gateway worker original-expiry grants retain their existing shared-OS monotonic semantics. Exact private commands and focused tests are documented in the ARC README. Deployed acceptance and historical partial runs are recorded separately in the regional validation checkpoint.
 
 Checks:
 

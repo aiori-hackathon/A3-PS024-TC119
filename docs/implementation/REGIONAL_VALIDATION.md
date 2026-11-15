@@ -1,8 +1,18 @@
 # Regional validation checkpoint
 
-The integrated source checkpoint is `9fb5386`. This page separates component proof, deployed results and open acceptance checks. Historical baseline demo/security reports do not automatically validate the regional additions.
+The finalization code checkpoint is `628c371`, with ARC image source identity `05fbb2a`. On 15 November 2026 the complete deployed three-profile comparison and holder scene passed. ARC private diagnostics, real window expiry, fresh generation and Redis-loss refusal also completed, followed by strong fenced closure. Exact aggregate evidence, scoped historical failures and commands are in [regional final evidence](REGIONAL_FINAL_EVIDENCE.md).
 
-## Observed deployed results
+The known lease, bundle and teardown blockers are fixed. The network checker passes 177/177, including cleanup of a pre-existing exited optional ARC container. G0 passes, and the two native Linux consumer tests execute with zero skips. The updated runbook, narration and new regional presentation accompany this checkpoint. Human venue, voice/video participation and physical-device rehearsal remain pending.
+
+## ARC lease diagnosis and correction
+
+The original heartbeat-20 receiver branch was unavailable in the historical capture. A controlled native reproduction of the old expiry-bounds branch supplied an expiry 10 seconds beyond the sender's current time and received `invalid-input`, with safe diagnostics identifying `lease-expiry-bounds`. It establishes the old rejection branch under that controlled condition. The exact cause of the earlier deployed heartbeat-20 refusal remains unconfirmed.
+
+Private renewals now carry only operation and the strict next sequence. The receiver owns a 3000ms monotonic deadline. Existing expiry wins before renewal and cannot be revived. The controller accepts ACKs within 1500ms using monotonic checks before and after decoding. EOF, window checks, observed wall-clock regression and post-cryptography liveness remain enforced. Expiry is bounded from the last accepted heartbeat, including delayed in-flight work accepted after controller death. Gateway worker original-expiry grants retain their existing shared-OS monotonic contract.
+
+Focused tests cover sender wall-clock offsets, replay/skip sequence refusal without deadline refresh, terminal expiry, EOF, window end and post-crypto expiry. Both private consumers were updated. Public ARC issue/verify authentication and proof bindings remain intact.
+
+## Historical deployed results before finalization
 
 The live portal checks below ran on the integrated `e3a4bbc` application, including gateway compatibility fix `21c5507`, on a Windows host with Linux Docker containers. The subsequent `9fb5386` changes address terminal startup uncertainty and topology readiness; their focused regression checks passed.
 
@@ -27,7 +37,7 @@ The complete three-profile comparison **did not pass**: ARC supervision later re
 - The integrated `check:g0` reached a failing lab bundle allowlist assertion: the build correctly includes `regional-helper.mjs`, while the older test expects the seven baseline bundles. Typechecking and preceding functional suites passed, but the overall command remains FAIL until the allowlist is aligned with the already updated production-image checker and rerun.
 - The earlier native consumer gate passed both required tests without skips: actual Rust service/helper/issuer/client through the labelled substitute ARC gateway, and actual holder client/issuer/gateway/restricted Redis/test origin. This is separate from the complete deployed ARC controller path.
 
-The current blockers are ARC supervision interoperability, the lab bundle-test allowlist, and profile-aware network-check teardown. After those fixes, rerun the affected checks and one complete portal comparison before final acceptance. UI/venue rehearsal and backup recording remain team activities.
+Those historical blockers were ARC supervision interoperability, the lab bundle-test allowlist and profile-aware network-check teardown. Their fixes and new evidence are recorded above. The earlier incomplete trials retain their original scope and outcome.
 
 ## Reproduction entry points
 

@@ -14,6 +14,10 @@ The organizer-owned repository and submitted assets above are preserved. All imp
 
 ### Regional prototype
 
+The complete local three-profile comparison and separate holder scene passed on 15 November 2026. Each comparison profile delivered 25 resources with matching independent received/served counts and zero generation mismatches. Honest clients received 0 under shared-source IP limiting and 20 under ordinary Type2 and ARC. ARC malformed-proof, exhaustion, regenerated-slot, expiry/reset and Redis-loss checks also completed. See [the final aggregate evidence](docs/implementation/REGIONAL_FINAL_EVIDENCE.md) and [validation history](docs/implementation/REGIONAL_VALIDATION.md).
+
+Use [the regional runbook](docs/lab/REGIONAL_RUNBOOK.md), [seven-minute narration](docs/demo/REGIONAL_NARRATION.md) and [new regional presentation](docs/submission/regional/TokenForge-Regional-2026.pptx). Original submitted materials and video links are preserved. Venue narration and physical-device rehearsal remain human tasks.
+
 The regional application adds four server-selected profiles. Every run uses one fixed resource and a fresh server-defined 60-second window. The local portal controls five labelled lab clients; these are admitted entitlements, not verified human identities.
 
 | Profile | Enforced allowance | What the demonstration shows |

@@ -106,6 +106,8 @@ Source observation now includes regional resource/redeem operations as well as t
 
 ### Focused native validation
 
+Complete production ARC/controller acceptance is now recorded separately in [regional final evidence](REGIONAL_FINAL_EVIDENCE.md). The native tests below retain their narrower individual scopes. The portal comparison exports independent origin received/served counts and generation mismatches alongside claims, refusals and worker totals. Private diagnostic reports use the owning gateway control link, since an additional connection has only STATUS/FENCE authority.
+
 The isolated integration command now checks both the earlier two-instance flow and three separate production `serve.mjs` runs. Each production run proves two distinct child OS workers, the shared TLS listener, restricted Redis enforcement, existing control responses and confirmed worker exit after FENCE. Tests cover IP 25/26 and concurrent exhaustion despite forged forwarding headers; Type2 challenge and copied-token races; holder token theft followed by owner success and cross-worker replay; wrong-profile routing; and state-loss fencing without live repair. Actual HTTP origin counters independently bound the accepted arrivals.
 
 These tests use genuine cryptographic blind issuance through a test-local issuer API and a counted private test origin. They do not prove the deployed voucher/entitlement cap, actual Rust service/client interoperability, portal controls, direct-origin network isolation, complete ARC quota/copy scenes, renewal or end-to-end product deployment. Those require the real controller/issuer/ARC/helper/Compose integrations and focused follow-up validation.

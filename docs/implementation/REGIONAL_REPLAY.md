@@ -52,7 +52,7 @@ npm.cmd run check:g0
 
 The focused Redis harness creates one disposable pinned server with no host port, external network, persistence or host data mount. It checks genuine Lua initialization, concurrent single-spend, regional expiry inside a still-valid baseline epoch, nonce refusal without spending, guard corruption and ACL separation. A test-only source copy substitutes exactly one TIME expression to exercise observed expiry/rollback; no host clock is changed and no production test-clock option exists. It does not prove ARC cryptography or end-to-end origin behavior.
 
-Mihir can consume the shared initializer after contract review and before enabling a regional run. Preserve the baseline readiness order; do not weaken its two-key gate. The gateway consumes accepted ARC bootstrap and verified tag extraction through the authenticated private RPC client; actual Rust service/helper and deployed controller interoperability still require integration.
+The integrated controller uses the shared initializer before enabling a regional run and preserves baseline readiness order and its two-key gate. The gateway consumes the accepted ARC bootstrap and verified tag extraction through the authenticated private RPC client. Native consumer and full deployed controller evidence have separate scopes, recorded in the regional validation checkpoint. ARC private lease changes leave Lua claims, exact retention, public proof bindings and gateway worker grants intact.
 
 ## IP comparison claims
 
