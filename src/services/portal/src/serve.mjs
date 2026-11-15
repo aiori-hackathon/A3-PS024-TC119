@@ -2,6 +2,7 @@ import { createServer } from 'node:http';
 import { randomBytes, timingSafeEqual } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
+import regional from '../../../contracts/lib/regional-v1.json' with { type: 'json' };
 
 const assets = new Map([
   ['/', { type: 'text/html; charset=utf-8', body: readFileSync(new URL('../static/index.html', import.meta.url)) }],
@@ -18,8 +19,13 @@ const operationLifetime = 2 * 60 * 1000;
 function validCommand(value) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
   const keys = Object.keys(value).sort().join(',');
-  if (value.action === 'start_run') return keys === 'action,profile' && profiles.includes(value.profile);
+  if (value.action === 'start_run') return profiles.includes(value.profile) && (keys === 'action,profile'
+    || (keys === 'action,limit,profile' && Number.isSafeInteger(value.limit) && value.limit >= 1
+      && value.limit <= (value.profile === 'ip' ? regional.max_ip_quota : regional.max_quota)));
   if (['reset_run', 'run_comparison', 'run_theft_scene'].includes(value.action)) return keys === 'action,revision' && Number.isSafeInteger(value.revision) && value.revision >= 0;
+  if (value.action === 'send_requests') return keys === 'action,clientId,count,revision' && clientIds.includes(value.clientId)
+    && Number.isSafeInteger(value.revision) && value.revision >= 0 && Number.isSafeInteger(value.count)
+    && value.count >= 1 && value.count <= regional.max_batch_requests;
   return ['acquire', 'access'].includes(value.action) && keys === 'action,clientId,revision'
     && clientIds.includes(value.clientId) && Number.isSafeInteger(value.revision) && value.revision >= 0;
 }
@@ -163,7 +169,7 @@ export async function startPortal({ port = 4174, backend } = {}) {
       const projected = {
         outcome: result?.outcome,
         message: result?.message,
-        authorizedAccess: command.action === 'access' ? result?.authorizedAccess : undefined,
+        authorizedAccess: ['access', 'send_requests'].includes(command.action) ? result?.authorizedAccess : undefined,
         status: result?.status,
       };
       publicJson({ operationId: id, state: 'complete', result: projected });

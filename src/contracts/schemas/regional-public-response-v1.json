@@ -12,7 +12,7 @@
           "type": "object",
           "properties": {
             "contract_version": {
-              "const": "TF-PS024-REGIONAL-1.1.0"
+              "const": "TF-PS024-REGIONAL-1.2.0"
             },
             "policy_digest": {
               "type": "string",
@@ -60,7 +60,7 @@
           "type": "object",
           "properties": {
             "contract_version": {
-              "const": "TF-PS024-REGIONAL-1.1.0"
+              "const": "TF-PS024-REGIONAL-1.2.0"
             },
             "policy_digest": {
               "type": "string",
@@ -73,8 +73,8 @@
             },
             "responses_b64url": {
               "type": "array",
-              "minItems": 5,
-              "maxItems": 5,
+              "minItems": 1,
+              "maxItems": 10,
               "items": {
                 "type": "string",
                 "minLength": 1,
@@ -108,7 +108,7 @@
           "type": "object",
           "properties": {
             "contract_version": {
-              "const": "TF-PS024-REGIONAL-1.1.0"
+              "const": "TF-PS024-REGIONAL-1.2.0"
             },
             "policy_digest": {
               "type": "string",
@@ -121,8 +121,8 @@
             },
             "responses_b64url": {
               "type": "array",
-              "minItems": 5,
-              "maxItems": 5,
+              "minItems": 1,
+              "maxItems": 10,
               "items": {
                 "type": "string",
                 "minLength": 1,
@@ -156,7 +156,7 @@
           "type": "object",
           "properties": {
             "contract_version": {
-              "const": "TF-PS024-REGIONAL-1.1.0"
+              "const": "TF-PS024-REGIONAL-1.2.0"
             },
             "policy_digest": {
               "type": "string",
@@ -205,7 +205,7 @@
               "type": "object",
               "properties": {
                 "contract_version": {
-                  "const": "TF-PS024-REGIONAL-1.1.0"
+                  "const": "TF-PS024-REGIONAL-1.2.0"
                 },
                 "run_id": {
                   "type": "string",
@@ -290,7 +290,7 @@
           "type": "object",
           "properties": {
             "contract_version": {
-              "const": "TF-PS024-REGIONAL-1.1.0"
+              "const": "TF-PS024-REGIONAL-1.2.0"
             },
             "policy_digest": {
               "type": "string",

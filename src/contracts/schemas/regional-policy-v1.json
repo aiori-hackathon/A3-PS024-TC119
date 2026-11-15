@@ -6,7 +6,7 @@
       "type": "object",
       "properties": {
         "contract_version": {
-          "const": "TF-PS024-REGIONAL-1.1.0"
+          "const": "TF-PS024-REGIONAL-1.2.0"
         },
         "schema_version": {
           "const": 1
@@ -37,7 +37,9 @@
           "maximum": 9007199254740991
         },
         "quota": {
-          "const": 5
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 50
         },
         "admitted_entitlements": {
           "const": 5
@@ -88,7 +90,7 @@
       "type": "object",
       "properties": {
         "contract_version": {
-          "const": "TF-PS024-REGIONAL-1.1.0"
+          "const": "TF-PS024-REGIONAL-1.2.0"
         },
         "schema_version": {
           "const": 1
@@ -119,7 +121,9 @@
           "maximum": 9007199254740991
         },
         "quota": {
-          "const": 5
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 10
         },
         "admitted_entitlements": {
           "const": 5
@@ -173,7 +177,7 @@
       "type": "object",
       "properties": {
         "contract_version": {
-          "const": "TF-PS024-REGIONAL-1.1.0"
+          "const": "TF-PS024-REGIONAL-1.2.0"
         },
         "schema_version": {
           "const": 1
@@ -204,7 +208,9 @@
           "maximum": 9007199254740991
         },
         "quota": {
-          "const": 5
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 10
         },
         "admitted_entitlements": {
           "const": 5
@@ -261,7 +267,7 @@
       "type": "object",
       "properties": {
         "contract_version": {
-          "const": "TF-PS024-REGIONAL-1.1.0"
+          "const": "TF-PS024-REGIONAL-1.2.0"
         },
         "schema_version": {
           "const": 1
@@ -292,7 +298,9 @@
           "maximum": 9007199254740991
         },
         "quota": {
-          "const": 5
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 10
         },
         "admitted_entitlements": {
           "const": 5

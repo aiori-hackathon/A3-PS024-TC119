@@ -28,13 +28,22 @@ function updateControls() {
   const live = connected && status?.mode === 'live';
   const ready = live && !busy;
   const active = ready && status?.state === 'active' && (!status.window?.endsAt || Date.now() < Date.parse(status.window.endsAt));
+  const ip = status?.profile === 'ip';
+  const acquired = status?.clients?.find(item => item.clientId === $('client').value)?.allowanceAcquired === true;
+  $('ip-limit').disabled = !ready || !['idle', 'expired'].includes(status?.state);
+  $('client-limit').disabled = $('ip-limit').disabled;
   $('profiles').disabled = !ready || status?.state !== 'idle';
   $('start').disabled = !ready || !['idle', 'expired'].includes(status?.state);
   $('start').textContent = status?.state === 'expired' ? 'Start new window' : 'Start demo';
   $('reset').disabled = !ready || !['active', 'expired', 'error', 'uncertain'].includes(status?.state);
   $('client').disabled = !active;
-  $('acquire').disabled = !active;
-  $('access').disabled = !active;
+  $('acquire').disabled = !active || ip || acquired;
+  $('acquire').textContent = ip ? 'No tokens needed (IP)' : acquired ? 'Allowance acquired' : 'Acquire allowance';
+  $('access').disabled = !active || (!ip && !acquired);
+  $('request-count').disabled = $('access').disabled;
+  $('send-requests').disabled = $('access').disabled;
+  setText('acquire-help', ip ? 'IP needs no acquisition. Every client spends the same shared IP budget.'
+    : acquired ? 'Existing credentials are ready. Acquisition cannot refill this window.' : 'Acquire allowance once for this client before sending requests.');
   $('compare').disabled = !ready || !['idle', 'active', 'expired'].includes(status?.state);
   $('theft').disabled = !ready || !['idle', 'active', 'expired'].includes(status?.state);
 }
@@ -50,6 +59,7 @@ function renderClient() {
   const client = status?.clients?.find(item => item.clientId === $('client').value);
   setText('estimate', count(client?.estimatedUsesLeft));
   setText('client-state', client?.state ?? 'Awaiting run');
+  updateControls();
 }
 function appendRow(body, values, header = false) {
   const row = document.createElement('tr');
@@ -103,6 +113,11 @@ function render(next) {
   }
   setText('comparison-state', comparison.length ? 'Latest observed comparison' : 'No comparison observed');
   const theft = next.theftScene;
+  setText('active-limit', next.rateLimit ? `Enforced limit: ${next.rateLimit.limit} accepted requests per ${next.rateLimit.scope} in this window. Changing a field applies only to a new window.` : 'No active rate limit.');
+  $('request-history').replaceChildren();
+  for (const row of next.requestHistory ?? []) appendRow($('request-history'), [
+    `Client ${row.clientId}`, count(row.attempts), count(row.accepted), count(row.refused), count(row.originArrivals), row.evidenceState,
+  ]);
   setText('bearer-outcome', 'Separate bearer theft experiment pending');
   setText('holder-outcome', theft?.holderOutcome ?? 'Awaiting experiment');
   setText('theft-origin', theft ? `${theft.state ?? 'Observed'} · Attack arrivals ${count(theft.attackOriginArrivals)} · Owner arrivals ${count(theft.ownerOriginArrivals)}` : 'Awaiting experiment');
@@ -126,6 +141,7 @@ async function loadStatus() {
 function delay(milliseconds) { return new Promise(resolve => setTimeout(resolve, milliseconds)); }
 async function execute(command, pendingLabel) {
   if (busy || !connected) return;
+  if (['access', 'send_requests'].includes(command.action)) clearResource();
   busy = true;
   updateControls();
   announce(pendingLabel);
@@ -152,7 +168,7 @@ async function execute(command, pendingLabel) {
       if (result.status) render({ ...result.status, mode: 'live' });
       const labels = { delivered: 'The protected resource was delivered.', refused: 'The gateway refused this request.', uncertain: 'The operation outcome is uncertain.', started: 'The run is active.', reset: 'The demo was stopped.', 'comparison-complete': 'The comparison completed.', 'theft-complete': 'The theft scene completed.', unavailable: 'The laboratory is unavailable.', 'operation-uncertain': 'The operation could not be confirmed.' };
       announce(result.message ?? labels[result.outcome] ?? 'The operation completed. Review the server state and evidence.');
-      if (command.action === 'access' && status.revision === command.revision && result.authorizedAccess?.clientId === command.clientId && typeof result.authorizedAccess.text === 'string') {
+      if (['access', 'send_requests'].includes(command.action) && status.revision === command.revision && result.authorizedAccess?.clientId === command.clientId && typeof result.authorizedAccess.text === 'string') {
         setText('resource-text', result.authorizedAccess.text);
         setText('resource-state', 'Delivered previously');
         setText('delivered-to', `Delivered to Client ${command.clientId}`);
@@ -168,10 +184,15 @@ async function execute(command, pendingLabel) {
   }
 }
 $('client').addEventListener('change', renderClient);
-$('start').addEventListener('click', () => execute({ action: 'start_run', profile: document.querySelector('input[name="profile"]:checked').value }, 'Starting a supervised run…'));
+$('start').addEventListener('click', () => {
+  const profile = document.querySelector('input[name="profile"]:checked').value;
+  return execute({ action: 'start_run', profile, limit: Number($(profile === 'ip' ? 'ip-limit' : 'client-limit').value) }, 'Starting a supervised run…');
+});
 $('reset').addEventListener('click', () => execute({ action: 'reset_run', revision: status.revision }, 'Closing and resetting the run…'));
 $('acquire').addEventListener('click', () => execute({ action: 'acquire', clientId: $('client').value, revision: status.revision }, `Acquiring allowance for Client ${$('client').value}…`));
 $('access').addEventListener('click', () => execute({ action: 'access', clientId: $('client').value, revision: status.revision }, `Requesting the resource for Client ${$('client').value}…`));
+$('send-requests').addEventListener('click', () => execute({ action: 'send_requests', clientId: $('client').value,
+  count: Number($('request-count').value), revision: status.revision }, `Sending requests from Client ${$('client').value}…`));
 $('compare').addEventListener('click', () => execute({ action: 'run_comparison', revision: status.revision }, 'Running the controlled comparison…'));
 $('theft').addEventListener('click', () => execute({ action: 'run_theft_scene', revision: status.revision }, 'Running the separate theft scene…'));
 await loadStatus();

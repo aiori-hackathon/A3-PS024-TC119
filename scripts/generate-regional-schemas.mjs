@@ -11,7 +11,7 @@ const either = (...oneOf) => ({oneOf});
 const envelope = fields => obj({contract_version:c(p.contract_version),...fields});
 const policy = either(...p.profiles.map(profile => envelope({
   schema_version:c(1),run_id:hex(32),baseline_config_digest:hex(64),profile:c(profile),
-  window_start_ms:integer(1),window_end_ms:integer(1),quota:c(p.quota),
+  window_start_ms:integer(1),window_end_ms:integer(1),quota:integer(1,profile==='ip'?p.max_ip_quota:p.max_quota),
   admitted_entitlements:c(p.admitted_entitlements),resource_id:c(p.resource_id),method:c(p.method),url:c(p.url),
   type2_key_id:profile.startsWith('type2-')?hex(64):c(null),
   arc_key_id:profile==='arc'?hex(64):c(null),
@@ -42,7 +42,7 @@ const bootstrap=envelope({run_id:hex(32),service_incarnation:hex(32),arc_impleme
   issuer_params_b64url:text(132,'^[A-Za-z0-9_-]{132}$',132),arc_key_id:hex(64)});
 const publicCase=(route,body)=>obj({route:c(route),body});
 const enrollment=profile=>obj({...publicBase,profile:c(profile),enrollment_voucher_b64url:text(43,'^[A-Za-z0-9_-]{43}$',43),
-  blinded_requests_b64url:{type:'array',minItems:profile==='arc'?1:5,maxItems:profile==='arc'?1:5,items:b64(profile==='arc'?32768:346)}});
+  blinded_requests_b64url:{type:'array',minItems:1,maxItems:profile==='arc'?1:p.max_quota,items:b64(profile==='arc'?32768:346)}});
 const publicRequests=either(
   ...['arc','type2-bearer','type2-holder'].map(profile=>publicCase('enroll',enrollment(profile))),
   publicCase('arc-redeem',obj({...publicBase,presentation_b64url:b64(32768)})),
@@ -52,7 +52,7 @@ const publicRequests=either(
 );
 const publicResponses=either(
   ...['arc','type2-bearer','type2-holder'].map(profile=>publicCase('enroll',obj({...publicBase,profile:c(profile),
-    responses_b64url:{type:'array',minItems:profile==='arc'?1:5,maxItems:profile==='arc'?1:5,items:b64(profile==='arc'?32768:342)}}))),
+    responses_b64url:{type:'array',minItems:1,maxItems:profile==='arc'?1:p.max_quota,items:b64(profile==='arc'?32768:342)}}))),
   publicCase('holder-challenge',obj({...publicBase,challenge_b64url:b64(1024),token_key_spki_b64url:b64(1024)})),
   publicCase('holder-nonce',nonceEnvelope),
   publicCase('arc-directory',obj({...publicBase,arc_key_id:hex(64),arc_implementation_revision:hex(40),

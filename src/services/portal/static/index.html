@@ -28,6 +28,12 @@
         <label class="profile"><input type="radio" name="profile" value="arc"><span><strong>ARC</strong><small>Anonymous rate-limited credential</small></span></label>
         <label class="profile"><input type="radio" name="profile" value="type2-holder"><span><strong>Holder-bound Type 2</strong><small>Separate possession-key scene</small></span></label>
       </fieldset>
+      <div class="limit-settings">
+        <label for="ip-limit">Shared IP limit (1–50 requests per window)<input id="ip-limit" type="number" min="1" max="50" step="1" value="25" disabled></label>
+        <label for="client-limit">Type2 / ARC limit (1–10 uses per client per window)<input id="client-limit" type="number" min="1" max="10" step="1" value="5" disabled></label>
+      </div>
+      <p class="control-note">Set limits before starting. IP shares one budget across all five clients; Type2 and ARC give each admitted client its own budget. For equal total budgets, use IP limit = 5 × per-client limit. Automated comparison always uses 25 versus 5 each.</p>
+      <p id="active-limit" class="control-note">No active rate limit.</p>
       <div class="setup-bottom"><dl class="run-details"><div><dt>Server state</dt><dd id="server-state">Awaiting status</dd></div><div><dt>Active profile</dt><dd id="active-profile">—</dd></div><div><dt>Accepted window</dt><dd id="window">—</dd></div><div><dt>Updated</dt><dd id="updated">—</dd></div></dl><div class="setup-actions"><button id="reset" disabled>Stop demo</button><button id="start" class="primary" disabled>Start demo <span aria-hidden="true">↗</span></button></div></div>
     </section>
     <div class="workspace">
@@ -44,6 +50,9 @@
         <select id="client" disabled><option value="A">Client A</option><option value="B">Client B</option><option value="C">Client C</option><option value="D">Client D</option><option value="E">Client E</option></select>
         <dl class="allowance"><div><dt>Estimated uses left</dt><dd id="estimate">—</dd></div><div><dt>Client state</dt><dd id="client-state">Awaiting run</dd></div></dl>
         <div class="actions"><button id="acquire" disabled>Acquire allowance</button><button id="access" class="primary" disabled>Access resource <span aria-hidden="true">↗</span></button></div>
+        <p id="acquire-help" class="control-note">IP needs no tokens. Type2 and ARC require one allowance acquisition per client.</p>
+        <label for="request-count">Requests to send from the selected client (1–51)</label>
+        <div class="actions"><input id="request-count" type="number" min="1" max="51" step="1" value="26" disabled><button id="send-requests" disabled>Send requests</button></div>
         <p class="control-note">The server determines allowance and the accepted window. A client estimate may change after the next request.</p>
         <section class="latest-result" aria-labelledby="result-title"><h3 id="result-title">Latest action</h3><p id="result">Choose a profile and start a run to begin.</p></section>
       </section>
@@ -61,6 +70,9 @@
       <p class="control-note" id="gateway-evidence">Awaiting an authenticated gateway observation.</p>
     </section>
     <section class="experiments" aria-labelledby="experiments-title">
+      <h2>Live request results</h2>
+      <p>Send requests from A, then select B and try access. Refused requests should add no origin arrivals. These are actual gateway requests, including replay attempts after a credential budget is exhausted.</p>
+      <div class="table-scroll"><table><thead><tr><th>Client</th><th>Sent</th><th>Accepted</th><th>Refused</th><th>Origin arrivals</th><th>Evidence</th></tr></thead><tbody id="request-history"></tbody></table></div>
       <div class="section-heading"><div><p class="eyebrow">Controlled experiments</p><h2 id="experiments-title">Compare access, then examine theft</h2></div></div>
       <div class="experiment-head"><div><h3>Shared-egress comparison</h3><p>Run the same controlled workload across IP baseline, ordinary Type 2 and ARC.</p></div><button id="compare" disabled>Run comparison</button></div>
       <div class="table-scroll" tabindex="0" role="region" aria-label="Comparison results"><table class="comparison"><caption id="comparison-state">No comparison observed</caption><thead><tr><th scope="col">Profile</th><th scope="col">State</th><th scope="col">Accepted</th><th scope="col">Denied</th><th scope="col">Honest delivered</th><th scope="col">Origin arrivals</th><th scope="col">Issue bytes</th><th scope="col">Issue exchanges</th><th scope="col">Latency, ms</th></tr></thead><tbody id="comparison-body"></tbody></table></div>

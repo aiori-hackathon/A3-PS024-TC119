@@ -14,7 +14,7 @@ export const REGIONAL_CONTRACT_VERSION = spec.contract_version;
 export type RegionalProfile = 'ip'|'type2-bearer'|'arc'|'type2-holder';
 export type RegionalPolicy = {
   contract_version:string;schema_version:1;run_id:string;baseline_config_digest:string;profile:RegionalProfile;
-  window_start_ms:number;window_end_ms:number;quota:5;admitted_entitlements:5;
+  window_start_ms:number;window_end_ms:number;quota:number;admitted_entitlements:5;
   resource_id:'research-resource';method:'GET';url:'https://origin.lab.test/resource';
   type2_key_id:string|null;arc_key_id:string|null;arc_implementation_revision:string|null;arc_tag_encoding:string|null;
 };

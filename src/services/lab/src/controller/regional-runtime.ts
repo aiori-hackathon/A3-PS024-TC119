@@ -20,7 +20,7 @@ const SERVICES = ['issuer', 'protected-origin', 'client-a', 'client-b', 'client-
 export type RegionalOriginCounts = { protected_requests_received: number; generation_mismatches: number; resources_served: number };
 type Counts = RegionalOriginCounts;
 type GatewaySnapshot = { counters: Record<string, number>; sameSource: boolean | null; workers: number[] };
-type ManualSession = { profile: RegionalProfile; endsAt: string };
+type ManualSession = { profile: RegionalProfile; endsAt: string; limit: number };
 
 export function arcLeaseControl(operation: 'enable' | 'heartbeat', sequence: number): Json {
   return { operation, lease_sequence: sequence };
@@ -109,6 +109,8 @@ export class RegionalLab {
   #state = 'idle';
   #profile: RegionalProfile | null = null;
   #estimates = new Map<ClientId, number | null>();
+  #enrolled = new Set<ClientId>();
+  #requestHistory: Json[] = [];
   #counts: Counts | null = null;
   #gatewayCounts: GatewaySnapshot | null = null;
   #evidenceState = 'incomplete';
@@ -136,7 +138,12 @@ export class RegionalLab {
         label: this.#manualSession ? 'Five-minute manual allowance' : '60-second scenario allowance',
         endsAt: policy ? new Date(policy.window_end_ms).toISOString() : this.#manualSession!.endsAt,
       } } : {}),
-      clients: CLIENT_IDS.map(clientId => ({ clientId, estimatedUsesLeft: this.#estimates.get(clientId) ?? null,
+      ...(policy || this.#manualSession ? { rateLimit: { limit: policy?.quota ?? this.#manualSession!.limit,
+        scope: this.#profile === 'ip' ? 'shared IP' : 'each admitted client' } } : {}),
+      requestHistory: this.#requestHistory,
+      clients: CLIENT_IDS.map(clientId => ({ clientId, allowanceAcquired: this.#profile === 'ip' || this.#enrolled.has(clientId),
+        estimatedUsesLeft: this.#profile === 'ip' && policy && this.#gatewayCounts
+          ? Math.max(0, policy.quota - this.#gatewayCounts.counters.claims_successful!) : this.#estimates.get(clientId) ?? null,
         state: this.#state === 'expired' ? 'allowance expired' : this.#run?.phase === 'enabled' ? 'ready' : 'idle' })),
       evidence: { observedAt: this.#originObservedAt, state: this.#evidenceState,
         requestsReceived: this.#counts?.protected_requests_received ?? null,
@@ -153,7 +160,7 @@ export class RegionalLab {
     if (this.#terminalUncertain || this.#creationUncertain) return Promise.reject(Error('shutdown-unconfirmed'));
     if (this.#closing || this.#busy) return Promise.reject(Error('operation-in-progress'));
     if (command.action !== 'start_run' && command.revision !== this.#revision) throw Error('stale-run');
-    if (this.#state === 'expired' && ['acquire', 'access'].includes(command.action)) {
+    if (this.#state === 'expired' && ['acquire', 'access', 'send_requests'].includes(command.action)) {
       return Promise.resolve({ outcome: 'refused', message: 'Allowance expired. Start a new window explicitly.', status: this.status() });
     }
     const owned = structuredClone(command);
@@ -177,7 +184,9 @@ export class RegionalLab {
       if (command.action === 'start_run') {
         if (!['ip', 'type2-bearer', 'arc', 'type2-holder'].includes(command.profile) || this.#run) throw Error('run-already-active');
         this.#manualSession = null;
-        await this.#start(command.profile, REGIONAL.manual_window_ms, true);
+        const limit = command.limit ?? (command.profile === 'ip' ? REGIONAL.quota * REGIONAL.admitted_entitlements : REGIONAL.quota);
+        if (!Number.isSafeInteger(limit) || limit < 1 || limit > (command.profile === 'ip' ? REGIONAL.max_ip_quota : REGIONAL.max_quota)) throw Error('invalid-limit');
+        await this.#start(command.profile, REGIONAL.manual_window_ms, true, limit);
         return { outcome: 'started', status: this.status() };
       }
       if (command.action === 'reset_run') {
@@ -187,8 +196,19 @@ export class RegionalLab {
       }
       if (command.action === 'run_comparison') return await this.#compare();
       if (command.action === 'run_theft_scene') return await this.#theftScene();
-      if (!['acquire', 'access'].includes(command.action) || !CLIENT_IDS.includes(command.clientId)) throw Error('command-invalid');
-      const result = await this.#action(command.clientId, command.action);
+      if (!['acquire', 'access', 'send_requests'].includes(command.action) || !CLIENT_IDS.includes(command.clientId)) throw Error('command-invalid');
+      if (command.action === 'acquire' && this.#profile === 'ip') return {
+        outcome: 'not-required', message: 'IP mode needs no tokens. Requests use one shared IP budget.', status: this.status() };
+      if (command.action === 'acquire' && this.#enrolled.has(command.clientId)) return {
+        outcome: 'already-acquired', message: 'Allowance already acquired. Existing credentials remain usable until spent or expired.', status: this.status() };
+      if (command.action !== 'acquire' && this.#profile !== 'ip' && !this.#enrolled.has(command.clientId)) return {
+        outcome: 'refused', message: 'Acquire allowance for this client first.', status: this.status() };
+      const count = command.action === 'send_requests' ? command.count : 1;
+      if (!Number.isSafeInteger(count) || count < 1 || count > REGIONAL.max_batch_requests) throw Error('invalid-count');
+      const action = command.action === 'send_requests' || (command.action === 'access' && this.#estimates.get(command.clientId) === 0)
+        ? 'abuse' : command.action;
+      const result = await this.#action(command.clientId, action, count);
+      if (command.action !== 'acquire') result.message = `Client ${command.clientId}: ${result.attempts} sent, ${result.accepted} accepted, ${result.denied} refused. Origin arrivals: ${result.originArrivals ?? 'unconfirmed'}. Evidence: ${result.evidenceState}.`;
       return { ...result, status: this.status() };
     } catch {
       if (!this.#manualSession || Date.now() < Date.parse(this.#manualSession.endsAt)) this.#manualSession = null;
@@ -264,19 +284,22 @@ export class RegionalLab {
     }
     throw Error('role-control-unavailable');
   }
-  #start(profile: RegionalProfile, windowMs = REGIONAL.window_ms, manual = false): Promise<void> {
+  #start(profile: RegionalProfile, windowMs = REGIONAL.window_ms, manual = false,
+    limit = profile === 'ip' ? REGIONAL.quota * REGIONAL.admitted_entitlements : REGIONAL.quota): Promise<void> {
     this.#guard();
-    const startup = Promise.resolve().then(() => this.#startGeneration(profile, windowMs, manual));
+    const startup = Promise.resolve().then(() => this.#startGeneration(profile, windowMs, manual, limit));
     this.#startup = startup;
     return startup.finally(() => { if (this.#startup === startup) this.#startup = null; });
   }
-  async #startGeneration(profile: RegionalProfile, windowMs: number, manual: boolean): Promise<void> {
+  async #startGeneration(profile: RegionalProfile, windowMs: number, manual: boolean, limit: number): Promise<void> {
     this.#guard();
     this.#state = 'starting';
     this.#lock ??= acquireProjectLock(join(this.#root, '.runtime', 'project.lock'));
     this.#revision++;
     this.#profile = profile;
     this.#estimates.clear();
+    this.#enrolled.clear();
+    this.#requestHistory = [];
     this.#counts = null;
     this.#gatewayCounts = null;
     this.#originObservedAt = null;
@@ -320,7 +343,7 @@ export class RegionalLab {
     const io = new DockerRedisIo(this.#docker, redisId, readFileSync(join(this.#root, '.runtime', 'secrets', 'controller', 'redis-password'), 'utf8').trim());
     const launcher = new DockerGatewayLauncher(this.#docker, this.#instances.get('gateway')!, { secretsDir: join(this.#root, '.runtime', 'secrets') });
     this.#stopGateway = () => launcher.stop();
-    const hooks = this.#hooks(profile, windowMs);
+    const hooks = this.#hooks(profile, windowMs, limit);
     let barrier: ResetPort | null = null;
     const reset: ResetPort = {
       fenceAll: async () => {
@@ -356,7 +379,7 @@ export class RegionalLab {
     await this.#run.start();
     this.#guard();
     const end = this.#run.info!.regional_policy!.window_end_ms;
-    this.#manualSession = manual ? { profile, endsAt: new Date(end).toISOString() } : null;
+    this.#manualSession = manual ? { profile, endsAt: new Date(end).toISOString(), limit } : null;
     const manualSession = this.#manualSession;
     void this.#run.closed().then(() => {
       if (this.#state !== 'active') return;
@@ -391,7 +414,7 @@ export class RegionalLab {
     }
     this.#enumerationUncertain = false;
   }
-  #hooks(profile: RegionalProfile, windowMs: number): RegionalRunHooks {
+  #hooks(profile: RegionalProfile, windowMs: number, limit: number): RegionalRunHooks {
     const issueKey = randomBytes(32).toString('hex');
     const verifyKey = randomBytes(32).toString('hex');
     const contextKey = randomBytes(32).toString('hex');
@@ -413,7 +436,7 @@ export class RegionalLab {
       policy: manifest => validateRegionalPolicy({ contract_version: REGIONAL.contract_version, schema_version: 1,
         run_id: manifest.run_id, baseline_config_digest: configurationDigest(manifest), profile,
         window_start_ms: manifest.run_start_ms, window_end_ms: manifest.run_start_ms + windowMs,
-        quota: REGIONAL.quota, admitted_entitlements: REGIONAL.admitted_entitlements,
+        quota: limit, admitted_entitlements: REGIONAL.admitted_entitlements,
         resource_id: REGIONAL.resource_id, method: REGIONAL.method, url: REGIONAL.url,
         type2_key_id: ['type2-bearer', 'type2-holder'].includes(profile) ? manifest.token_key_id : null,
         arc_key_id: bootstrap?.arc_key_id ?? null, arc_implementation_revision: bootstrap?.arc_implementation_revision ?? null,
@@ -499,7 +522,14 @@ export class RegionalLab {
     if (this.#run?.phase !== 'enabled') throw Error('run-inactive');
     const before = await this.#origin();
     const gatewayBefore = await this.#gateway();
-    const value = await this.#private(`client-${clientId}`, { operation: 'action', action, count });
+    let value: Json = { results: [] };
+    // Keep each private reply below its existing 64 KiB frame bound, even for IP successes.
+    for (let sent = 0; sent < count; sent += action === 'abuse' ? 26 : count) {
+      const chunk = await this.#private(`client-${clientId}`, { operation: 'action', action, count: action === 'abuse' ? Math.min(26, count - sent) : count });
+      value = { ...chunk, results: [...value.results, ...(chunk.results ?? [])] };
+      if (chunk.error) break;
+    }
+    if (action === 'acquire' && !value.error) this.#enrolled.add(clientId);
     this.#estimates.set(clientId, value.estimated_remaining);
     const results = value.results ?? [];
     const uncertain = results.some((result: Json) => result.delivery === 'uncertain') || value.error === 'regional-operation-failed';
@@ -522,6 +552,11 @@ export class RegionalLab {
     if (this.#evidenceState === 'verified' && (gatewayDelta!.claims_successful !== accepted
       || Object.values(gatewayDelta!).some(value => value < 0) || workers!.some(value => value < 0))) this.#evidenceState = 'mismatch';
     const first = results[0];
+    if (action !== 'acquire') {
+      this.#requestHistory.push({ clientId, attempts: results.length, accepted, refused: denied,
+        originArrivals: arrivals, evidenceState: this.#evidenceState });
+      if (this.#requestHistory.length > 24) this.#requestHistory.shift();
+    }
     return { outcome: uncertain ? 'uncertain' : accepted ? 'delivered' : action === 'acquire' && !value.error ? 'acquired' : 'refused',
       message: uncertain ? 'Delivery uncertain. The use may already be consumed.' : value.error ? 'Allowance unavailable or exhausted.' : undefined,
       ...(first?.status === 200 && first.resource_b64url ? { authorizedAccess: { clientId, text: Buffer.from(first.resource_b64url, 'base64url').toString('utf8') } } : {}),

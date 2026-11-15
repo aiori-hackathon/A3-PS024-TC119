@@ -1,5 +1,7 @@
 # Regional replay component — K02-A
 
+**Current: regional-replay-3 / TF-PS024-REGIONAL-1.2.0.** The regional policy hash has eight fields, including quota. The identity tuple appends quota as argument nine; claim arguments ten and eleven are spend ID and holder expiry. Lua validates and compares the quota before any mutation. IP's atomic counter uses that policy value, rather than a hard-coded 25. Snapshot, initializer, claim hashes and readiness change together. Legacy baseline script bytes and Redis keys remain unchanged.
+
 Current API revision **regional-replay-2**, regional contract `TF-PS024-REGIONAL-1.1.0`. Initializer, snapshot and claim scripts accept exactly the authenticated 60-second comparison or 300-second manual duration. Their hashes and stored regional revision change together; argument/key ABIs and baseline script bytes remain unchanged. Existing 60-second data cannot be silently reused under a different duration or revision. The original component description below is historical.
 
 `src/contracts/lib/regional-replay.ts` supplies the authoritative Lua, command/reply encodings, controller initializer/readiness and a separate gateway ACL. `src/services/gateway/src/regional-replay-store.ts` supplies a bounded, fail-closed connection pool using the existing `ReplayConnection` interface. Neither is connected to HTTP or a real ARC verifier in this slice. The current serving process and baseline scripts/manifests remain unchanged.

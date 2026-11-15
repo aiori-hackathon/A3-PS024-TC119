@@ -27,6 +27,21 @@ fn five() -> NonZeroU32 {
     NonZeroU32::new(5).unwrap()
 }
 
+#[test]
+fn configured_limits_verify_exactly_that_many_presentations() {
+    for quota in [1, 2, 3, 7, 10] {
+        let issuer = Issuer::generate().unwrap();
+        let wallet = issued_wallet(&issuer);
+        let limit = NonZeroU32::new(quota).unwrap();
+        let mut state = wallet.presentation_state(limit, PRESENTATION_CONTEXT).unwrap();
+        for _ in 0..quota {
+            let proof = state.present(&mut OsRng).unwrap().to_bytes();
+            issuer.verify(&proof, REQUEST_CONTEXT, limit, PRESENTATION_CONTEXT).unwrap();
+        }
+        assert!(matches!(state.present(&mut OsRng), Err(ArcError::LimitExceeded)));
+    }
+}
+
 fn issued_wallet(issuer: &Issuer) -> Wallet {
     let client = PendingIssuance::begin(REQUEST_CONTEXT).unwrap();
     let response = issuer.issue(&client.request_bytes()).unwrap();

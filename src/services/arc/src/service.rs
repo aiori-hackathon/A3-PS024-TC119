@@ -129,7 +129,7 @@ impl Runtime {
             return Err("wrong-policy");
         }
         self.live()?;
-        let limit = NonZeroU32::new(spec_number("quota") as u32).unwrap();
+        let limit = NonZeroU32::new(policy["quota"].as_u64().ok_or("wrong-policy")? as u32).ok_or("wrong-policy")?;
         if operation == "issue" {
             let grant = text(request, "grant_id")?.to_owned();
             if self.grants.contains(&grant) {

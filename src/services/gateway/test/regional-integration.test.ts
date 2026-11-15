@@ -129,7 +129,7 @@ async function serving(t:TestContext,profile:RegionalProfile){
   admin.on('error',()=>{});await admin.connect();t.after(()=>admin.disconnect(false));await admin.flushdb();
   const io={call:(command:string,...args:(string|number)[])=>admin.call(command,...args)};
   const f=await holderSetup(parseRedisTime(await admin.time())-1000),m=f.m;
-  const p=validateRegionalPolicy({...f.p,profile,type2_key_id:profile==='ip'?null:m.token_key_id},m);
+  const p=validateRegionalPolicy({...f.p,profile,quota:profile==='ip'?25:f.p.quota,type2_key_id:profile==='ip'?null:m.token_key_id},m);
   await loadReplayScripts(io);await initializeStore(io,m);await initializeRegionalStore(io,m,p);
   const password=randomBytes(32).toString('hex');await io.call('ACL',...regionalGatewayAclArguments('tfr_process',password));
   let arrivals=0,mismatches=0;

@@ -33,7 +33,7 @@ class Connection implements ReplayConnection{
   }
   normal(command:string,args:(string|number)[]):unknown{
     if(command==='SCRIPT')return [1,1];
-    if(command==='TYPE')return 'hash';if(command==='PTTL')return -1;if(command==='HLEN')return 7;
+    if(command==='TYPE')return 'hash';if(command==='PTTL')return -1;if(command==='HLEN')return 8;
     if(command==='HMGET'){const state=regionalStoreState(this.m,this.p);return args.slice(1).map(k=>state[String(k)]);}
     if(command==='EVALSHA')return args[0]===REGIONAL_REPLAY_SCRIPTS.snapshot.sha1?
       ['REGIONAL_SNAPSHOT',this.m.run_id,regionalPolicyDigest(this.p),this.p.window_start_ms+100,this.p.window_start_ms,this.p.window_end_ms]:

@@ -3,7 +3,7 @@ import { ContractError, configurationDigest, PROTOCOL, validateManifest, type Ma
 import { REGIONAL, regionalPolicyDigest, validateRegionalPolicy, type RegionalPolicy } from './regional.ts';
 import { REPLAY_SCRIPTS, verifyStoreReady, type RedisIo } from './replay.ts';
 
-export const REGIONAL_REPLAY_REVISION = 'regional-replay-2';
+export const REGIONAL_REPLAY_REVISION = 'regional-replay-3';
 export const REGIONAL_POLICY_KEY = 'tfr:policy';
 export const REGIONAL_SPENT_PREFIX = 'tfr:spent:';
 export const REGIONAL_IP_PREFIX = 'tfr:ip-budget:';
@@ -24,7 +24,8 @@ local function hex(s,n) return type(s) == 'string' and #s == n and string.match(
 if #KEYS ~= KEY_COUNT or #ARGV ~= ARG_COUNT or KEYS[1] ~= 'pp:policy' or KEYS[2] ~= 'pp:clock'
   or KEYS[3] ~= 'tfr:policy' or not hex(ARGV[4],64)
   or (ARGV[5] ~= 'ip' and ARGV[5] ~= 'type2-bearer' and ARGV[5] ~= 'arc' and ARGV[5] ~= 'type2-holder') then return {'RUN_UNAVAILABLE'} end
-local start_ms, end_ms, baseline_start = uint(ARGV[6]), uint(ARGV[7]), uint(ARGV[8])
+local start_ms, end_ms, baseline_start, quota = uint(ARGV[6]), uint(ARGV[7]), uint(ARGV[8]), uint(ARGV[9])
+if not quota or quota < 1 or quota > (ARGV[5] == 'ip' and MAX_IP_QUOTA or MAX_QUOTA) then return {'RUN_UNAVAILABLE'} end
 if not start_ms or not end_ms or not baseline_start or start_ms < baseline_start
   or (end_ms - start_ms ~= WINDOW_MS and end_ms - start_ms ~= MANUAL_WINDOW_MS) or end_ms > MAX - GUARD_MS
   or baseline_start > MAX - BASELINE_EPOCH_MS or end_ms > baseline_start + BASELINE_EPOCH_MS then return {'RUN_UNAVAILABLE'} end
@@ -33,13 +34,13 @@ if snap[1] ~= 'SNAPSHOT' then return snap end
 if redis.call('HGET',KEYS[1],'run_start_ms') ~= ARGV[8] then return {'RUN_UNAVAILABLE'} end
 local now = snap[5]
 `;
-const fields=['revision','run_id','config_digest','policy_digest','profile','window_start_ms','window_end_ms'] as const;
+const fields=['revision','run_id','config_digest','policy_digest','profile','window_start_ms','window_end_ms','quota'] as const;
 const policyGuard=String.raw`
 if redis.call('TYPE',KEYS[3]).ok ~= 'hash' or redis.call('PTTL',KEYS[3]) ~= -1
-  or redis.call('HLEN',KEYS[3]) ~= 7 then return {'RUN_UNAVAILABLE'} end
-local r = redis.call('HMGET',KEYS[3],'revision','run_id','config_digest','policy_digest','profile','window_start_ms','window_end_ms')
-if r[1] ~= 'regional-replay-2' or r[2] ~= ARGV[1] or r[3] ~= ARGV[3] or r[4] ~= ARGV[4]
-  or r[5] ~= ARGV[5] or r[6] ~= ARGV[6] or r[7] ~= ARGV[7] then return {'RUN_UNAVAILABLE'} end
+  or redis.call('HLEN',KEYS[3]) ~= 8 then return {'RUN_UNAVAILABLE'} end
+local r = redis.call('HMGET',KEYS[3],'revision','run_id','config_digest','policy_digest','profile','window_start_ms','window_end_ms','quota')
+if r[1] ~= 'regional-replay-3' or r[2] ~= ARGV[1] or r[3] ~= ARGV[3] or r[4] ~= ARGV[4]
+  or r[5] ~= ARGV[5] or r[6] ~= ARGV[6] or r[7] ~= ARGV[7] or r[8] ~= ARGV[9] then return {'RUN_UNAVAILABLE'} end
 `;
 const windowGuard=String.raw`
 if now < start_ms then return {'WINDOW_CLOSED'} end
@@ -54,7 +55,7 @@ const observeClock=String.raw`
 redis.call('HSET',KEYS[2],'last_now_ms',string.format('%.0f',now),'highest_epoch','0')
 `;
 const source=(kind:'snapshot'|'claim'|'initialize')=>{
-  const prelude=`local KEY_COUNT, ARG_COUNT = ${kind==='claim'?'4,10':'3,8'}\nlocal WINDOW_MS, MANUAL_WINDOW_MS, GUARD_MS, BASELINE_EPOCH_MS = ${REGIONAL.window_ms},${REGIONAL.manual_window_ms},${PROTOCOL.guard_ms},${PROTOCOL.epoch_ms}\n`;
+  const prelude=`local KEY_COUNT, ARG_COUNT = ${kind==='claim'?'4,11':'3,9'}\nlocal MAX_QUOTA, MAX_IP_QUOTA = ${REGIONAL.max_quota},${REGIONAL.max_ip_quota}\nlocal WINDOW_MS, MANUAL_WINDOW_MS, GUARD_MS, BASELINE_EPOCH_MS = ${REGIONAL.window_ms},${REGIONAL.manual_window_ms},${PROTOCOL.guard_ms},${PROTOCOL.epoch_ms}\n`;
   let body:string;
   if(kind==='initialize')body=String.raw`
 -- Controller only, while all workers are fenced. Validate everything before this one HSET.
@@ -62,17 +63,17 @@ if redis.call('DBSIZE') ~= 2 or redis.call('TYPE',KEYS[3]).ok ~= 'none' then ret
 local c = redis.call('HMGET',KEYS[2],'last_now_ms','highest_epoch')
 if c[1] ~= ARGV[8] or c[2] ~= '0' then return {'NOT_FRESH'} end
 if now < start_ms or now >= end_ms then return {'WINDOW_CLOSED'} end
-redis.call('HSET',KEYS[3],'revision','regional-replay-2','run_id',ARGV[1],'config_digest',ARGV[3],
-  'policy_digest',ARGV[4],'profile',ARGV[5],'window_start_ms',ARGV[6],'window_end_ms',ARGV[7])
+redis.call('HSET',KEYS[3],'revision','regional-replay-3','run_id',ARGV[1],'config_digest',ARGV[3],
+  'policy_digest',ARGV[4],'profile',ARGV[5],'window_start_ms',ARGV[6],'window_end_ms',ARGV[7],'quota',ARGV[9])
 return {'INITIALIZED'}
 `;
   else if(kind==='snapshot')body=policyGuard+windowGuard+observeClock+String.raw`
 return {'REGIONAL_SNAPSHOT',ARGV[1],ARGV[4],now,start_ms,end_ms}
 `;
   else body=policyGuard+String.raw`
-local not_after = uint(ARGV[10])
+local not_after = uint(ARGV[11])
 local prefix = ARGV[5] == 'ip' and 'tfr:ip-budget:' or 'tfr:spent:'
-if not hex(ARGV[9],64) or KEYS[4] ~= prefix .. ARGV[4] .. ':' .. ARGV[9] or not not_after then return {'RUN_UNAVAILABLE'} end
+if not hex(ARGV[10],64) or KEYS[4] ~= prefix .. ARGV[4] .. ':' .. ARGV[10] or not not_after then return {'RUN_UNAVAILABLE'} end
 if (ARGV[5] == 'type2-holder' and (not_after <= start_ms or not_after > end_ms))
   or (ARGV[5] ~= 'type2-holder' and not_after ~= 0) then return {'RUN_UNAVAILABLE'} end
 local expiry = end_ms + GUARD_MS
@@ -82,12 +83,12 @@ if spent_type ~= 'none' then
   if spent_type ~= 'string' or redis.call('PEXPIRETIME',KEYS[4]) ~= expiry then return {'RUN_UNAVAILABLE'} end
   local raw = redis.call('GET',KEYS[4])
   count = uint(raw)
-  if not count or count < 1 or count > (ARGV[5] == 'ip' and 25 or 1) then return {'RUN_UNAVAILABLE'} end
+  if not count or count < 1 or count > (ARGV[5] == 'ip' and quota or 1) then return {'RUN_UNAVAILABLE'} end
 end
 `+windowGuard+observeClock+String.raw`
 if ARGV[5] == 'type2-holder' and now >= not_after then return {'NONCE_EXPIRED'} end
 if ARGV[5] == 'ip' then
-  if count >= 25 then return {'LIMIT_REACHED'} end
+  if count >= quota then return {'LIMIT_REACHED'} end
   redis.call('SET',KEYS[4],string.format('%.0f',count+1),'PXAT',string.format('%.0f',expiry))
   return {'CLAIMED',expiry}
 end
@@ -111,11 +112,11 @@ function checked(configuration:unknown,policy:unknown):{manifest:Manifest;policy
 export function regionalReplayIdentity(configuration:unknown,policy:unknown):readonly string[] {
   const {manifest:m,policy:p}=checked(configuration,policy);
   return Object.freeze([m.run_id,m.token_key_id,configurationDigest(m),regionalPolicyDigest(p),p.profile,
-    String(p.window_start_ms),String(p.window_end_ms),String(m.run_start_ms)]);
+    String(p.window_start_ms),String(p.window_end_ms),String(m.run_start_ms),String(p.quota)]);
 }
 export function regionalStoreState(configuration:unknown,policy:unknown):Readonly<Record<string,string>> {
   const a=regionalReplayIdentity(configuration,policy);
-  return Object.freeze(Object.fromEntries(fields.map((field,i)=>[field,[REGIONAL_REPLAY_REVISION,a[0]!,a[2]!,a[3]!,a[4]!,a[5]!,a[6]!][i]!])));
+  return Object.freeze(Object.fromEntries(fields.map((field,i)=>[field,[REGIONAL_REPLAY_REVISION,a[0]!,a[2]!,a[3]!,a[4]!,a[5]!,a[6]!,a[8]!][i]!])));
 }
 export function regionalSnapshotCommand(configuration:unknown,policy:unknown):(string|number)[] {
   return ['EVALSHA',REGIONAL_REPLAY_SCRIPTS.snapshot.sha1,3,'pp:policy','pp:clock',REGIONAL_POLICY_KEY,

@@ -26,7 +26,7 @@ import { createPki } from './helpers/pki.ts';
 import { listen } from './helpers/https.ts';
 import { startProxy } from './helpers/stubs.ts';
 
-async function setup(profile: 'type2-holder' | 'type2-bearer' | 'ip') {
+async function setup(profile: 'type2-holder' | 'type2-bearer' | 'ip', quota = profile === 'ip' ? 25 : 5) {
   const signer = await LabIssuer.generate(PROTOCOL.issuer_name);
   const now = Date.now();
   const manifest = makeManifest({ run_id: hex(randomBytes(16)), run_start_ms: now,
@@ -34,7 +34,7 @@ async function setup(profile: 'type2-holder' | 'type2-bearer' | 'ip') {
     snapshot_script_sha1: '1'.repeat(40), claim_script_sha1: '2'.repeat(40) });
   const policy = validateRegionalPolicy({ contract_version: REGIONAL.contract_version, schema_version: 1,
     run_id: manifest.run_id, baseline_config_digest: configurationDigest(manifest), profile,
-    window_start_ms: now, window_end_ms: now + REGIONAL.window_ms, quota: 5, admitted_entitlements: 5,
+    window_start_ms: now, window_end_ms: now + REGIONAL.window_ms, quota, admitted_entitlements: 5,
     resource_id: 'research-resource', method: 'GET', url: 'https://origin.lab.test/resource',
     type2_key_id: profile === 'ip' ? null : manifest.token_key_id,
     arc_key_id: null, arc_implementation_revision: null, arc_tag_encoding: null }, manifest);
@@ -64,7 +64,7 @@ async function setup(profile: 'type2-holder' | 'type2-bearer' | 'ip') {
     };
     try {
       requests++;
-      if (profile === 'ip') return arrivals < 25 ? accepted() : json(429, { error: 'authorization-refused' });
+      if (profile === 'ip') return arrivals < policy.quota ? accepted() : json(429, { error: 'authorization-refused' });
       if (profile === 'type2-bearer') {
         const auth = request.headers.authorization;
         if (!auth) {
@@ -172,6 +172,22 @@ test('ordinary Type2 acquires five from one voucher and sends all 26 abuse attem
     assert.ok(client.measurements.issuance_response_bytes > 5 * 256);
     assert.deepEqual([...new Set(rig.proxy.connects)].sort(), ['issuer.lab.test:443', 'origin.lab.test:443']);
   } finally { rig.stop(); }
+});
+
+test('selected Type2 budgets issue exactly the chosen token count and preserve another client allowance', async () => {
+  for (const quota of [1,3,10]) {
+    const rig = await setup('type2-bearer',quota);
+    try {
+      const a=rig.client(0), b=rig.client(1);
+      await a.acquire(); await b.acquire();
+      assert.equal(a.estimatedRemaining,quota);
+      const results=await a.abuse(quota+1);
+      assert.equal(results.filter(r=>r.status===200).length,quota);
+      assert.equal(results.filter(r=>r.status>=400).length,1);
+      assert.equal((await b.access()).status,200);
+      assert.equal(rig.arrivals(),quota+1);
+    } finally { rig.stop(); }
+  }
 });
 
 test('IP comparison sends the full 26-request workload, 25 reach its test resource and no enrollment is granted', async () => {

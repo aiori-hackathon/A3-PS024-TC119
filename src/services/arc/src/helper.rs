@@ -95,7 +95,7 @@ impl Helper {
                     Some(v) => v.as_u64().ok_or("invalid-input")?,
                     None => self.next_slot,
                 };
-                let quota = spec_number("quota");
+                let quota = policy["quota"].as_u64().ok_or("wrong-policy")?;
                 if slot >= quota {
                     return Err("exhausted");
                 }

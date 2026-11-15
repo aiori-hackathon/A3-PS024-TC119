@@ -31,7 +31,7 @@ before(async()=>{
   throw Error('Isolated regional Redis startup failed');
 });
 after(async()=>{if(container)await docker('rm','-f',container);});
-async function seed(profile:'arc'|'type2-holder'='arc',closed=false,windowMs=REGIONAL.window_ms){
+async function seed(profile:'arc'|'type2-holder'|'ip'='arc',closed=false,windowMs=REGIONAL.window_ms,quota=5){
   await command('FLUSHDB');await loadReplayScripts(io);
   const now=parseRedisTime(await command('TIME'));
   m=makeManifest({run_id:golden.manifest.run_id,run_start_ms:now-(closed?61000:5000),
@@ -39,7 +39,7 @@ async function seed(profile:'arc'|'type2-holder'='arc',closed=false,windowMs=REG
     snapshot_script_sha1:REPLAY_SCRIPTS.snapshot.sha1,claim_script_sha1:REPLAY_SCRIPTS.claim.sha1});
   p=validateRegionalPolicy({contract_version:REGIONAL.contract_version,schema_version:1,run_id:m.run_id,
     baseline_config_digest:configurationDigest(m),profile,window_start_ms:m.run_start_ms,window_end_ms:m.run_start_ms+windowMs,
-    quota:5,admitted_entitlements:5,resource_id:REGIONAL.resource_id,method:REGIONAL.method,url:REGIONAL.url,
+    quota,admitted_entitlements:5,resource_id:REGIONAL.resource_id,method:REGIONAL.method,url:REGIONAL.url,
     type2_key_id:profile==='type2-holder'?m.token_key_id:null,arc_key_id:profile==='arc'?'a'.repeat(64):null,
     arc_implementation_revision:profile==='arc'?'b'.repeat(40):null,arc_tag_encoding:profile==='arc'?REGIONAL.arc_tag_encoding:null},m);
   await initializeStore(io,m);
@@ -50,6 +50,19 @@ async function seed(profile:'arc'|'type2-holder'='arc',closed=false,windowMs=REG
   }else await initializeRegionalStore(io,m,p);
 }
 const spend='c'.repeat(64);
+
+test('selected shared-IP limit is enforced atomically and changing the quota is refused',async()=>{
+  for(const quota of [1,3,50]) {
+    await seed('ip',false,REGIONAL.manual_window_ms,quota);
+    const cmd=regionalClaimCommand(m,p,spend,0);
+    const tampered=[...cmd]; tampered[tampered.length-3]=String(quota+1);
+    assert.deepEqual(await command(...tampered),['RUN_UNAVAILABLE']);
+    const results=await Promise.all(Array.from({length:quota+2},()=>command(...cmd)));
+    assert.equal(results.filter(r=>r[0]==='CLAIMED').length,quota);
+    assert.equal(results.filter(r=>r[0]==='LIMIT_REACHED').length,2);
+    assert.equal(await command('GET',`tfr:ip-budget:${regionalPolicyDigest(p)}:${spend}`),String(quota));
+  }
+});
 
 test('both policy durations use atomic spend and exact expiry; arbitrary durations cannot claim',async()=>{
   for(const duration of [REGIONAL.window_ms,REGIONAL.manual_window_ms]) {

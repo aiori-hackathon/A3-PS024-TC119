@@ -115,6 +115,24 @@ test('operations are session-scoped, asynchronous and single-flight with authori
   assert.doesNotMatch(complete.body, /private-never-serialize/);
 });
 
+test('selected policy limits and bounded batches are strict fixed commands', async t => {
+  const seen = [];
+  const { port, headers } = await setup(t, async command => { seen.push(command); return { outcome: 'delivered' }; });
+  for (const command of [
+    {action:'start_run',profile:'ip',limit:0}, {action:'start_run',profile:'ip',limit:51},
+    {action:'start_run',profile:'arc',limit:11}, {action:'start_run',profile:'type2-bearer',limit:2.5},
+    {action:'send_requests',clientId:'A',revision:3,count:52}, {action:'send_requests',clientId:'A',revision:3,count:0},
+  ]) assert.equal((await fetchPortal(port,'/api/command',headers,'POST',JSON.stringify(command))).status,400);
+  for (const command of [
+    {action:'start_run',profile:'ip',limit:15}, {action:'start_run',profile:'arc',limit:3},
+    {action:'start_run',profile:'type2-bearer',limit:10}, {action:'send_requests',clientId:'B',revision:3,count:51},
+  ]) {
+    const r=await fetchPortal(port,'/api/command',headers,'POST',JSON.stringify(command));
+    assert.equal(r.status,202); await operationResult(port,headers,r.json().operationId);
+  }
+  assert.equal(seen.length,4);
+});
+
 test('backend exceptions and oversized responses become fixed safe errors', async t => {
   const { port, headers } = await setup(t, async () => { throw Error('private-key-secret'); });
   const accepted = await fetchPortal(port, '/api/command', headers, 'POST', JSON.stringify({ action: 'reset_run', revision: 3 }));

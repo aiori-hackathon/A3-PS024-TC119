@@ -1,5 +1,13 @@
 # Contract changes
 
+## Regional TF-PS024-REGIONAL-1.2.0 — 15 November 2026
+
+Operator-started demonstrations accept a policy-bound quota: IP uses one shared 1–50 request budget; Type2/ARC use 1–10 uses per admitted client. Defaults remain 25 shared versus five each. Type2 request/response arrays are bounded structurally and must match the exact authenticated quota. ARC helper and verifier use that same quota in their presentation state and proof checks. Quota cannot change within a generation.
+
+Regional replay revision 3 adds the quota to the stored policy and as the ninth identity argument. Snapshot/initializer now take nine arguments; claims take eleven (quota, spend ID and holder expiry remain unambiguous). Atomic initialization, readiness and claims check the same quota. Old revisions and mixed-version policies refuse. Original baseline contracts/scripts are unchanged.
+
+The loopback portal accepts bounded selected limits and fixed `send_requests` commands. The controller chunks private batches to preserve the 64 KiB frame bound, retains aggregate request history, and never exports tokens/proofs. IP acquisition is an explicit no-op; repeated token acquisition does not consume another voucher or refill the allowance. The automated comparison still selects its fixed equal aggregate budgets.
+
 ## Regional TF-PS024-REGIONAL-1.1.0 — 15 November 2026
 
 The authenticated regional policy permits exactly two durations: 60 seconds for the automated comparison/holder scene, and 300 seconds for an operator-started manual demonstration. Node and Rust enforce the same allowlist. Duration remains inside the policy digest and the baseline 600-second epoch; quota, nonce lifetime, replay guard and fail-closed expiry are unchanged. Strict envelopes and independent framing/MAC fixtures use the new version, so mixed-version services refuse rather than reinterpret policies.

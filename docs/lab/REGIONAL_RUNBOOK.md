@@ -1,5 +1,15 @@
 # Regional prototype
 
+## Interactive rate-limit demonstration
+
+Before Start demo, set Shared IP limit (1–50) and Type2 / ARC limit (1–10). These apply only to a newly started window and cannot alter a live policy. For equal aggregate budgets across five clients, use IP = five times the per-client quota; for example 15 shared versus three each. The automated Run comparison always uses 25 versus five each, independent of these fields.
+
+1. IP: choose shared limit 15, Start demo, select A, set Requests to send to 16, then Send requests. Expect 15 accepted and one refused. Select B and Access resource: refused, with zero additional origin arrivals. IP needs no allowance acquisition; that button is disabled and explicitly labelled.
+2. Stop demo. Ordinary Type 2: choose per-client limit three, Start demo, acquire A once, then send 16 requests. Expect three accepted and 13 refused. A further access is refused. Select B, acquire once and access: accepted.
+3. Stop demo and repeat with ARC and the same per-client limit. Expect the same isolation result using one three-slot credential per client.
+
+The Live request results table reports real attempts, accepted/refused counts, independent origin arrival deltas and evidence state. A refused request clears previously displayed resource content instead of leaving an old delivery on screen. Repeated Acquire is not a refill; the existing allowance remains usable only until spent or expired. Extra demonstration requests reoffer spent credentials to exercise the gateway's rejection path.
+
 Use Node 24.22.1 and Docker Desktop with Linux containers. Provision the existing lab TLS/Redis secrets with `node infra/scripts/provision-secrets.ts` if this is a fresh checkout.
 
 Start the local interface from the repository root,

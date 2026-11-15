@@ -74,6 +74,7 @@ export function validateRegionalPublicRequest(route:RegionalPublicRoute,value:un
   if(body['policy_digest']!==regionalPolicyDigest(p))return fail();
   if(route==='enroll'){
     if(p.profile==='ip'||body['profile']!==p.profile)return fail();
+    if((body['blinded_requests_b64url'] as string[]).length!==(p.profile==='arc'?1:p.quota))return fail();
     decodeBase64Url(body['enrollment_voucher_b64url'] as string,32,false);
     for(const b of body['blinded_requests_b64url'] as string[]){
       if(p.profile==='arc')binary(b,REGIONAL.arc_blob_max_bytes);else decodeBase64Url(b,259,false);
@@ -105,6 +106,7 @@ export function validateRegionalPublicResponse(route:'enroll'|'holder-challenge'
       {run_id:p.run_id,arc_implementation_revision:p.arc_implementation_revision!});
   }else if(route==='enroll'){
     if(body['profile']!==p.profile||p.profile==='ip')return fail();
+    if((body['responses_b64url'] as string[]).length!==(p.profile==='arc'?1:p.quota))return fail();
     for(const b of body['responses_b64url'] as string[])p.profile==='arc'?binary(b,REGIONAL.arc_blob_max_bytes):decodeBase64Url(b,256,false);
   }else{
     if(p.profile!=='type2-holder')return fail();

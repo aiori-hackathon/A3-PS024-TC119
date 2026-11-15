@@ -75,10 +75,10 @@ export class RegionalClient {
   }
   get estimatedRemaining(): number {
     if (this.#closed || !this.#acquired) return 0;
-    return this.#policy.profile === 'arc' ? Math.max(0, REGIONAL.quota - this.#nextSlot) : this.#entries.length;
+    return this.#policy.profile === 'arc' ? Math.max(0, this.#policy.quota - this.#nextSlot) : this.#entries.length;
   }
   get issuedCredentials(): number {
-    return this.#acquired ? this.#policy.profile === 'arc' ? 1 : REGIONAL.quota : 0;
+    return this.#acquired ? this.#policy.profile === 'arc' ? 1 : this.#policy.quota : 0;
   }
   get measurements(): RegionalClientMeasurements {
     return { ...this.#measurements, preparation_ms: Math.ceil(this.#measurements.preparation_ms),
@@ -110,7 +110,7 @@ export class RegionalClient {
         requests = [await this.#helper!.begin(this.#policy, body['issuer_params_b64url'] as string)];
       } else {
         const bearerChallenge = this.#policy.profile === 'type2-bearer' ? await this.#bearerChallenge() : undefined;
-        for (let index = 0; index < REGIONAL.quota; index++) {
+        for (let index = 0; index < this.#policy.quota; index++) {
           const holder = this.#policy.profile === 'type2-holder' ? holderKey() : undefined;
           const challenge = holder ? await this.#holderChallenge(holder.spki) : bearerChallenge!;
           const issuance = await LabIssuance.begin(challenge, decodeBase64Url(this.#manifest.token_key_spki_b64url));
@@ -208,7 +208,7 @@ export class RegionalClient {
     if (!this.#acquired) throw new ContractError('regional-no-token');
     if (this.#helper) {
       const slot = copy ? this.#lastSlot ?? 0 : this.#nextSlot++;
-      if (slot >= REGIONAL.quota) throw new ContractError('regional-no-token');
+      if (slot >= this.#policy.quota) throw new ContractError('regional-no-token');
       this.#lastSlot = slot;
       const presentation = await this.#helper.present(slot);
       const body = { ...this.#base(), presentation_b64url: presentation };

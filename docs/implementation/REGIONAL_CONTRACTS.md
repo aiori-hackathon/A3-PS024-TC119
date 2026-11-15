@@ -1,5 +1,7 @@
 # Regional integration contract
 
+**Current revision: TF-PS024-REGIONAL-1.2.0.** Manual setup selects an immutable `quota`: shared budget 1–50 for IP, per-entitlement budget 1–10 for Type2/ARC. Defaults are 25 shared and five per entitlement. Five admitted entitlements remain fixed; the automated comparison uses those defaults independently of manual fields. Strict token batch lengths and ARC proofs bind to the chosen policy. Replay revision 3 authenticates and checks the same quota in Redis. The window rules introduced in 1.1 remain unchanged. Historical versions below describe their original scope.
+
 **Current revision: TF-PS024-REGIONAL-1.1.0, 15 November 2026.** Operator-started manual demonstrations use a five-minute allowance; comparison and scripted holder experiments retain 60 seconds. These are the only accepted durations, checked by Node and Rust and bound into the policy digest. At manual expiry, authorization is fenced and the portal retains an expired session until explicit Stop demo or Start new window. No automatic refill is introduced. The baseline epoch, quotas, nonce and replay retention rules remain unchanged. The original candidate specification below is historical; see the contract change log and subsequent validation records for implementation status.
 
 Contract **TF-PS024-REGIONAL-1.0.0**, candidate for counterpart acceptance, 14 November 2026.

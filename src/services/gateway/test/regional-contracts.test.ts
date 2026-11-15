@@ -42,7 +42,7 @@ test('independent Python framing, HMAC, public-key and spend fixtures match byte
 });
 
 test('policy cannot change quota/profile/key layout or silently reinterpret baseline epoch',()=>{
-  const variants=[{quota:6},{profile:'anything'},{extra:true},{window_end_ms:160001},{window_start_ms:0},
+  const variants=[{quota:0},{quota:11},{profile:'anything'},{extra:true},{window_end_ms:160001},{window_start_ms:0},
     {window_end_ms:Number.MAX_SAFE_INTEGER,window_start_ms:Number.MAX_SAFE_INTEGER-60000},
     {type2_key_id:null},{arc_key_id:'1'.repeat(64)},{contract_version:'TF-PS024-1.0.0'}];
   for(const change of variants)assert.throws(()=>validateRegionalPolicy({...holder,...change}));
