@@ -10,6 +10,12 @@ Before Start demo, set Shared IP limit (1–50) and Type2 / ARC limit (1–10). 
 
 The Live request results table reports real attempts, accepted/refused counts, independent origin arrival deltas and evidence state. A refused request clears previously displayed resource content instead of leaving an old delivery on screen. Repeated Acquire is not a refill; the existing allowance remains usable only until spent or expired. Extra demonstration requests reoffer spent credentials to exercise the gateway's rejection path.
 
+The Requests to send input can be edited before startup or acquisition. Its default 26 is not fixed. Send requests remains disabled until an active window and any required acquisition are ready.
+
+Recorded benchmark appears above the live comparison, labelled with its historical date/checkpoint and linked evidence. Use it as a clearly identified fallback when time is short. ARC and Type2 both preserve honest clients' allowances. The recorded ARC advantage is fewer issuance application bytes and one credential for multiple uses, not fewer issuer HTTP exchanges or proven universal speed.
+
+Run theft scene populates a live event timeline for issuance/finalization, copied-token attack, owner access and the fresh-token duplicate race. Show completed evidence rows: attack zero claims/arrivals, owner one, race one. Started rows are pending and contain no private credential contents. Live comparison evidence notes explain incomplete observations instead of hiding them.
+
 Use Node 24.22.1 and Docker Desktop with Linux containers. Provision the existing lab TLS/Redis secrets with `node infra/scripts/provision-secrets.ts` if this is a fresh checkout.
 
 Start the local interface from the repository root,

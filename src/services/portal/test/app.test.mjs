@@ -39,6 +39,7 @@ test('expired allowance retains evidence, disables access and permits explicit r
   assert.equal(el('start').textContent, 'Start new window');
   assert.equal(el('reset').disabled, false);
   assert.equal(commands.length, 0, 'expiry must not automatically issue a fresh allowance');
+  assert.equal(el('request-count').disabled, false, 'request count can be edited before a new window');
   await el('start').handlers.click();
   assert.deepEqual(commands[0], { action: 'start_run', profile: 'arc', limit: 3 });
   assert.equal(el('access').disabled, false);
@@ -70,6 +71,7 @@ test('IP UI takes the selected shared limit, skips acquisition and submits the e
   const AsyncFunction=Object.getPrototypeOf(async function(){}).constructor;
   await new AsyncFunction('document','fetch','setInterval','setTimeout',readFileSync(new URL('../static/app.js',import.meta.url),'utf8'))(
     document,fetch,()=>{},fn=>queueMicrotask(fn));
+  assert.equal(el('request-count').disabled,false,'request count is editable while idle');
   await el('start').handlers.click();
   assert.deepEqual(commands[0],{action:'start_run',profile:'ip',limit:3});
   assert.equal(el('acquire').disabled,true);

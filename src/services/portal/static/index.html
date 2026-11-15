@@ -51,7 +51,7 @@
         <dl class="allowance"><div><dt>Estimated uses left</dt><dd id="estimate">—</dd></div><div><dt>Client state</dt><dd id="client-state">Awaiting run</dd></div></dl>
         <div class="actions"><button id="acquire" disabled>Acquire allowance</button><button id="access" class="primary" disabled>Access resource <span aria-hidden="true">↗</span></button></div>
         <p id="acquire-help" class="control-note">IP needs no tokens. Type2 and ARC require one allowance acquisition per client.</p>
-        <label for="request-count">Requests to send from the selected client (1–51)</label>
+        <label for="request-count">Requests to send from the selected client (1–51; editable before starting)</label>
         <div class="actions"><input id="request-count" type="number" min="1" max="51" step="1" value="26" disabled><button id="send-requests" disabled>Send requests</button></div>
         <p class="control-note">The server determines allowance and the accepted window. A client estimate may change after the next request.</p>
         <section class="latest-result" aria-labelledby="result-title"><h3 id="result-title">Latest action</h3><p id="result">Choose a profile and start a run to begin.</p></section>
@@ -74,10 +74,22 @@
       <p>Send requests from A, then select B and try access. Refused requests should add no origin arrivals. These are actual gateway requests, including replay attempts after a credential budget is exhausted.</p>
       <div class="table-scroll"><table><thead><tr><th>Client</th><th>Sent</th><th>Accepted</th><th>Refused</th><th>Origin arrivals</th><th>Evidence</th></tr></thead><tbody id="request-history"></tbody></table></div>
       <div class="section-heading"><div><p class="eyebrow">Controlled experiments</p><h2 id="experiments-title">Compare access, then examine theft</h2></div></div>
-      <div class="experiment-head"><div><h3>Shared-egress comparison</h3><p>Run the same controlled workload across IP baseline, ordinary Type 2 and ARC.</p></div><button id="compare" disabled>Run comparison</button></div>
+      <section class="recorded-benchmark" aria-labelledby="benchmark-title">
+        <h3 id="benchmark-title">Recorded benchmark — previous verified run</h3>
+        <p id="benchmark-meta">Loading the recorded benchmark. This is separate from the live result below.</p>
+        <p id="benchmark-conditions"></p>
+        <div class="table-scroll"><table><thead><tr><th>Profile</th><th>Recorded state</th><th>Accepted</th><th>Honest delivered</th><th>Origin arrivals</th><th>Issue bytes</th><th>Issue exchanges</th></tr></thead><tbody id="benchmark-body"></tbody></table></div>
+        <p><strong>What it demonstrates:</strong> Type2 and ARC both preserve the other clients' 20 uses. ARC represents five uses with one credential instead of five separate tokens. Recorded ARC issuance application bytes are about 66% lower (6,635 versus 19,505). Both use five issuer HTTP exchanges; Type2 already batches tokens. This does not establish that ARC is faster or universally better.</p>
+        <p><a href="/benchmark-evidence.md" target="_blank" rel="noopener">View recorded evidence and limitations</a> · <a href="/benchmark.json" target="_blank" rel="noopener">View benchmark data and run identifiers</a></p>
+      </section>
+      <div class="experiment-head"><div><h3>Shared-egress comparison — live run</h3><p>Run the same controlled workload across IP baseline, ordinary Type 2 and ARC. Manual limit fields do not change this fixed benchmark workload.</p></div><button id="compare" disabled>Run comparison</button></div>
+      <p id="comparison-notes" class="control-note">Missing evidence remains inconclusive; a saved benchmark does not change the live result.</p>
       <div class="table-scroll" tabindex="0" role="region" aria-label="Comparison results"><table class="comparison"><caption id="comparison-state">No comparison observed</caption><thead><tr><th scope="col">Profile</th><th scope="col">State</th><th scope="col">Accepted</th><th scope="col">Denied</th><th scope="col">Honest delivered</th><th scope="col">Origin arrivals</th><th scope="col">Issue bytes</th><th scope="col">Issue exchanges</th><th scope="col">Latency, ms</th></tr></thead><tbody id="comparison-body"></tbody></table></div>
       <div class="theft-scene"><div><h3>Holder-bound theft scene</h3><p>Attempt access with copied token bytes and an attacker-owned key, then access with the owner's key. The separate bearer theft experiment is pending.</p></div><button id="theft" disabled>Run theft scene</button></div>
       <div class="theft-results"><div><h4>Bearer theft scene</h4><p id="bearer-outcome">Separate bearer theft experiment pending</p></div><div><h4>Holder-bound token</h4><p id="holder-outcome">Awaiting experiment</p></div><div><h4>Origin observation</h4><p id="theft-origin">Awaiting experiment</p></div></div>
+      <h3>Live theft-scene event timeline</h3>
+      <p>Events come from the controller's real phase results. Pending steps are labelled started; token bytes, private keys and nonce contents are never displayed. Owner success implies the gateway accepted its holder proof before making the claim.</p>
+      <div class="table-scroll"><table><thead><tr><th>Time</th><th>Step</th><th>Outcome</th><th>Accepted</th><th>Refused</th><th>Origin arrivals</th><th>Claims</th><th>Evidence</th></tr></thead><tbody id="theft-events"></tbody></table></div>
     </section>
     <p id="announcement" class="visually-hidden" role="status" aria-live="polite" aria-atomic="true"></p>
   </main>

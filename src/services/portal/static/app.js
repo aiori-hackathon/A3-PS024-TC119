@@ -40,7 +40,7 @@ function updateControls() {
   $('acquire').disabled = !active || ip || acquired;
   $('acquire').textContent = ip ? 'No tokens needed (IP)' : acquired ? 'Allowance acquired' : 'Acquire allowance';
   $('access').disabled = !active || (!ip && !acquired);
-  $('request-count').disabled = $('access').disabled;
+  $('request-count').disabled = !ready;
   $('send-requests').disabled = $('access').disabled;
   setText('acquire-help', ip ? 'IP needs no acquisition. Every client spends the same shared IP budget.'
     : acquired ? 'Existing credentials are ready. Acquisition cannot refill this window.' : 'Acquire allowance once for this client before sending requests.');
@@ -112,6 +112,8 @@ function render(next) {
     appendRow($('comparison-body'), [names[profile], item?.state ?? 'Unobserved', count(item?.accepted), count(item?.denied), count(item?.honestDelivered), count(item?.originArrivals), count(item?.issuanceBytes), count(item?.issuanceInteractions), typeof item?.latencyMs === 'number' && item.latencyMs >= 0 ? item.latencyMs.toFixed(1) : '—'], true);
   }
   setText('comparison-state', comparison.length ? 'Latest observed comparison' : 'No comparison observed');
+  const notes = comparison.flatMap(row => (row.evidenceNotes ?? []).map(note => `${names[row.profile]}: ${note}`));
+  setText('comparison-notes', notes.length ? notes.join(' ') : 'Live results are separate from the recorded benchmark above. Missing evidence remains inconclusive.');
   const theft = next.theftScene;
   setText('active-limit', next.rateLimit ? `Enforced limit: ${next.rateLimit.limit} accepted requests per ${next.rateLimit.scope} in this window. Changing a field applies only to a new window.` : 'No active rate limit.');
   $('request-history').replaceChildren();
@@ -121,6 +123,10 @@ function render(next) {
   setText('bearer-outcome', 'Separate bearer theft experiment pending');
   setText('holder-outcome', theft?.holderOutcome ?? 'Awaiting experiment');
   setText('theft-origin', theft ? `${theft.state ?? 'Observed'} · Attack arrivals ${count(theft.attackOriginArrivals)} · Owner arrivals ${count(theft.ownerOriginArrivals)}` : 'Awaiting experiment');
+  $('theft-events').replaceChildren();
+  for (const row of next.theftEvents ?? []) appendRow($('theft-events'), [
+    time(row.at), row.step, row.outcome, count(row.accepted), count(row.refused), count(row.originArrivals), count(row.claims), row.evidence,
+  ]);
   updateControls();
   renderWindow();
 }
@@ -137,6 +143,19 @@ async function loadStatus() {
     setText('server-state', 'Unconfirmed');
     updateControls();
   } finally { loadingStatus = false; }
+}
+async function loadBenchmark() {
+  try {
+    const response = await fetch('/benchmark.json', { cache: 'no-store' });
+    if (!response.ok) throw Error();
+    const data = await response.json();
+    if (data.kind !== 'recorded-benchmark' || !Array.isArray(data.rows) || data.rows.length !== 3) throw Error();
+    setText('benchmark-meta', `RECORDED EVIDENCE · ${data.observedDate} · application ${data.applicationCommit.slice(0, 7)}. This is not the current live run.`);
+    setText('benchmark-conditions', data.conditions);
+    $('benchmark-body').replaceChildren();
+    for (const row of data.rows) appendRow($('benchmark-body'), [names[row.profile], row.state, count(row.accepted),
+      count(row.honestDelivered), count(row.originArrivals), count(row.issuanceBytes), count(row.issuanceInteractions)]);
+  } catch { setText('benchmark-meta', 'Recorded benchmark unavailable. No recorded result is being inferred.'); }
 }
 function delay(milliseconds) { return new Promise(resolve => setTimeout(resolve, milliseconds)); }
 async function execute(command, pendingLabel) {
@@ -195,6 +214,7 @@ $('send-requests').addEventListener('click', () => execute({ action: 'send_reque
   count: Number($('request-count').value), revision: status.revision }, `Sending requests from Client ${$('client').value}…`));
 $('compare').addEventListener('click', () => execute({ action: 'run_comparison', revision: status.revision }, 'Running the controlled comparison…'));
 $('theft').addEventListener('click', () => execute({ action: 'run_theft_scene', revision: status.revision }, 'Running the separate theft scene…'));
+await loadBenchmark();
 await loadStatus();
 setInterval(loadStatus, 3000);
 setInterval(() => { renderWindow(); updateControls(); }, 1000);

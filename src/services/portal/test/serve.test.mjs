@@ -54,6 +54,31 @@ test('preview serves fixed assets on loopback with honest empty state and disabl
   for (const path of ['/resource', '/report.json', '/../../.runtime/secrets', '/?file=secret']) assert.equal((await fetchPortal(port, path)).status, 404);
 });
 
+test('recorded benchmark is separately labelled and backed by the published evidence identities', async t => {
+  const { server, port } = await startPreview(0);
+  t.after(() => new Promise(resolve => server.close(resolve)));
+  const page = await fetchPortal(port);
+  assert.match(page.body,/Recorded benchmark — previous verified run/);
+  assert.match(page.body,/Shared-egress comparison — live run/);
+  const data = (await fetchPortal(port,'/benchmark.json')).json();
+  const evidence = await fetchPortal(port,'/benchmark-evidence.md');
+  assert.equal(data.kind,'recorded-benchmark');
+  assert.equal(data.applicationCommit.slice(0,7),'628c371');
+  assert.equal(evidence.status,200);
+  for(const row of data.rows) {
+    assert.match(evidence.body,new RegExp(row.runId));
+    assert.match(evidence.body,new RegExp(row.policyDigest));
+    assert.equal(row.accepted,row.originArrivals);
+    assert.equal(row.originServed,row.gatewayClaims);
+    assert.equal(row.generationMismatches,0);
+    assert.ok(row.workers.every(n=>n>0));
+  }
+  const type2=data.rows.find(r=>r.profile==='type2-bearer'),arc=data.rows.find(r=>r.profile==='arc');
+  assert.equal(type2.honestDelivered,arc.honestDelivered);
+  assert.equal(type2.issuanceInteractions,arc.issuanceInteractions);
+  assert.ok(arc.issuanceBytes<type2.issuanceBytes);
+});
+
 test('foreign Host/Origin and preview mutation methods are rejected', async t => {
   const { server, port } = await startPreview(0);
   t.after(() => new Promise(resolve => server.close(resolve)));

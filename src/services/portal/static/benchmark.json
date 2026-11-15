@@ -1,0 +1,13 @@
+{
+  "kind": "recorded-benchmark",
+  "observedDate": "2026-11-15",
+  "applicationCommit": "628c371c70620b9ac7741f2c152aa7864878621d",
+  "arcSourceCommit": "05fbb2a4e7649d6bf751ebf6177ff0fcf9dd3ffd",
+  "source": "/benchmark-evidence.md",
+  "conditions": "Five admitted clients behind one shared source; separately reset 60-second windows; 25 aggregate uses. A sends 26 attempts, then B–E send five each.",
+  "rows": [
+    { "profile": "ip", "state": "PASS", "accepted": 25, "denied": 21, "honestDelivered": 0, "originArrivals": 25, "originServed": 25, "gatewayClaims": 25, "generationMismatches": 0, "sourceObservations": 46, "workers": [40, 6], "issuanceBytes": 0, "issuanceInteractions": 0, "runId": "b3c2b8f60551c59f29364357ef92bfa3", "policyDigest": "d3f4eb8528d61f15db23971f596bce4c5ac2f150940e60d0991fa1722b8feb78" },
+    { "profile": "type2-bearer", "state": "PASS", "accepted": 25, "denied": 21, "honestDelivered": 20, "originArrivals": 25, "originServed": 25, "gatewayClaims": 25, "generationMismatches": 0, "sourceObservations": 46, "workers": [4, 42], "issuanceBytes": 19505, "issuanceInteractions": 5, "runId": "ac4ef6a7f0a67bcb7c28cc542b825a89", "policyDigest": "ab3ecfc24327039f5420ce3ba4c564f10809dafdcd90f867bff086a9d4b2e760" },
+    { "profile": "arc", "state": "PASS", "accepted": 25, "denied": 21, "honestDelivered": 20, "originArrivals": 25, "originServed": 25, "gatewayClaims": 25, "generationMismatches": 0, "sourceObservations": 46, "workers": [4, 42], "issuanceBytes": 6635, "issuanceInteractions": 5, "runId": "4ba975c59b90d36f7e7aa99ad4666025", "policyDigest": "f213315fb51d5ea29cb8e7188a1b8efcdcf352cfd75cfb0877f973bffa9f4185" }
+  ]
+}

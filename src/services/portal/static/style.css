@@ -93,6 +93,7 @@ footer p { margin:0; max-width:420px; }
 :focus-visible { outline:3px solid var(--green); outline-offset:4px; }
 .limit-settings { display:flex; flex-wrap:wrap; gap:20px; margin:18px 0; }
 .limit-settings label { display:grid; gap:8px; flex:1; min-width:220px; }
+.recorded-benchmark { margin:24px 0 32px; padding:20px 0; border-top:2px solid var(--green); border-bottom:1px solid var(--line); }
 input[type=number] { padding:10px; border:1px solid var(--line); border-radius:4px; font:inherit; min-width:0; }
 .visually-hidden { position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0; }
 @media(max-width:1050px) { .private-label { display:none; } .setup-bottom { align-items:start; } .run-details { grid-template-columns:repeat(2,auto); } .workspace { gap:18px; } .panel,.resource { padding:22px; } .actions { grid-template-columns:1fr; } }

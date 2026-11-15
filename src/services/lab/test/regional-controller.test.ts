@@ -7,7 +7,7 @@ import { EventEmitter } from 'node:events';
 import { PassThrough } from 'node:stream';
 import type { ChildProcess } from 'node:child_process';
 import { DockerAdapters, DockerProject, SERVICE_FOR_ROLE, type DockerCli, type RunResult } from '../src/controller/docker.ts';
-import { RegionalLab, regionalEvidenceState, arcLeaseControl, ArcProcess } from '../src/controller/regional-runtime.ts';
+import { RegionalLab, regionalEvidenceState, arcLeaseControl, ArcProcess, settleGatewaySnapshot, type GatewaySnapshot } from '../src/controller/regional-runtime.ts';
 import type { RoleLink } from '../src/controller/ports.ts';
 
 function deferred<T>() {
@@ -16,6 +16,26 @@ function deferred<T>() {
   return { promise, resolve };
 }
 const tick = () => new Promise<void>(resolve => setImmediate(resolve));
+
+test('gateway reporting waits for delayed observations without resending any workload', async () => {
+  const snapshot = (observations: number): GatewaySnapshot => ({ counters: { observations, claims_successful: 25 }, sameSource: true, workers: [7,39] });
+  const before = { ...snapshot(0), counters: { observations: 0, claims_successful: 0 } };
+  let reads = 0;
+  const result = await settleGatewaySnapshot(async () => snapshot(++reads === 1 ? 45 : 46), before, 46, 25, async () => {});
+  assert.equal(reads, 2);
+  assert.equal(result?.counters.observations, 46);
+});
+
+test('gateway reporting has a bounded deadline and never fills in a missing observation', async () => {
+  let clock = 0, reads = 0;
+  const before: GatewaySnapshot = { counters: { observations:0, claims_successful:0 }, sameSource:null, workers:[0,0] };
+  const partial: GatewaySnapshot = { counters: { observations:45, claims_successful:25 }, sameSource:null, workers:[7,39] };
+  const result = await settleGatewaySnapshot(async () => { reads++; return partial; }, before, 46, 25,
+    async () => { clock += 500; }, () => clock);
+  assert.equal(reads, 3);
+  assert.equal(result?.counters.observations, 45);
+  assert.equal(result?.sameSource, null);
+});
 
 test('ARC heartbeat command is independent of sender wall-clock offsets', t => {
   for (const offset of [-600000, 0, 600000]) {

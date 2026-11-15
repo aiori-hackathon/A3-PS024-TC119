@@ -8,6 +8,8 @@ const assets = new Map([
   ['/', { type: 'text/html; charset=utf-8', body: readFileSync(new URL('../static/index.html', import.meta.url)) }],
   ['/style.css', { type: 'text/css; charset=utf-8', body: readFileSync(new URL('../static/style.css', import.meta.url)) }],
   ['/app.js', { type: 'text/javascript; charset=utf-8', body: readFileSync(new URL('../static/app.js', import.meta.url)) }],
+  ['/benchmark.json', { type: 'application/json; charset=utf-8', body: readFileSync(new URL('../static/benchmark.json', import.meta.url)) }],
+  ['/benchmark-evidence.md', { type: 'text/plain; charset=utf-8', body: readFileSync(new URL('../../../../docs/implementation/REGIONAL_FINAL_EVIDENCE.md', import.meta.url)) }],
 ]);
 const profiles = ['ip', 'type2-bearer', 'arc', 'type2-holder'];
 const clientIds = ['A', 'B', 'C', 'D', 'E'];

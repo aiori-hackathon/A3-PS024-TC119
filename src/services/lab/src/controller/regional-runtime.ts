@@ -19,8 +19,23 @@ const wait = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 const SERVICES = ['issuer', 'protected-origin', 'client-a', 'client-b', 'client-c', 'client-d', 'client-e', 'redis', 'proxy', 'gateway'];
 export type RegionalOriginCounts = { protected_requests_received: number; generation_mismatches: number; resources_served: number };
 type Counts = RegionalOriginCounts;
-type GatewaySnapshot = { counters: Record<string, number>; sameSource: boolean | null; workers: number[] };
+export type GatewaySnapshot = { counters: Record<string, number>; sameSource: boolean | null; workers: number[] };
 type ManualSession = { profile: RegionalProfile; endsAt: string; limit: number };
+
+/** Read-only reporting barrier. Never resend a request or manufacture missing observations. */
+export async function settleGatewaySnapshot(read: () => Promise<GatewaySnapshot | null>, before: GatewaySnapshot | null,
+  observations: number, accepted: number, pause = wait, now = () => performance.now()): Promise<GatewaySnapshot | null> {
+  const deadline = now() + 1000;
+  for (let attempt = 0; attempt < 12; attempt++) {
+    const snapshot = await read();
+    if (!snapshot || !before) return snapshot;
+    if (snapshot.counters.observations! >= before.counters.observations! + observations
+      && snapshot.counters.claims_successful! >= before.counters.claims_successful! + accepted) return snapshot;
+    if (now() >= deadline || attempt === 11) return snapshot;
+    await pause(25);
+  }
+  return null;
+}
 
 export function arcLeaseControl(operation: 'enable' | 'heartbeat', sequence: number): Json {
   return { operation, lease_sequence: sequence };
@@ -122,6 +137,7 @@ export class RegionalLab {
   #manualSession: ManualSession | null = null;
   #comparison: Json[] = [];
   #theft: Json | null = null;
+  #theftEvents: Json[] = [];
   constructor(root: string, options: { docker?: DockerCli; prepareImages?: () => Promise<void> } = {}) {
     this.#root = root;
     this.#docker = options.docker ?? realDocker;
@@ -154,6 +170,7 @@ export class RegionalLab {
         workerVerificationAttempts: this.#gatewayCounts?.workers ?? null },
       comparison: this.#comparison,
       ...(this.#theft ? { theftScene: this.#theft } : {}),
+      theftEvents: this.#theftEvents,
     };
   }
   execute(command: Json): Promise<Json> {
@@ -534,8 +551,11 @@ export class RegionalLab {
     const results = value.results ?? [];
     const uncertain = results.some((result: Json) => result.delivery === 'uncertain') || value.error === 'regional-operation-failed';
     if (uncertain) this.#estimates.set(clientId, null);
+    const acceptedResults = results.filter((result: Json) => result.status === 200 && result.delivery === 'confirmed').length;
+    const confirmed = results.filter((result: Json) => result.delivery === 'confirmed').length;
+    const expectedObservations = confirmed + (action === 'acquire' && this.#profile === 'type2-bearer' && !value.error ? 1 : 0);
+    const gatewayAfter = await settleGatewaySnapshot(() => this.#gateway(), gatewayBefore, expectedObservations, acceptedResults);
     const after = await this.#origin();
-    const gatewayAfter = await this.#gateway();
     this.#guard();
     this.#counts = after;
     this.#gatewayCounts = gatewayAfter;
@@ -547,7 +567,8 @@ export class RegionalLab {
     const workers = gatewayBefore && gatewayAfter ? gatewayAfter.workers.map((attempts, index) => attempts - gatewayBefore.workers[index]!) : null;
     const serverFailures = results.filter((result: Json) => result.status >= 500).length;
     const incomplete = uncertain || !!value.error || (action !== 'acquire' && results.length === 0)
-      || !gatewayDelta || serverFailures > gatewayDelta.queue_rejected! || gatewayDelta.transport_failures! > 0;
+      || !gatewayDelta || gatewayDelta.observations! < expectedObservations
+      || serverFailures > gatewayDelta.queue_rejected! || gatewayDelta.transport_failures! > 0;
     this.#evidenceState = regionalEvidenceState(before, after, accepted, incomplete);
     if (this.#evidenceState === 'verified' && (gatewayDelta!.claims_successful !== accepted
       || Object.values(gatewayDelta!).some(value => value < 0) || workers!.some(value => value < 0))) this.#evidenceState = 'mismatch';
@@ -604,19 +625,42 @@ export class RegionalLab {
         issuanceBytes: sum('issuance_request_bytes') + sum('issuance_response_bytes'), issuanceInteractions: sum('issuance_interactions'),
         preparationInteractions: sum('preparation_interactions'), latencyMs: Math.ceil(sum('redemption_ms') / 46) });
       Object.assign(this.#comparison.at(-1)!, { sameSourceObserved: sameSource, sourceObservations,
-        workerVerificationAttempts: workers, gatewayCounters: this.#gatewayCounts?.counters ?? null });
+        workerVerificationAttempts: workers, gatewayCounters: this.#gatewayCounts?.counters ?? null,
+        evidenceNotes: [
+          ...(incomplete ? ['One or more action snapshots were incomplete.'] : []),
+          ...(mismatch ? ['Independent counters disagreed.'] : []),
+          ...(sourceObservations < 46 ? [`Only ${sourceObservations}/46 workload source observations were captured.`] : []),
+          ...(!sameSource ? ['One or more action snapshots did not establish a shared source.'] : []),
+          ...(workers.some(value => value === 0) ? ['Both gateway workers were not observed.'] : []),
+        ] });
       await this.#resetGeneration();
     }
     return { outcome: 'comparison-complete', status: this.status() };
   }
   async #theftScene(): Promise<Json> {
     this.#manualSession = null;
+    this.#theft = null;
+    this.#theftEvents = [];
+    const event = (step: string, result?: Json) => this.#theftEvents.push({
+      at: new Date().toISOString(), step, outcome: result?.outcome ?? 'started',
+      originArrivals: result?.originArrivals ?? null, accepted: result?.accepted ?? null, refused: result?.denied ?? null,
+      claims: result?.gatewayCounters?.claims_successful ?? null, evidence: result?.evidenceState ?? 'pending',
+    });
+    event('Preparing a fresh holder-bound Type2 experiment');
     await this.#resetGeneration();
     await this.#start('type2-holder');
+    event('Client requests blind issuance with a fresh holder key for each token');
     const acquisition = await this.#action('A', 'acquire');
+    event('Issuer response finalized; holder-bound tokens acquired', acquisition);
+    event('Attacker submits copied token bytes with an attacker-owned key');
     const attack = await this.#action('A', 'attack');
+    event('Attacker attempt completed; inspect refusal and origin evidence', attack);
+    event('Owner submits the token with its holder-key signature and server nonce');
     const owner = await this.#action('A', 'access');
+    event('Owner attempt completed; inspect accepted claim and resource arrival', owner);
+    event('Twenty requests race a fresh second token across the gateway workers');
     const race = await this.#action('A', 'race', 20);
+    event('Duplicate race completed; inspect the single winning claim', race);
     const phases = [acquisition, attack, owner, race];
     const incomplete = phases.some(result => result.evidenceState === 'incomplete');
     const mismatch = phases.some(result => result.evidenceState === 'mismatch');
