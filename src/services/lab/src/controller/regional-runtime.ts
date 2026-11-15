@@ -21,6 +21,10 @@ export type RegionalOriginCounts = { protected_requests_received: number; genera
 type Counts = RegionalOriginCounts;
 type GatewaySnapshot = { counters: Record<string, number>; sameSource: boolean | null; workers: number[] };
 
+export function arcLeaseControl(operation: 'enable' | 'heartbeat', sequence: number): Json {
+  return { operation, lease_sequence: sequence };
+}
+
 export function regionalEvidenceState(before: Counts | null, after: Counts | null, accepted: number, incomplete = false): string {
   if (!before || !after || incomplete) return 'incomplete';
   return after.protected_requests_received - before.protected_requests_received === accepted
@@ -29,9 +33,9 @@ export function regionalEvidenceState(before: Counts | null, after: Counts | nul
 }
 
 /** One outstanding private process command, with terminal uncertainty and bounded output. */
-class ArcProcess {
+export class ArcProcess {
   readonly #child: ChildProcess;
-  #pending: { resolve: (value: Json) => void; reject: () => void; timer: NodeJS.Timeout } | null = null;
+  #pending: { resolve: (value: Json) => void; reject: () => void; timer: NodeJS.Timeout; deadline: number } | null = null;
   #buffer = Buffer.alloc(0);
   #dead = false;
   constructor(container: string, docker: DockerCli) {
@@ -45,9 +49,10 @@ class ArcProcess {
       this.#buffer = Buffer.concat([this.#buffer, chunk]);
       const end = this.#buffer.indexOf(10);
       if (end < 0) return;
-      if (!this.#pending || end !== this.#buffer.length - 1) { this.#fail(); return; }
+      if (!this.#pending || performance.now() >= this.#pending.deadline || end !== this.#buffer.length - 1) { this.#fail(); return; }
       try {
         const value = decodeCanonicalRegionalJson(this.#buffer, true) as Json;
+        if (performance.now() >= this.#pending.deadline) { this.#fail(); return; }
         const pending = this.#pending;
         this.#pending = null;
         this.#buffer = Buffer.alloc(0);
@@ -69,7 +74,7 @@ class ArcProcess {
     if (this.#dead || this.#pending) return Promise.reject(Error('arc-control-unavailable'));
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => this.#fail(), timeout);
-      this.#pending = { resolve, reject: () => reject(Error('arc-control-unavailable')), timer };
+      this.#pending = { resolve, reject: () => reject(Error('arc-control-unavailable')), timer, deadline: performance.now() + timeout };
       this.#child.stdin!.write(canonicalJson(value) + '\n');
     });
   }
@@ -362,7 +367,7 @@ export class RegionalLab {
     const sourceKey = randomBytes(32).toString('hex');
     let bootstrap: ArcBootstrap | null = null;
     let sequence = 0;
-    const renew = (operation: string) => this.#arc!.call({ operation, lease_sequence: sequence++, lease_expires_ms: Date.now() + PROTOCOL.gateway_common.controller_lease_ms - 250 });
+    const renew = (operation: 'enable' | 'heartbeat') => this.#arc!.call(arcLeaseControl(operation, sequence++));
     return {
       bootstrap: async runId => {
         if (profile !== 'arc') return;

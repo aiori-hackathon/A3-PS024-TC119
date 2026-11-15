@@ -211,7 +211,7 @@ try {
   console.error('ABORTED:', e.message);
 } finally {
   if (up && !keep) {
-    compose('down', '--volumes', '--remove-orphans', '--timeout', '2');
+    compose('--profile', 'regional', 'down', '--volumes', '--remove-orphans', '--timeout', '2');
     const leftover = run('docker', ['ps', '-aq', '--filter', 'label=com.docker.compose.project=tokenforge']).stdout.trim();
     check('teardown leaves no containers', leftover === '', leftover);
   }

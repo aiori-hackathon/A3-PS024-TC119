@@ -30,16 +30,13 @@ struct Runtime {
     enabled: bool,
     fenced: bool,
     sequence: Option<u64>,
-    lease_wall: u64,
     lease_deadline: Instant,
     last_wall: u64,
 }
 impl Runtime {
     fn live(&mut self) -> Result<()> {
         let now = now_ms();
-        if now < self.last_wall
-            || (self.enabled && (now >= self.lease_wall || Instant::now() >= self.lease_deadline))
-        {
+        if now < self.last_wall || (self.enabled && Instant::now() >= self.lease_deadline) {
             self.fenced = true;
             self.enabled = false;
         }
@@ -50,14 +47,8 @@ impl Runtime {
         window(self.policy.as_ref().ok_or("unavailable")?)
     }
     fn renew(&mut self, command: &Value, enabling: bool) -> Result<Value> {
-        exact_keys(
-            command,
-            &["operation", "lease_sequence", "lease_expires_ms"],
-        )?;
+        exact_keys(command, &["operation", "lease_sequence"])?;
         let sequence = command["lease_sequence"].as_u64().ok_or("invalid-input")?;
-        let expires = command["lease_expires_ms"]
-            .as_u64()
-            .ok_or("invalid-input")?;
         let now = now_ms();
         if self.fenced || self.policy.is_none() || (enabling && self.sequence.is_some()) {
             return Err("unavailable");
@@ -66,18 +57,33 @@ impl Runtime {
             self.live()?;
         }
         if Some(sequence) != self.sequence.map(|n| n.checked_add(1)).unwrap_or(Some(0)) {
-            return Err("invalid-input");
-        }
-        if expires <= now || expires > now.saturating_add(lease_ms()) {
+            eprintln!(
+                "{}",
+                json!({"event":"arc-renewal-refused","reason":"sequence","expected_sequence":self.sequence.and_then(|n|n.checked_add(1)).or(Some(0)),"received_sequence":sequence,"service_receive_ms":now})
+            );
             return Err("invalid-input");
         }
         window(self.policy.as_ref().unwrap())?;
+        let accepted = Instant::now();
+        let wall = now_ms();
+        if wall < self.last_wall || (self.enabled && accepted >= self.lease_deadline) {
+            self.fenced = true;
+            self.enabled = false;
+            eprintln!(
+                "{}",
+                json!({"event":"arc-renewal-refused","reason":"expired-or-regressed","received_sequence":sequence,"service_receive_ms":wall})
+            );
+            return Err("unavailable");
+        }
         self.sequence = Some(sequence);
-        self.lease_wall = expires;
-        self.lease_deadline = Instant::now() + Duration::from_millis(expires - now);
-        self.last_wall = now;
+        self.lease_deadline = accepted + Duration::from_millis(lease_ms());
+        self.last_wall = wall;
         self.enabled = true;
         Ok(json!({"status":if enabling {"enabled"} else {"renewed"}}))
+    }
+    fn finish_cryptography(&mut self, result: Value) -> Result<Value> {
+        self.live()?;
+        Ok(result)
     }
     fn control(&mut self, command: &Value) -> Result<Value> {
         match text(command, "operation")? {
@@ -139,8 +145,9 @@ impl Runtime {
                 spec_number("arc_blob_max_bytes") as usize,
             )?;
             let response = self.issuer.issue(&blinded).map_err(|_| "invalid-proof")?;
-            self.live()?;
-            Ok(json!({"status":"issued","credential_response_b64url":encoded(&response)}))
+            self.finish_cryptography(
+                json!({"status":"issued","credential_response_b64url":encoded(&response)}),
+            )
         } else {
             let proof = decoded(
                 text(request, "presentation_b64url")?,
@@ -155,8 +162,7 @@ impl Runtime {
                     &context(&policy, "arc_presentation_context"),
                 )
                 .map_err(|_| "invalid-proof")?;
-            self.live()?;
-            Ok(json!({"status":"verified","spend_tag_b64url":encoded(&tag)}))
+            self.finish_cryptography(json!({"status":"verified","spend_tag_b64url":encoded(&tag)}))
         }
     }
 }
@@ -315,7 +321,6 @@ fn startup(command: Value) -> Result<Arc<Mutex<Runtime>>> {
         enabled: false,
         fenced: false,
         sequence: None,
-        lease_wall: 0,
         lease_deadline: Instant::now(),
         last_wall: now_ms(),
     }));
@@ -343,5 +348,116 @@ fn main() {
     if run().is_err() {
         eprintln!("ARC service stopped");
         std::process::exit(1);
+    }
+}
+
+#[cfg(test)]
+mod lease_tests {
+    use super::*;
+    use tokenforge_arc::PendingIssuance;
+
+    fn installed() -> Runtime {
+        let issuer = Issuer::generate().unwrap();
+        let parameters = issuer.parameters().unwrap();
+        let bootstrap = json!({"run_id":"a".repeat(32),"arc_key_id":digest(&parameters),"arc_implementation_revision":REVISION});
+        let mut state = Runtime {
+            issuer,
+            bootstrap: bootstrap.clone(),
+            policy: None,
+            grants: HashSet::new(),
+            enabled: false,
+            fenced: false,
+            sequence: None,
+            lease_deadline: Instant::now(),
+            last_wall: now_ms(),
+        };
+        let mut policy: Value = serde_json::from_str(include_str!(
+            "../../../contracts/fixtures/regional-golden.json"
+        ))
+        .unwrap();
+        policy = policy["arc_policy"].clone();
+        policy["window_start_ms"] = json!(now_ms() - 10);
+        policy["window_end_ms"] =
+            json!(policy["window_start_ms"].as_u64().unwrap() + spec_number("window_ms"));
+        policy["arc_key_id"] = bootstrap["arc_key_id"].clone();
+        policy["arc_implementation_revision"] = bootstrap["arc_implementation_revision"].clone();
+        state
+            .control(&json!({"operation":"install-policy","policy":policy}))
+            .unwrap();
+        state
+    }
+
+    #[test]
+    fn renewal_is_receiver_owned_strictly_sequenced_and_terminal() {
+        let mut state = installed();
+        let before = Instant::now();
+        assert_eq!(
+            state
+                .control(&json!({"operation":"enable","lease_sequence":0}))
+                .unwrap()["status"],
+            "enabled"
+        );
+        assert!(state.lease_deadline >= before + Duration::from_millis(lease_ms()));
+        let deadline = state.lease_deadline;
+        assert!(
+            state
+                .control(&json!({"operation":"heartbeat","lease_sequence":0}))
+                .is_err()
+        );
+        assert!(
+            state
+                .control(&json!({"operation":"heartbeat","lease_sequence":2}))
+                .is_err()
+        );
+        assert_eq!(state.lease_deadline, deadline);
+        assert_eq!(
+            state
+                .control(&json!({"operation":"heartbeat","lease_sequence":1}))
+                .unwrap()["status"],
+            "renewed"
+        );
+        state.lease_deadline = Instant::now() - Duration::from_millis(1);
+        assert!(
+            state
+                .control(&json!({"operation":"heartbeat","lease_sequence":2}))
+                .is_err()
+        );
+        assert!(state.fenced);
+        assert!(
+            state
+                .control(&json!({"operation":"enable","lease_sequence":0}))
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn window_end_and_post_crypto_expiry_still_refuse() {
+        let mut state = installed();
+        state
+            .control(&json!({"operation":"enable","lease_sequence":0}))
+            .unwrap();
+        let request = PendingIssuance::begin(b"lease-check").unwrap();
+        let response = state.issuer.issue(&request.request_bytes()).unwrap();
+        state.lease_deadline = Instant::now() - Duration::from_millis(1);
+        assert!(
+            state
+                .finish_cryptography(
+                    json!({"status":"issued","credential_response_b64url":encoded(&response)})
+                )
+                .is_err()
+        );
+        assert!(state.fenced);
+
+        let mut state = installed();
+        let end = now_ms() - 1;
+        state.policy.as_mut().unwrap()["window_start_ms"] = json!(end - spec_number("window_ms"));
+        state.policy.as_mut().unwrap()["window_end_ms"] = json!(end);
+        assert_eq!(
+            state
+                .control(&json!({"operation":"enable","lease_sequence":0}))
+                .unwrap_err(),
+            "window-closed"
+        );
+        assert!(!state.enabled);
     }
 }

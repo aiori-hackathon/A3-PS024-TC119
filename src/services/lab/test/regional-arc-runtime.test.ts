@@ -81,9 +81,9 @@ test('Node admission and opaque helper interoperate with actual Rust issue/verif
       quota: 5, admitted_entitlements: 5, resource_id: 'research-resource', method: 'GET', url: 'https://origin.lab.test/resource',
       type2_key_id: null, arc_key_id: bootstrap.arc_key_id, arc_implementation_revision: revision!, arc_tag_encoding: 'SEC1-P256-compressed' };
     assert.equal((await command({ operation: 'install-policy', policy }))['status'], 'installed');
-    assert.equal((await command({ operation: 'enable', lease_sequence: 0, lease_expires_ms: Date.now() + 2900 }))['status'], 'enabled');
+    assert.equal((await command({ operation: 'enable', lease_sequence: 0 }))['status'], 'enabled');
     let sequence = 0;
-    timer = setInterval(() => { void command({ operation: 'heartbeat', lease_sequence: ++sequence, lease_expires_ms: Date.now() + 2900 }); }, 1000);
+    timer = setInterval(() => { void command({ operation: 'heartbeat', lease_sequence: ++sequence }); }, 1000);
     const vouchers = Array.from({ length: 5 }, () => randomBytes(32));
     const store = new VoucherStore(5);
     store.provision({ batch_id: 'a'.repeat(32), batch_index: 0, expected_total: 5, final_batch: true, items: vouchers.map(voucherDigest) }); store.lock();

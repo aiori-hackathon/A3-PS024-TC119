@@ -3,8 +3,11 @@ import assert from 'node:assert/strict';
 import { existsSync, mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { EventEmitter } from 'node:events';
+import { PassThrough } from 'node:stream';
+import type { ChildProcess } from 'node:child_process';
 import { DockerAdapters, DockerProject, SERVICE_FOR_ROLE, type DockerCli, type RunResult } from '../src/controller/docker.ts';
-import { RegionalLab, regionalEvidenceState } from '../src/controller/regional-runtime.ts';
+import { RegionalLab, regionalEvidenceState, arcLeaseControl, ArcProcess } from '../src/controller/regional-runtime.ts';
 import type { RoleLink } from '../src/controller/ports.ts';
 
 function deferred<T>() {
@@ -13,6 +16,31 @@ function deferred<T>() {
   return { promise, resolve };
 }
 const tick = () => new Promise<void>(resolve => setImmediate(resolve));
+
+test('ARC heartbeat command is independent of sender wall-clock offsets', t => {
+  for (const offset of [-600000, 0, 600000]) {
+    t.mock.method(Date, 'now', () => 1700000000000 + offset);
+    assert.deepEqual(arcLeaseControl('enable', 0), { operation:'enable', lease_sequence:0 });
+    assert.deepEqual(arcLeaseControl('heartbeat', 12), { operation:'heartbeat', lease_sequence:12 });
+    t.mock.restoreAll();
+  }
+});
+
+test('ARC ACK beyond its monotonic cap is refused even before the timer callback runs', async t => {
+  let clock = 0;
+  t.mock.method(performance, 'now', () => clock);
+  const child = Object.assign(new EventEmitter(), { stdin:new PassThrough(), stdout:new PassThrough(), stderr:new PassThrough() });
+  const docker: DockerCli = { run:async () => { throw Error('unused'); }, spawn:() => child as unknown as ChildProcess };
+  const control = new ArcProcess('a'.repeat(64), docker);
+  const reply = control.call(arcLeaseControl('heartbeat', 1));
+  const refused = assert.rejects(reply, /arc-control-unavailable/);
+  clock = 1501;
+  child.stdout.write(Buffer.from('{"status":"renewed"}\n'));
+  await refused;
+  control.close();
+  child.stdout.destroy();
+  child.stderr.destroy();
+});
 
 /** Only container identity/state is modelled. No application traffic is simulated. */
 class DelayedDocker implements DockerCli {

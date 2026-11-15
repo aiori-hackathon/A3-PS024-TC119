@@ -14,7 +14,7 @@ fn golden() -> Value {
 }
 struct Process {
     child: Child,
-    input: ChildStdin,
+    input: Option<ChildStdin>,
     output: BufReader<ChildStdout>,
 }
 impl Process {
@@ -26,14 +26,18 @@ impl Process {
             .spawn()
             .unwrap();
         Self {
-            input: child.stdin.take().unwrap(),
+            input: child.stdin.take(),
             output: BufReader::new(child.stdout.take().unwrap()),
             child,
         }
     }
     fn call(&mut self, value: Value) -> Value {
-        self.input.write_all(&frame(&value).unwrap()).unwrap();
-        self.input.flush().unwrap();
+        self.input
+            .as_mut()
+            .unwrap()
+            .write_all(&frame(&value).unwrap())
+            .unwrap();
+        self.input.as_mut().unwrap().flush().unwrap();
         read_frame(&mut self.output).unwrap().unwrap()
     }
 }
@@ -155,9 +159,7 @@ fn real_process_blind_issue_helper_verify_grants_channels_and_fence() {
         "installed"
     );
     assert_eq!(
-        service.call(
-            json!({"operation":"enable","lease_sequence":0,"lease_expires_ms":now_ms()+2900})
-        )["status"],
+        service.call(json!({"operation":"enable","lease_sequence":0}))["status"],
         "enabled"
     );
     let mut helper = Process::start(env!("CARGO_BIN_EXE_arc-client-helper"));
@@ -198,9 +200,7 @@ fn real_process_blind_issue_helper_verify_grants_channels_and_fence() {
         "wrong-policy"
     );
     assert_eq!(
-        service.call(
-            json!({"operation":"heartbeat","lease_sequence":1,"lease_expires_ms":now_ms()+2900})
-        )["status"],
+        service.call(json!({"operation":"heartbeat","lease_sequence":1}))["status"],
         "renewed"
     );
     request["grant_id"] = json!("3".repeat(32));
@@ -250,9 +250,7 @@ fn real_process_blind_issue_helper_verify_grants_channels_and_fence() {
         "unavailable"
     );
     assert_eq!(
-        service.call(
-            json!({"operation":"enable","lease_sequence":2,"lease_expires_ms":now_ms()+2900})
-        )["status"],
+        service.call(json!({"operation":"enable","lease_sequence":2}))["status"],
         "refused"
     );
 }
@@ -272,20 +270,42 @@ fn expired_control_lease_permanently_fences_generation() {
         "installed"
     );
     assert_eq!(
-        service
-            .call(json!({"operation":"enable","lease_sequence":0,"lease_expires_ms":now_ms()+50}))
-            ["status"],
+        service.call(json!({"operation":"enable","lease_sequence":0}))["status"],
         "enabled"
     );
-    std::thread::sleep(Duration::from_millis(80));
+    std::thread::sleep(Duration::from_millis(3100));
     assert_eq!(
         service.call(json!({"operation":"status"}))["status"],
         "fenced"
     );
     assert_eq!(
-        service.call(
-            json!({"operation":"heartbeat","lease_sequence":1,"lease_expires_ms":now_ms()+2900})
-        )["status"],
+        service.call(json!({"operation":"heartbeat","lease_sequence":1}))["status"],
         "refused"
     );
+}
+
+#[test]
+fn control_eof_terminates_an_enabled_service() {
+    let mut service = Process::start(env!("CARGO_BIN_EXE_arc-service"));
+    let verify = address();
+    let bootstrap = service.call(json!({"operation":"bootstrap","run_id":"a".repeat(32),
+        "implementation_revision":env!("TF_ARC_SOURCE_REVISION"),"issue_listen":address(),"verify_listen":verify,
+        "issue_key":"09".repeat(32),"verify_key":"0a".repeat(32)}));
+    let mut policy = golden()["arc_policy"].clone();
+    policy["window_start_ms"] = json!(now_ms() - 10);
+    policy["window_end_ms"] =
+        json!(policy["window_start_ms"].as_u64().unwrap() + spec_number("window_ms"));
+    policy["arc_key_id"] = bootstrap["arc_key_id"].clone();
+    policy["arc_implementation_revision"] = bootstrap["arc_implementation_revision"].clone();
+    assert_eq!(
+        service.call(json!({"operation":"install-policy","policy":policy}))["status"],
+        "installed"
+    );
+    assert_eq!(
+        service.call(json!({"operation":"enable","lease_sequence":0}))["status"],
+        "enabled"
+    );
+    drop(service.input.take());
+    assert!(service.child.wait().unwrap().success());
+    assert!(TcpStream::connect(verify).is_err());
 }

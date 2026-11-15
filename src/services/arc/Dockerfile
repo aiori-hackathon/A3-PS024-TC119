@@ -1,7 +1,5 @@
 FROM rust:1.89.0-bookworm@sha256:948f9b08a66e7fe01b03a98ef1c7568292e07ec2e4fe90d88c07bb14563c84ff AS verification
 WORKDIR /build/src/services/arc
-ARG TF_ARC_SOURCE_REVISION
-ENV TF_ARC_SOURCE_REVISION=${TF_ARC_SOURCE_REVISION}
 COPY src/services/arc/Cargo.toml src/services/arc/Cargo.lock ./
 COPY src/services/arc/build.rs ./
 COPY src/contracts/lib/regional-v1.json /build/src/contracts/lib/regional-v1.json
@@ -12,19 +10,21 @@ COPY src/services/arc/vendor/arc/Cargo.toml src/services/arc/vendor/arc/Cargo.lo
 COPY src/services/arc/vendor/arc/src ./vendor/arc/src
 COPY src/services/arc/vendor/arc/tests ./vendor/arc/tests
 COPY src/services/arc/vendor/arc/benches ./vendor/arc/benches
-RUN cargo fetch --locked
+RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked --mount=type=cache,target=/usr/local/cargo/git,sharing=locked cargo fetch --locked
+ARG TF_ARC_SOURCE_REVISION
+ENV TF_ARC_SOURCE_REVISION=${TF_ARC_SOURCE_REVISION}
 COPY src/services/arc/src ./src
 COPY src/services/arc/tests ./tests
-RUN cargo test --locked
+RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked --mount=type=cache,target=/usr/local/cargo/git,sharing=locked cargo test --locked
 # Validate the corrected fork against the unchanged upstream vectors as well.
-RUN CARGO_TARGET_DIR=/build/vendor-target cargo test --locked --manifest-path vendor/arc/Cargo.toml --features suite_p256
+RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked --mount=type=cache,target=/usr/local/cargo/git,sharing=locked CARGO_TARGET_DIR=/build/vendor-target cargo test --locked --manifest-path vendor/arc/Cargo.toml --features suite_p256
 # Run the upstream tests at the exact fetched revision with its own lockfile.
-RUN set -- /usr/local/cargo/git/checkouts/arc-*/4f023d3/Cargo.toml; \
+RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked --mount=type=cache,target=/usr/local/cargo/git,sharing=locked set -- /usr/local/cargo/git/checkouts/arc-*/4f023d3/Cargo.toml; \
     test "$#" -eq 1; \
     test -f "$1"; \
     CARGO_TARGET_DIR=/build/upstream-target cargo test --locked --manifest-path "$1" \
       --features suite_p256 --test test_vectors --test test_protocol
-RUN cargo build --locked --release --bins
+RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked --mount=type=cache,target=/usr/local/cargo/git,sharing=locked cargo build --locked --release --bins
 
 FROM debian:bookworm-slim@sha256:734a72b3d6142a71993b4bc580ca01d8ca687f77a2c422d96a961d3376b179bc
 COPY --from=verification /build/src/services/arc/target/release/arc-feasibility /usr/local/bin/arc-feasibility
