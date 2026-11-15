@@ -14,6 +14,7 @@ import { CleanupScope, ScopeBarrier, stopRoles, discardRedis } from './scope.ts'
 import { LabRun, type RegionalRunHooks } from './run.ts';
 import { discovery, newId, request } from './envelope.ts';
 import { acquireProjectLock, type ProjectLock } from './lock.ts';
+import { DEMO_AUDIT_MARKER, DEMO_AUDIT_PATH } from '../../../../contracts/lib/demo-audit.ts';
 
 const wait = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 const SERVICES = ['issuer', 'protected-origin', 'client-a', 'client-b', 'client-c', 'client-d', 'client-e', 'redis', 'proxy', 'gateway'];
@@ -138,6 +139,7 @@ export class RegionalLab {
   #comparison: Json[] = [];
   #theft: Json | null = null;
   #theftEvents: Json[] = [];
+  #manualEvents: Json[] = [];
   constructor(root: string, options: { docker?: DockerCli; prepareImages?: () => Promise<void> } = {}) {
     this.#root = root;
     this.#docker = options.docker ?? realDocker;
@@ -171,6 +173,7 @@ export class RegionalLab {
       comparison: this.#comparison,
       ...(this.#theft ? { theftScene: this.#theft } : {}),
       theftEvents: this.#theftEvents,
+      manualEvents: this.#manualEvents,
     };
   }
   execute(command: Json): Promise<Json> {
@@ -178,6 +181,7 @@ export class RegionalLab {
     if (this.#closing || this.#busy) return Promise.reject(Error('operation-in-progress'));
     if (command.action !== 'start_run' && command.revision !== this.#revision) throw Error('stale-run');
     if (this.#state === 'expired' && ['acquire', 'access', 'send_requests'].includes(command.action)) {
+      this.#manualEvent('Allowance expired; controller refused to send another request',{outcome:'refused',evidenceState:'controller-refusal'});
       return Promise.resolve({ outcome: 'refused', message: 'Allowance expired. Start a new window explicitly.', status: this.status() });
     }
     const owned = structuredClone(command);
@@ -195,6 +199,12 @@ export class RegionalLab {
     if (this.#terminalUncertain || this.#creationUncertain) throw Error('shutdown-unconfirmed');
     if (this.#closing || this.#session?.signal.aborted) throw Error('operation-cancelled');
   }
+  #manualEvent(step: string, result?: Json): void {
+    this.#manualEvents.push({at:new Date().toISOString(),step,outcome:result?.outcome??'started',
+      accepted:result?.accepted??null,refused:result?.denied??null,originArrivals:result?.originArrivals??null,
+      claims:result?.gatewayCounters?.claims_successful??null,evidence:result?.evidenceState??'pending'});
+    if(this.#manualEvents.length>64)this.#manualEvents.shift();
+  }
   async #executeCommand(command: Json): Promise<Json> {
     try {
       this.#guard();
@@ -203,31 +213,46 @@ export class RegionalLab {
         this.#manualSession = null;
         const limit = command.limit ?? (command.profile === 'ip' ? REGIONAL.quota * REGIONAL.admitted_entitlements : REGIONAL.quota);
         if (!Number.isSafeInteger(limit) || limit < 1 || limit > (command.profile === 'ip' ? REGIONAL.max_ip_quota : REGIONAL.max_quota)) throw Error('invalid-limit');
+        this.#manualEvents=[];
+        this.#manualEvent(`Starting ${command.profile} with server-selected limit ${limit}`);
         await this.#start(command.profile, REGIONAL.manual_window_ms, true, limit);
+        this.#manualEvent('Demo active; policy and allowance window installed',{outcome:'started',evidenceState:'lifecycle-confirmed'});
         return { outcome: 'started', status: this.status() };
       }
       if (command.action === 'reset_run') {
+        this.#manualEvent('Operator requested Stop demo');
         this.#manualSession = null;
         await this.#resetGeneration();
+        this.#manualEvent('Authorization generation closed; session idle',{outcome:'stopped',evidenceState:'shutdown-confirmed'});
         return { outcome: 'reset', status: this.status() };
       }
       if (command.action === 'run_comparison') return await this.#compare();
       if (command.action === 'run_theft_scene') return await this.#theftScene();
       if (!['acquire', 'access', 'send_requests'].includes(command.action) || !CLIENT_IDS.includes(command.clientId)) throw Error('command-invalid');
-      if (command.action === 'acquire' && this.#profile === 'ip') return {
-        outcome: 'not-required', message: 'IP mode needs no tokens. Requests use one shared IP budget.', status: this.status() };
-      if (command.action === 'acquire' && this.#enrolled.has(command.clientId)) return {
-        outcome: 'already-acquired', message: 'Allowance already acquired. Existing credentials remain usable until spent or expired.', status: this.status() };
+      if (command.action === 'acquire' && this.#profile === 'ip') {
+        this.#manualEvent('IP profile uses the shared budget without credential issuance',{outcome:'not-required',evidenceState:'not-applicable'});
+        return {outcome:'not-required',message:'IP mode needs no tokens. Requests use one shared IP budget.',status:this.status()};
+      }
+      if (command.action === 'acquire' && this.#enrolled.has(command.clientId)) {
+        this.#manualEvent(`Client ${command.clientId} already acquired; no refill performed`,{outcome:'already-acquired',evidenceState:'not-applicable'});
+        return {outcome:'already-acquired',message:'Allowance already acquired. Existing credentials remain usable until spent or expired.',status:this.status()};
+      }
       if (command.action !== 'acquire' && this.#profile !== 'ip' && !this.#enrolled.has(command.clientId)) return {
         outcome: 'refused', message: 'Acquire allowance for this client first.', status: this.status() };
       const count = command.action === 'send_requests' ? command.count : 1;
       if (!Number.isSafeInteger(count) || count < 1 || count > REGIONAL.max_batch_requests) throw Error('invalid-count');
       const action = command.action === 'send_requests' || (command.action === 'access' && this.#estimates.get(command.clientId) === 0)
         ? 'abuse' : command.action;
+      this.#manualEvent(command.action==='acquire' ? `Client ${command.clientId} requests issuance and finalizes credentials`
+        : `Client ${command.clientId} sends ${count} resource request${count===1?'':'s'} through the gateway`);
       const result = await this.#action(command.clientId, action, count);
+      this.#manualEvent(command.action==='acquire' ? `Client ${command.clientId} acquisition completed`
+        : `Client ${command.clientId} request results and independent origin evidence`,result);
       if (command.action !== 'acquire') result.message = `Client ${command.clientId}: ${result.attempts} sent, ${result.accepted} accepted, ${result.denied} refused. Origin arrivals: ${result.originArrivals ?? 'unconfirmed'}. Evidence: ${result.evidenceState}.`;
       return { ...result, status: this.status() };
     } catch {
+      if (['start_run','reset_run','acquire','access','send_requests'].includes(command.action)) this.#manualEvent(
+        'Operation interrupted; allowance may already be consumed',{outcome:'uncertain',evidenceState:'incomplete'});
       if (!this.#manualSession || Date.now() < Date.parse(this.#manualSession.endsAt)) this.#manualSession = null;
       this.#state = 'uncertain';
       await this.#resetGeneration();
@@ -356,6 +381,14 @@ export class RegionalLab {
       const link = await this.#connect(this.#instances.get(role)!);
       this.#links.set(role, link);
       scope.recordLink(this.#instances.get(role)!.container_id, link);
+    }
+    // Prepare diagnostic sinks while fenced, BEFORE Redis TIME starts the allowance window.
+    for (const role of ['issuer','origin','gateway'] as const) {
+      const audit = await this.#docker.run(['exec','-i',this.#instances.get(role)!.container_id,'node','--input-type=module','-'], {
+        input: `import {writeFileSync} from 'node:fs';writeFileSync(${JSON.stringify(DEMO_AUDIT_PATH)},'',{mode:0o600});writeFileSync(${JSON.stringify(DEMO_AUDIT_MARKER)},'1',{mode:0o600});\n`, timeoutMs: 10000,
+      });
+      this.#guard();
+      if (audit.status !== 0 || audit.failed || audit.timedOut) throw Error('audit-setup-unavailable');
     }
     const io = new DockerRedisIo(this.#docker, redisId, readFileSync(join(this.#root, '.runtime', 'secrets', 'controller', 'redis-password'), 'utf8').trim());
     const launcher = new DockerGatewayLauncher(this.#docker, this.#instances.get('gateway')!, { secretsDir: join(this.#root, '.runtime', 'secrets') });
@@ -648,10 +681,20 @@ export class RegionalLab {
     });
     event('Preparing a fresh holder-bound Type2 experiment');
     await this.#resetGeneration();
-    await this.#start('type2-holder');
-    event('Client requests blind issuance with a fresh holder key for each token');
+    // This scene needs exactly one owner token and one fresh race token.
+    await this.#start('type2-holder',REGIONAL.window_ms,false,2);
+    event('Client requests two blind-issued tokens with a fresh holder key for each token');
     const acquisition = await this.#action('A', 'acquire');
-    event('Issuer response finalized; holder-bound tokens acquired', acquisition);
+    event(acquisition.outcome==='acquired' ? 'Issuer response finalized; holder-bound tokens acquired'
+      : 'Token acquisition did not complete; inspect the uncertain/refused outcome', acquisition);
+    if (acquisition.outcome!=='acquired' || acquisition.evidenceState!=='verified') {
+      this.#theft={state:'INCONCLUSIVE',holderOutcome:'not tested: acquisition unavailable',
+        attackOriginArrivals:null,ownerOriginArrivals:null,raceOriginArrivals:null,workerVerificationAttempts:[]};
+      event('Theft attempts not tested because credential acquisition was not confirmed',
+        {outcome:'not-tested',evidenceState:'incomplete'});
+      await this.#resetGeneration();
+      return {outcome:'theft-complete',status:this.status()};
+    }
     event('Attacker submits copied token bytes with an attacker-owned key');
     const attack = await this.#action('A', 'attack');
     event('Attacker attempt completed; inspect refusal and origin evidence', attack);

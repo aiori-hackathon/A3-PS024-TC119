@@ -1,3 +1,4 @@
+import { demoAudit } from '../../../contracts/lib/demo-audit.ts';
 import { Histogram } from '../../../contracts/lib/measurements.ts';
 import { performance } from 'node:perf_hooks';
 import { ContractError, canonicalJson, configurationDigest, encodeBase64Url, validateManifest, type Manifest } from '../../../contracts/lib/index.ts';
@@ -98,6 +99,7 @@ export class RegionalCoordinator {
       if(response.status===200&&(!permit||!permit.checkActive()))return;
       if(response.status>=400)this.#counters.requests_rejected++;
       sent=true;await deliver(response,permit?.signal??signal);
+      demoAudit('gateway','response_sent',{run_id:this.#p.run_id,profile:this.#p.profile,status:response.status});
     };
     try{
       if(!live())return;
@@ -136,14 +138,18 @@ export class RegionalCoordinator {
       if(result.kind==='verified')this.#verification.add(performance.now()-verificationStart);else this.#verification.fail();
       if(!permit.checkActive())return;
       if(result.kind!=='verified'){
+        demoAudit('gateway','proof_refused',{run_id:this.#p.run_id,profile:this.#p.profile});
         if(result.kind==='unavailable')this.#fault();
         if(result.kind!=='canceled')await send(result.kind==='rejected'&&this.#p.profile==='type2-bearer'?bearerRefusal():failure(result.kind==='rejected'?403:503));return;
       }
+      demoAudit('gateway',this.#p.profile==='ip'?'identity_verified':'proof_verified',{run_id:this.#p.run_id,profile:this.#p.profile});
       const fresh=await this.#replay.snapshot();if(!permit.checkActive())return;
       if(fresh.kind!=='snapshot'){if(fresh.kind==='unavailable')this.#fault();await send(failure(fresh.kind==='rejected'?403:503));return;}
       const candidate=this.#verifier.consume(result.receipt);
       if(!candidate){this.#fault();return;}
       const claim=await this.#replay.claim(candidate);
+      demoAudit('gateway',claim.kind==='claimed'?'claim_accepted':'claim_refused',{run_id:this.#p.run_id,profile:this.#p.profile,
+        ...(claim.kind==='rejected'?{reason:claim.reason}:{})});
       // Confirmed consumption is counted even if delivery/deadline is lost immediately afterward.
       if(claim.kind==='claimed')this.#counters.claims_successful++;
       if(claim.kind==='unavailable')this.#counters.transport_failures++;
@@ -151,6 +157,7 @@ export class RegionalCoordinator {
       if(!permit.checkActive())return;
       if(claim.kind!=='claimed'){if(claim.kind==='unavailable')this.#fault();await send(failure(claim.kind==='rejected'?(claim.reason==='limit-reached'?429:403):503));return;}
       authorized=true;this.#authorization.add(performance.now()-started);
+      demoAudit('gateway','origin_forward_started',{run_id:this.#p.run_id,profile:this.#p.profile});
       const response=await this.#origin.forwardAfterClaim(permit);if(!permit.checkActive())return;
       if(response.kind==='response'||response.kind==='upstream-error')await send(response);
       else if(response.kind!=='canceled'){if(response.kind==='unavailable')this.#fault();await send(failure(503));}

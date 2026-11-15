@@ -117,6 +117,10 @@ function render(next) {
   const theft = next.theftScene;
   setText('active-limit', next.rateLimit ? `Enforced limit: ${next.rateLimit.limit} accepted requests per ${next.rateLimit.scope} in this window. Changing a field applies only to a new window.` : 'No active rate limit.');
   $('request-history').replaceChildren();
+  $('manual-events').replaceChildren();
+  for (const row of next.manualEvents ?? []) appendRow($('manual-events'), [
+    time(row.at), row.step, row.outcome, count(row.accepted), count(row.refused), count(row.originArrivals), count(row.claims), row.evidence,
+  ]);
   for (const row of next.requestHistory ?? []) appendRow($('request-history'), [
     `Client ${row.clientId}`, count(row.attempts), count(row.accepted), count(row.refused), count(row.originArrivals), row.evidenceState,
   ]);

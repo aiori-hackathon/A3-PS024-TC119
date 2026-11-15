@@ -1,3 +1,4 @@
+import { demoAudit } from '../../../../contracts/lib/demo-audit.ts';
 import { randomBytes } from 'node:crypto';
 import { connect, type Socket } from 'node:net';
 import {
@@ -151,6 +152,7 @@ export class RegionalAdmission {
         };
         validateRegionalPublicResponse('enroll', result, this.#policy);
         this.#successes += responses.length;
+        demoAudit('issuer','issuance_granted',{run_id:this.#policy.run_id,profile:this.#policy.profile,status:200,count:responses.length});
         return output(200, result);
       } catch (error) {
         return error instanceof ArcIssueRefusal
@@ -212,6 +214,7 @@ export class RegionalAdmission {
 
   #refuse(status: number, error: string): IssueOutput {
     this.#failures++;
+    demoAudit('issuer','issuance_refused',{run_id:this.#policy.run_id,profile:this.#policy.profile,status});
     return refused(status, error);
   }
 }

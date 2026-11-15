@@ -1,5 +1,7 @@
 # Regional prototype
 
+For native issuer/gateway/origin audit events and the manual controller timeline, see [the demo audit guide](DEMO_AUDIT.md). The read-only `logs --service gateway --tail 15` CLI reads bounded service-written tmpfs diagnostics; Docker's raw logging policy remains unchanged.
+
 ## Interactive rate-limit demonstration
 
 Before Start demo, set Shared IP limit (1–50) and Type2 / ARC limit (1–10). These apply only to a newly started window and cannot alter a live policy. For equal aggregate budgets across five clients, use IP = five times the per-client quota; for example 15 shared versus three each. The automated Run comparison always uses 25 versus five each, independent of these fields.

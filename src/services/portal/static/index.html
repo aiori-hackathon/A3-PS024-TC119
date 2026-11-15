@@ -71,6 +71,12 @@
     </section>
     <section class="experiments" aria-labelledby="experiments-title">
       <h2>Live request results</h2>
+      <h3>Manual demo event timeline</h3>
+      <p>Controller-observed lifecycle, acquisition and access results. Completed entries include independent origin and gateway-claim evidence. Native server audit logs can be inspected separately in a terminal.</p>
+      <div class="table-scroll"><table><thead><tr><th>Time</th><th>Step</th><th>Outcome</th><th>Accepted</th><th>Refused</th><th>Origin arrivals</th><th>Claims</th><th>Evidence</th></tr></thead><tbody id="manual-events"></tbody></table></div>
+      <details><summary>Show native server audit logs in a terminal</summary><p>Run from the repository root after starting a new demo. These are actual service-written events, separate from the controller timeline.</p><pre><code>node src/services/lab/src/controller/cli.ts logs --service issuer --tail 5
+node src/services/lab/src/controller/cli.ts logs --service gateway --tail 15
+node src/services/lab/src/controller/cli.ts logs --service origin --tail 5</code></pre><p>Logs are bounded temporary diagnostics and contain no token bytes, private keys, vouchers or addresses. New containers clear them. Raw Docker logging remains disabled.</p></details>
       <p>Send requests from A, then select B and try access. Refused requests should add no origin arrivals. These are actual gateway requests, including replay attempts after a credential budget is exhausted.</p>
       <div class="table-scroll"><table><thead><tr><th>Client</th><th>Sent</th><th>Accepted</th><th>Refused</th><th>Origin arrivals</th><th>Evidence</th></tr></thead><tbody id="request-history"></tbody></table></div>
       <div class="section-heading"><div><p class="eyebrow">Controlled experiments</p><h2 id="experiments-title">Compare access, then examine theft</h2></div></div>

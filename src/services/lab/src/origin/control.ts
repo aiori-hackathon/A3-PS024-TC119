@@ -1,3 +1,4 @@
+import { demoAudit } from '../../../../contracts/lib/demo-audit.ts';
 import { ResourceProbe } from '../../../../contracts/lib/resources.ts';
 // Private protected origin (plan sections 4.1, 5.5). Three independent aggregate counters, never reset within a run:
 //   protected_requests_received  incremented for every fully parsed request to the protected route, BEFORE the
@@ -149,14 +150,20 @@ export class OriginRole {
     if (req.url !== ROUTE) { res.writeHead(404, { 'Content-Length': '0' }); res.end(); return; }
     req.resume();
     this.#counters.protected_requests_received += 1; // before any generation validation
+    if (this.#runId) demoAudit('origin','resource_received',{run_id:this.#runId,count:this.#counters.protected_requests_received});
     const values: string[] = [];
     for (let i = 0; i + 1 < req.rawHeaders.length; i += 2) if (req.rawHeaders[i]!.toLowerCase() === RUN_HEADER) values.push(req.rawHeaders[i + 1]!);
     if (values.length !== 1 || values[0] !== this.#runId) {
       this.#counters.generation_mismatches += 1;
+      if (this.#runId) demoAudit('origin','resource_refused',{run_id:this.#runId,status:421});
       res.writeHead(421, { 'Content-Length': '0', 'Cache-Control': 'no-store' }); res.end(); return;
     }
-    if (req.method !== 'GET') { res.writeHead(405, { Allow: 'GET', 'Content-Length': '0', 'Cache-Control': 'no-store' }); res.end(); return; }
+    if (req.method !== 'GET') {
+      if (this.#runId) demoAudit('origin','resource_refused',{run_id:this.#runId,status:405});
+      res.writeHead(405, { Allow: 'GET', 'Content-Length': '0', 'Cache-Control': 'no-store' }); res.end(); return;
+    }
     this.#counters.resources_served += 1;
+    if (this.#runId) demoAudit('origin','resource_served',{run_id:this.#runId,status:200,count:this.#counters.resources_served});
     res.writeHead(200, { 'Content-Type': 'text/plain', 'Content-Length': String(BODY.length), 'Cache-Control': 'no-store' });
     res.end(BODY);
   }

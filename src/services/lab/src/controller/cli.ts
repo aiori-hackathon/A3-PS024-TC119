@@ -45,6 +45,7 @@ import { localReadiness, supportedVersion } from './preflight.ts';
 import { networkReadiness } from './network-readiness.ts';
 import { analyzeBenchmark } from '../../../../contracts/lib/benchmark.ts';
 import { RegionalLab } from './regional-runtime.ts';
+import { readDemoLogs } from './demo-logs.ts';
 import { pathToFileURL } from 'node:url';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', '..', '..');
@@ -319,9 +320,19 @@ async function regional(): Promise<number> {
 }
 
 const command = process.argv[2];
+async function logs(): Promise<number> {
+  try {
+    const service = option('--service','gateway');
+    const rows = await readDemoLogs(root,service,Number(option('--tail','20')));
+    say({event:'demo-audit',service,returned:rows.length,retention:'bounded tmpfs; cleared when container is recreated',completeHistory:false});
+    for (const row of rows) say(row);
+    return 0;
+  } catch { say({error:'audit-unavailable',action:'Use --service issuer|gateway|origin and --tail 1..100 after starting a new regional demo.'}); return 1; }
+}
 const code = command === 'preflight' ? await preflight() : command === 'run' ? await run() : command === 'fence' ? await fence() : command === 'verify-report' ? verify()
   : command === 'serve-report' ? await serve()
   : command === 'summarize-benchmark' ? summarizeBenchmark()
   : command === 'regional' ? await regional()
-  : (say({ error: 'usage', commands: ['preflight', 'run', 'fence', 'verify-report', 'serve-report', 'regional'] }), 2);
+  : command === 'logs' ? await logs()
+  : (say({ error: 'usage', commands: ['preflight', 'run', 'fence', 'verify-report', 'serve-report', 'regional', 'logs'] }), 2);
 process.exit(code);
