@@ -12,7 +12,7 @@ The command prepares the ARC, lab, gateway and proxy images, then serves the por
 
 For a basic demonstration, select ARC, start the run, choose Client A, acquire allowance, then access the research resource. The returned research text travels through the client, shared CONNECT proxy and verification gateway. The page displays the independent private-origin counters and the client's estimated allowance.
 
-Each experiment has a server-defined 60-second window. Expiry closes the generation. Reset ends the controlled experiment and confirms shutdown before another experiment can start. Starting a new experiment provisions fresh keys, state and entitlements. There is no automatic issuance refund after uncertainty.
+Manual demonstrations have a server-defined five-minute allowance and a live countdown. At expiry, authorization is fenced while the portal/controller remains available and displays Allowance expired with retained evidence. Access and acquisition stay disabled. Start new window explicitly creates a fresh generation; Stop demo returns to idle. Neither waiting nor reloading refills an allowance. Automated comparison and holder scenes retain their separately reset 60-second windows. There is no automatic issuance refund after uncertainty.
 
 IP, ordinary Type2 and ARC comparison controls use separately reset experiments with an equal aggregate budget. Holder-bound Type2 has a separate token-copy/owner demonstration. The interface labels incomplete observations explicitly. These optional scenarios are available for manual prototype evaluation.
 

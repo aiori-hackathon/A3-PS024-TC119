@@ -12,7 +12,7 @@
           "type": "object",
           "properties": {
             "contract_version": {
-              "const": "TF-PS024-REGIONAL-1.0.0"
+              "const": "TF-PS024-REGIONAL-1.1.0"
             },
             "policy_digest": {
               "type": "string",
@@ -60,7 +60,7 @@
           "type": "object",
           "properties": {
             "contract_version": {
-              "const": "TF-PS024-REGIONAL-1.0.0"
+              "const": "TF-PS024-REGIONAL-1.1.0"
             },
             "policy_digest": {
               "type": "string",
@@ -108,7 +108,7 @@
           "type": "object",
           "properties": {
             "contract_version": {
-              "const": "TF-PS024-REGIONAL-1.0.0"
+              "const": "TF-PS024-REGIONAL-1.1.0"
             },
             "policy_digest": {
               "type": "string",
@@ -156,7 +156,7 @@
           "type": "object",
           "properties": {
             "contract_version": {
-              "const": "TF-PS024-REGIONAL-1.0.0"
+              "const": "TF-PS024-REGIONAL-1.1.0"
             },
             "policy_digest": {
               "type": "string",
@@ -205,7 +205,7 @@
               "type": "object",
               "properties": {
                 "contract_version": {
-                  "const": "TF-PS024-REGIONAL-1.0.0"
+                  "const": "TF-PS024-REGIONAL-1.1.0"
                 },
                 "run_id": {
                   "type": "string",
@@ -290,7 +290,7 @@
           "type": "object",
           "properties": {
             "contract_version": {
-              "const": "TF-PS024-REGIONAL-1.0.0"
+              "const": "TF-PS024-REGIONAL-1.1.0"
             },
             "policy_digest": {
               "type": "string",

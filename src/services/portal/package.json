@@ -6,6 +6,6 @@
   "engines": { "node": ">=24 <25" },
   "scripts": {
     "preview": "node src/serve.mjs",
-    "test": "node --test test/serve.test.mjs"
+    "test": "node --test test/serve.test.mjs test/app.test.mjs"
   }
 }

@@ -44,7 +44,7 @@ export function regionalBytes(domain:string, ...fields:unknown[]):Uint8Array {
 export function validateRegionalPolicy(value:unknown, baseline?:Manifest):RegionalPolicy {
   assertSchema(policySchema as Schema,value);
   const p=value as RegionalPolicy;
-  if(p.window_end_ms-p.window_start_ms!==spec.window_ms)throw new ContractError('regional-window');
+  if(![spec.window_ms,spec.manual_window_ms].includes(p.window_end_ms-p.window_start_ms))throw new ContractError('regional-window');
   if(p.window_end_ms>Number.MAX_SAFE_INTEGER-PROTOCOL.guard_ms)throw new ContractError('regional-window-overflow');
   if(baseline && (p.run_id!==baseline.run_id || p.baseline_config_digest!==configurationDigest(baseline)
     || p.window_start_ms<baseline.run_start_ms || p.window_end_ms>baseline.run_start_ms+baseline.epoch_ms

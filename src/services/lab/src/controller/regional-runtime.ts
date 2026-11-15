@@ -20,6 +20,7 @@ const SERVICES = ['issuer', 'protected-origin', 'client-a', 'client-b', 'client-
 export type RegionalOriginCounts = { protected_requests_received: number; generation_mismatches: number; resources_served: number };
 type Counts = RegionalOriginCounts;
 type GatewaySnapshot = { counters: Record<string, number>; sameSource: boolean | null; workers: number[] };
+type ManualSession = { profile: RegionalProfile; endsAt: string };
 
 export function arcLeaseControl(operation: 'enable' | 'heartbeat', sequence: number): Json {
   return { operation, lease_sequence: sequence };
@@ -116,6 +117,7 @@ export class RegionalLab {
   #creationUncertain = false;
   #terminalUncertain = false;
   #windowTimer: NodeJS.Timeout | null = null;
+  #manualSession: ManualSession | null = null;
   #comparison: Json[] = [];
   #theft: Json | null = null;
   constructor(root: string, options: { docker?: DockerCli; prepareImages?: () => Promise<void> } = {}) {
@@ -130,7 +132,10 @@ export class RegionalLab {
     return {
       mode: 'live', observedAt: new Date().toISOString(), state: this.#state, profile: this.#profile, revision: this.#revision,
       ...(this.#run?.info ? { runId: this.#run.info.run_id } : {}),
-      ...(policy ? { window: { label: 'Server-defined 60-second window', endsAt: new Date(policy.window_end_ms).toISOString() } } : {}),
+      ...(policy || this.#manualSession ? { window: {
+        label: this.#manualSession ? 'Five-minute manual allowance' : '60-second comparison allowance',
+        endsAt: policy ? new Date(policy.window_end_ms).toISOString() : this.#manualSession!.endsAt,
+      } } : {}),
       clients: CLIENT_IDS.map(clientId => ({ clientId, estimatedUsesLeft: this.#estimates.get(clientId) ?? null,
         state: this.#run?.phase === 'enabled' ? 'ready' : 'idle' })),
       evidence: { observedAt: this.#originObservedAt, state: this.#evidenceState,
@@ -148,6 +153,9 @@ export class RegionalLab {
     if (this.#terminalUncertain || this.#creationUncertain) return Promise.reject(Error('shutdown-unconfirmed'));
     if (this.#closing || this.#busy) return Promise.reject(Error('operation-in-progress'));
     if (command.action !== 'start_run' && command.revision !== this.#revision) throw Error('stale-run');
+    if (this.#state === 'expired' && ['acquire', 'access'].includes(command.action)) {
+      return Promise.resolve({ outcome: 'refused', message: 'Allowance expired. Start a new window explicitly.', status: this.status() });
+    }
     const owned = structuredClone(command);
     this.#session = new AbortController();
     this.#busy = true;
@@ -168,10 +176,12 @@ export class RegionalLab {
       this.#guard();
       if (command.action === 'start_run') {
         if (!['ip', 'type2-bearer', 'arc', 'type2-holder'].includes(command.profile) || this.#run) throw Error('run-already-active');
-        await this.#start(command.profile);
+        this.#manualSession = null;
+        await this.#start(command.profile, REGIONAL.manual_window_ms, true);
         return { outcome: 'started', status: this.status() };
       }
       if (command.action === 'reset_run') {
+        this.#manualSession = null;
         await this.#resetGeneration();
         return { outcome: 'reset', status: this.status() };
       }
@@ -181,6 +191,7 @@ export class RegionalLab {
       const result = await this.#action(command.clientId, command.action);
       return { ...result, status: this.status() };
     } catch {
+      if (!this.#manualSession || Date.now() < Date.parse(this.#manualSession.endsAt)) this.#manualSession = null;
       this.#state = 'uncertain';
       await this.#resetGeneration();
       return { outcome: 'uncertain', message: 'Operation interrupted. Allowance may already be consumed.', status: this.status() };
@@ -253,13 +264,13 @@ export class RegionalLab {
     }
     throw Error('role-control-unavailable');
   }
-  #start(profile: RegionalProfile): Promise<void> {
+  #start(profile: RegionalProfile, windowMs = REGIONAL.window_ms, manual = false): Promise<void> {
     this.#guard();
-    const startup = Promise.resolve().then(() => this.#startGeneration(profile));
+    const startup = Promise.resolve().then(() => this.#startGeneration(profile, windowMs, manual));
     this.#startup = startup;
     return startup.finally(() => { if (this.#startup === startup) this.#startup = null; });
   }
-  async #startGeneration(profile: RegionalProfile): Promise<void> {
+  async #startGeneration(profile: RegionalProfile, windowMs: number, manual: boolean): Promise<void> {
     this.#guard();
     this.#state = 'starting';
     this.#lock ??= acquireProjectLock(join(this.#root, '.runtime', 'project.lock'));
@@ -309,7 +320,7 @@ export class RegionalLab {
     const io = new DockerRedisIo(this.#docker, redisId, readFileSync(join(this.#root, '.runtime', 'secrets', 'controller', 'redis-password'), 'utf8').trim());
     const launcher = new DockerGatewayLauncher(this.#docker, this.#instances.get('gateway')!, { secretsDir: join(this.#root, '.runtime', 'secrets') });
     this.#stopGateway = () => launcher.stop();
-    const hooks = this.#hooks(profile);
+    const hooks = this.#hooks(profile, windowMs);
     let barrier: ResetPort | null = null;
     const reset: ResetPort = {
       fenceAll: async () => {
@@ -344,12 +355,33 @@ export class RegionalLab {
     this.#stopWatching = this.#project.watch(watched, role => this.#run?.roleLost(role));
     await this.#run.start();
     this.#guard();
-    void this.#run.closed().then(() => { if (this.#state === 'active') this.#state = 'error'; });
+    const end = this.#run.info!.regional_policy!.window_end_ms;
+    this.#manualSession = manual ? { profile, endsAt: new Date(end).toISOString() } : null;
+    const manualSession = this.#manualSession;
+    void this.#run.closed().then(() => {
+      if (this.#state !== 'active') return;
+      if (manualSession && Date.now() >= end) void this.#expireManualSession(manualSession);
+      else this.#state = 'error';
+    });
     this.#counts = await this.#origin();
     this.#guard();
     this.#state = 'active';
-    this.#windowTimer = setTimeout(() => { void this.close().catch(() => { this.#state = 'error'; }); },
-      Math.max(0, this.#run.info!.regional_policy!.window_end_ms - Date.now()));
+    this.#windowTimer = setTimeout(() => {
+      if (manualSession) void this.#expireManualSession(manualSession);
+      else void this.close().catch(() => { this.#state = 'error'; });
+    }, Math.max(0, end - Date.now()));
+  }
+  async #expireManualSession(session: ManualSession): Promise<void> {
+    if (session !== this.#manualSession || ['expiring', 'expired'].includes(this.#state)) return;
+    this.#state = 'expiring';
+    try {
+      // Close/fence the expired authorization generation; keep its presentation visible.
+      await this.close();
+      if (session === this.#manualSession) {
+        this.#state = 'expired';
+        this.#profile = session.profile;
+      }
+    } catch { this.#state = 'error'; }
   }
   async #reconcile(scope: CleanupScope): Promise<void> {
     this.#enumerationUncertain = true;
@@ -359,7 +391,7 @@ export class RegionalLab {
     }
     this.#enumerationUncertain = false;
   }
-  #hooks(profile: RegionalProfile): RegionalRunHooks {
+  #hooks(profile: RegionalProfile, windowMs: number): RegionalRunHooks {
     const issueKey = randomBytes(32).toString('hex');
     const verifyKey = randomBytes(32).toString('hex');
     const contextKey = randomBytes(32).toString('hex');
@@ -380,7 +412,7 @@ export class RegionalLab {
       },
       policy: manifest => validateRegionalPolicy({ contract_version: REGIONAL.contract_version, schema_version: 1,
         run_id: manifest.run_id, baseline_config_digest: configurationDigest(manifest), profile,
-        window_start_ms: manifest.run_start_ms, window_end_ms: manifest.run_start_ms + REGIONAL.window_ms,
+        window_start_ms: manifest.run_start_ms, window_end_ms: manifest.run_start_ms + windowMs,
         quota: REGIONAL.quota, admitted_entitlements: REGIONAL.admitted_entitlements,
         resource_id: REGIONAL.resource_id, method: REGIONAL.method, url: REGIONAL.url,
         type2_key_id: ['type2-bearer', 'type2-holder'].includes(profile) ? manifest.token_key_id : null,
@@ -499,6 +531,7 @@ export class RegionalLab {
       evidenceState: this.#evidenceState };
   }
   async #compare(): Promise<Json> {
+    this.#manualSession = null;
     await this.#resetGeneration();
     this.#comparison = [];
     for (const profile of ['ip', 'type2-bearer', 'arc'] as const) {
@@ -542,6 +575,7 @@ export class RegionalLab {
     return { outcome: 'comparison-complete', status: this.status() };
   }
   async #theftScene(): Promise<Json> {
+    this.#manualSession = null;
     await this.#resetGeneration();
     await this.#start('type2-holder');
     const acquisition = await this.#action('A', 'acquire');
@@ -583,7 +617,10 @@ export class RegionalLab {
   #resetGeneration(): Promise<void> {
     if (this.#resetting) return this.#resetting;
     if (this.#terminalUncertain) { this.#state = 'error'; return Promise.reject(Error('shutdown-unconfirmed')); }
-    if (!this.#scope && !this.#run && !this.#lock) { this.#state = 'idle'; return Promise.resolve(); }
+    if (!this.#scope && !this.#run && !this.#lock) {
+      this.#state = 'idle'; this.#profile = null; this.#estimates.clear();
+      return Promise.resolve();
+    }
     const pending = Promise.resolve().then(() => this.#closeGeneration()).catch(error => {
       this.#terminalUncertain = true;
       this.#state = 'error';

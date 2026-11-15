@@ -6,6 +6,23 @@ use tokenforge_arc::{Issuer, PendingIssuance, Wallet};
 const REQUEST_CONTEXT: &[u8] = b"feasibility/current-admission-domain";
 const PRESENTATION_CONTEXT: &[u8] = b"feasibility/research-resource";
 
+#[test]
+fn policy_allows_only_comparison_and_manual_durations() {
+    let fixture: serde_json::Value = serde_json::from_str(include_str!(
+        "../../../contracts/fixtures/regional-golden.json"
+    )).unwrap();
+    let mut policy = fixture["arc_policy"].clone();
+    let start = policy["window_start_ms"].as_u64().unwrap();
+    for duration in [60_000, 300_000] {
+        policy["window_end_ms"] = serde_json::json!(start + duration);
+        assert!(tokenforge_arc::wire::validate_policy(&policy).is_ok());
+    }
+    for duration in [0, 59_999, 60_001, 299_999, 300_001] {
+        policy["window_end_ms"] = serde_json::json!(start + duration);
+        assert!(tokenforge_arc::wire::validate_policy(&policy).is_err());
+    }
+}
+
 fn five() -> NonZeroU32 {
     NonZeroU32::new(5).unwrap()
 }

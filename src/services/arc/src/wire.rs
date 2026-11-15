@@ -138,7 +138,8 @@ pub fn validate_policy(policy: &Value) -> Result<()> {
     }
     let start = policy["window_start_ms"].as_u64().ok_or("wrong-policy")?;
     let end = policy["window_end_ms"].as_u64().ok_or("wrong-policy")?;
-    if end.checked_sub(start) != Some(spec_number("window_ms"))
+    if ![Some(spec_number("window_ms")), Some(spec_number("manual_window_ms"))]
+        .contains(&end.checked_sub(start))
         || end > 9_007_199_254_740_991 - BASELINE["guard_ms"].as_u64().unwrap()
     {
         return Err("wrong-policy");

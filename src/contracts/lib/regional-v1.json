@@ -1,9 +1,10 @@
 {
-  "contract_version": "TF-PS024-REGIONAL-1.0.0",
+  "contract_version": "TF-PS024-REGIONAL-1.1.0",
   "baseline_contract_version": "TF-PS024-1.0.0",
   "schema_version": 1,
   "profiles": ["ip", "type2-bearer", "arc", "type2-holder"],
   "window_ms": 60000,
+  "manual_window_ms": 300000,
   "quota": 5,
   "admitted_entitlements": 5,
   "resource_id": "research-resource",

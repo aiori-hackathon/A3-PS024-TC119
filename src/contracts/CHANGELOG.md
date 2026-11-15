@@ -1,5 +1,11 @@
 # Contract changes
 
+## Regional TF-PS024-REGIONAL-1.1.0 — 15 November 2026
+
+The authenticated regional policy permits exactly two durations: 60 seconds for the automated comparison/holder scene, and 300 seconds for an operator-started manual demonstration. Node and Rust enforce the same allowlist. Duration remains inside the policy digest and the baseline 600-second epoch; quota, nonce lifetime, replay guard and fail-closed expiry are unchanged. Strict envelopes and independent framing/MAC fixtures use the new version, so mixed-version services refuse rather than reinterpret policies.
+
+Manual expiry fences the authorization generation and retains an expired presentation state. The portal/controller remains available. Only an explicit new-window action creates new keys and entitlements; browser refresh and elapsed time do not replenish quota.
+
 ## Holder gateway and regional ACL integration correction — 14 November 2026
 
 K03 adds real P-256/nonce/Type2-context verification and an explicit prepared gateway factory, reusing baseline RSA verification and the regional atomic claim. The final-runtime payload gains one inert regional library bundle. Real TLS/Redis/origin integration verifies token-only theft refusal, subsequent owner success, cross-pool behavior and single-spend racing. It remains separate from the pending deployed issuer/controller/UI flow.

@@ -54,6 +54,14 @@ test('policy cannot change quota/profile/key layout or silently reinterpret base
   assert.throws(()=>validateRegionalPolicy({...p,type2_key_id:'0'.repeat(64)},m));
   assert.throws(()=>validateRegionalPolicy({...p,window_start_ms:m.run_start_ms+600000,window_end_ms:m.run_start_ms+660000},m));
   assert.equal(m.epoch_ms,600000);assert.equal(REGIONAL.window_ms,60000);
+  assert.equal(REGIONAL.manual_window_ms,300000);
+  const manual={...p,window_end_ms:p.window_start_ms+REGIONAL.manual_window_ms};
+  assert.doesNotThrow(()=>validateRegionalPolicy(manual,m));
+  assert.doesNotThrow(()=>requireRegionalWindow(manual,manual.window_end_ms-1));
+  assert.throws(()=>requireRegionalWindow(manual,manual.window_end_ms));
+  assert.throws(()=>validateRegionalPolicy({...manual,window_end_ms:manual.window_end_ms+1},m));
+  assert.throws(()=>validateRegionalPolicy({...manual,contract_version:'TF-PS024-REGIONAL-1.0.0'},m));
+  assert.throws(()=>validateRegionalPolicy({...manual,window_start_ms:m.run_start_ms+400000,window_end_ms:m.run_start_ms+700000},m));
   assert.throws(()=>{REGIONAL.quota=999;});
 });
 

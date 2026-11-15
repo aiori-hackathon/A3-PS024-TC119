@@ -18,7 +18,7 @@ The complete local three-profile comparison and separate holder scene passed on 
 
 Use [the regional runbook](docs/lab/REGIONAL_RUNBOOK.md), [seven-minute narration](docs/demo/REGIONAL_NARRATION.md) and [new regional presentation](docs/submission/regional/TokenForge-Regional-2026.pptx). Original submitted materials and video links are preserved. Venue narration and physical-device rehearsal remain human tasks.
 
-The regional application adds four server-selected profiles. Every run uses one fixed resource and a fresh server-defined 60-second window. The local portal controls five labelled lab clients; these are admitted entitlements, not verified human identities.
+The regional application adds four server-selected profiles. Manual demos use a fresh five-minute allowance window; the automated comparison and holder scene retain 60-second windows. A countdown shows expiry. Stop demo closes the manual session, while an expired session retains evidence until the operator explicitly starts a new window or stops. The local portal controls five labelled lab clients; these are admitted entitlements, not verified human identities.
 
 | Profile | Enforced allowance | What the demonstration shows |
 | --- | --- | --- |

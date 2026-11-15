@@ -1,5 +1,7 @@
 # Regional integration contract
 
+**Current revision: TF-PS024-REGIONAL-1.1.0, 15 November 2026.** Operator-started manual demonstrations use a five-minute allowance; comparison and scripted holder experiments retain 60 seconds. These are the only accepted durations, checked by Node and Rust and bound into the policy digest. At manual expiry, authorization is fenced and the portal retains an expired session until explicit Stop demo or Start new window. No automatic refill is introduced. The baseline epoch, quotas, nonce and replay retention rules remain unchanged. The original candidate specification below is historical; see the contract change log and subsequent validation records for implementation status.
+
 Contract **TF-PS024-REGIONAL-1.0.0**, candidate for counterpart acceptance, 14 November 2026.
 
 This additive contract defines the new product interfaces. It does **not** enable ARC, holder verification or quotas in the current runtime. The accepted baseline `TF-PS024-1.0.0`, existing manifests, 600-second epochs, Type2 wire format and report schemas remain unchanged. Import regional helpers explicitly from `src/contracts/lib/regional.ts`; legacy consumers need no modification. Never label this document's structural tests as end-to-end security evidence.

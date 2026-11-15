@@ -27,15 +27,24 @@ function clearResource() {
 function updateControls() {
   const live = connected && status?.mode === 'live';
   const ready = live && !busy;
-  const active = ready && status?.state === 'active';
+  const active = ready && status?.state === 'active' && (!status.window?.endsAt || Date.now() < Date.parse(status.window.endsAt));
   $('profiles').disabled = !ready || status?.state !== 'idle';
-  $('start').disabled = !ready || status?.state !== 'idle';
-  $('reset').disabled = !ready || status?.state === 'idle';
+  $('start').disabled = !ready || !['idle', 'expired'].includes(status?.state);
+  $('start').textContent = status?.state === 'expired' ? 'Start new window' : 'Start demo';
+  $('reset').disabled = !ready || !['active', 'expired', 'error', 'uncertain'].includes(status?.state);
   $('client').disabled = !active;
   $('acquire').disabled = !active;
   $('access').disabled = !active;
-  $('compare').disabled = !ready || !['idle', 'active'].includes(status?.state);
-  $('theft').disabled = !ready || !['idle', 'active'].includes(status?.state);
+  $('compare').disabled = !ready || !['idle', 'active', 'expired'].includes(status?.state);
+  $('theft').disabled = !ready || !['idle', 'active', 'expired'].includes(status?.state);
+}
+function renderWindow() {
+  const end = Date.parse(status?.window?.endsAt ?? '');
+  if (!Number.isFinite(end)) return;
+  const left = Math.max(0, Math.ceil((end - Date.now()) / 1000));
+  setText('window', left > 0
+    ? `${status.window.label} · ${Math.floor(left / 60)}:${String(left % 60).padStart(2, '0')} left`
+    : 'Allowance expired — stop the demo or explicitly start a new window.');
 }
 function renderClient() {
   const client = status?.clients?.find(item => item.clientId === $('client').value);
@@ -62,7 +71,7 @@ function render(next) {
   connected = true;
   setText('mode', next.mode === 'live' ? 'Supervised laboratory' : 'Layout preview');
   setText('connection', next.mode === 'live' ? 'Connected to the local controller' : 'Live client controls require a connected backend');
-  setText('server-state', next.state ?? 'Unknown');
+  setText('server-state', ({ expired: 'Allowance expired', expiring: 'Closing expired allowance' })[next.state] ?? next.state ?? 'Unknown');
   setText('active-profile', names[next.profile] ?? '—');
   setText('window', next.window?.endsAt ? `${next.window.label} · ends ${time(next.window.endsAt)}` : '—');
   setText('updated', time(next.observedAt));
@@ -98,6 +107,7 @@ function render(next) {
   setText('holder-outcome', theft?.holderOutcome ?? 'Awaiting experiment');
   setText('theft-origin', theft ? `${theft.state ?? 'Observed'} · Attack arrivals ${count(theft.attackOriginArrivals)} · Owner arrivals ${count(theft.ownerOriginArrivals)}` : 'Awaiting experiment');
   updateControls();
+  renderWindow();
 }
 async function loadStatus() {
   if (loadingStatus) return;
@@ -166,3 +176,4 @@ $('compare').addEventListener('click', () => execute({ action: 'run_comparison',
 $('theft').addEventListener('click', () => execute({ action: 'run_theft_scene', revision: status.revision }, 'Running the separate theft scene…'));
 await loadStatus();
 setInterval(loadStatus, 3000);
+setInterval(() => { renderWindow(); updateControls(); }, 1000);
