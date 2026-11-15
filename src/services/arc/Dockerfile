@@ -1,4 +1,5 @@
 FROM rust:1.89.0-bookworm@sha256:948f9b08a66e7fe01b03a98ef1c7568292e07ec2e4fe90d88c07bb14563c84ff AS verification
+ENV CARGO_NET_GIT_FETCH_WITH_CLI=true
 WORKDIR /build/src/services/arc
 COPY src/services/arc/Cargo.toml src/services/arc/Cargo.lock ./
 COPY src/services/arc/build.rs ./
