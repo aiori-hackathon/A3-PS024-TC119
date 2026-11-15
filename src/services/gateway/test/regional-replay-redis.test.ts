@@ -31,14 +31,14 @@ before(async()=>{
   throw Error('Isolated regional Redis startup failed');
 });
 after(async()=>{if(container)await docker('rm','-f',container);});
-async function seed(profile:'arc'|'type2-holder'='arc',closed=false){
+async function seed(profile:'arc'|'type2-holder'='arc',closed=false,windowMs=REGIONAL.window_ms){
   await command('FLUSHDB');await loadReplayScripts(io);
   const now=parseRedisTime(await command('TIME'));
   m=makeManifest({run_id:golden.manifest.run_id,run_start_ms:now-(closed?61000:5000),
     token_key_spki_b64url:golden.manifest.token_key_spki_b64url,
     snapshot_script_sha1:REPLAY_SCRIPTS.snapshot.sha1,claim_script_sha1:REPLAY_SCRIPTS.claim.sha1});
   p=validateRegionalPolicy({contract_version:REGIONAL.contract_version,schema_version:1,run_id:m.run_id,
-    baseline_config_digest:configurationDigest(m),profile,window_start_ms:m.run_start_ms,window_end_ms:m.run_start_ms+60000,
+    baseline_config_digest:configurationDigest(m),profile,window_start_ms:m.run_start_ms,window_end_ms:m.run_start_ms+windowMs,
     quota:5,admitted_entitlements:5,resource_id:REGIONAL.resource_id,method:REGIONAL.method,url:REGIONAL.url,
     type2_key_id:profile==='type2-holder'?m.token_key_id:null,arc_key_id:profile==='arc'?'a'.repeat(64):null,
     arc_implementation_revision:profile==='arc'?'b'.repeat(40):null,arc_tag_encoding:profile==='arc'?REGIONAL.arc_tag_encoding:null},m);
@@ -50,6 +50,20 @@ async function seed(profile:'arc'|'type2-holder'='arc',closed=false){
   }else await initializeRegionalStore(io,m,p);
 }
 const spend='c'.repeat(64);
+
+test('both policy durations use atomic spend and exact expiry; arbitrary durations cannot claim',async()=>{
+  for(const duration of [REGIONAL.window_ms,REGIONAL.manual_window_ms]) {
+    await seed('arc',false,duration);
+    const original=regionalClaimCommand(m,p,spend,0);
+    const invalid=original.map(value=>value===String(p.window_end_ms)?String(p.window_end_ms+1):value);
+    assert.deepEqual(await command(...invalid),['RUN_UNAVAILABLE']);
+    assert.equal(await command('EXISTS',`tfr:spent:${regionalPolicyDigest(p)}:${spend}`),0);
+    assert.equal((await command(...original))[0],'CLAIMED');
+    assert.equal(await command('PEXPIRETIME',`tfr:spent:${regionalPolicyDigest(p)}:${spend}`),p.window_end_ms+30000);
+    assert.equal((await command(...original))[0],'ALREADY_SPENT');
+    assert.deepEqual(await testClockClaim(p.window_end_ms),['WINDOW_CLOSED']);
+  }
+});
 const key=()=>`tfr:spent:${regionalPolicyDigest(p)}:${spend}`;
 async function claim(id=spend,notAfter=0){const cmd=regionalClaimCommand(m,p,id,notAfter);return command(...cmd);}
 async function restoreFixture(){

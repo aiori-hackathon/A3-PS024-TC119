@@ -133,11 +133,11 @@ export class RegionalLab {
       mode: 'live', observedAt: new Date().toISOString(), state: this.#state, profile: this.#profile, revision: this.#revision,
       ...(this.#run?.info ? { runId: this.#run.info.run_id } : {}),
       ...(policy || this.#manualSession ? { window: {
-        label: this.#manualSession ? 'Five-minute manual allowance' : '60-second comparison allowance',
+        label: this.#manualSession ? 'Five-minute manual allowance' : '60-second scenario allowance',
         endsAt: policy ? new Date(policy.window_end_ms).toISOString() : this.#manualSession!.endsAt,
       } } : {}),
       clients: CLIENT_IDS.map(clientId => ({ clientId, estimatedUsesLeft: this.#estimates.get(clientId) ?? null,
-        state: this.#run?.phase === 'enabled' ? 'ready' : 'idle' })),
+        state: this.#state === 'expired' ? 'allowance expired' : this.#run?.phase === 'enabled' ? 'ready' : 'idle' })),
       evidence: { observedAt: this.#originObservedAt, state: this.#evidenceState,
         requestsReceived: this.#counts?.protected_requests_received ?? null,
         resourcesServed: this.#counts?.resources_served ?? null,

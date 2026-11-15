@@ -1,6 +1,6 @@
 # Regional replay component — K02-A
 
-Additive API revision **regional-replay-1**, regional contract `TF-PS024-REGIONAL-1.0.0`.
+Current API revision **regional-replay-2**, regional contract `TF-PS024-REGIONAL-1.1.0`. Initializer, snapshot and claim scripts accept exactly the authenticated 60-second comparison or 300-second manual duration. Their hashes and stored regional revision change together; argument/key ABIs and baseline script bytes remain unchanged. Existing 60-second data cannot be silently reused under a different duration or revision. The original component description below is historical.
 
 `src/contracts/lib/regional-replay.ts` supplies the authoritative Lua, command/reply encodings, controller initializer/readiness and a separate gateway ACL. `src/services/gateway/src/regional-replay-store.ts` supplies a bounded, fail-closed connection pool using the existing `ReplayConnection` interface. Neither is connected to HTTP or a real ARC verifier in this slice. The current serving process and baseline scripts/manifests remain unchanged.
 

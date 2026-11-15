@@ -150,7 +150,7 @@ async function execute(command, pendingLabel) {
       if (operationStatus.state === 'pending') continue;
       const result = operationStatus.result ?? {};
       if (result.status) render({ ...result.status, mode: 'live' });
-      const labels = { delivered: 'The protected resource was delivered.', refused: 'The gateway refused this request.', uncertain: 'The operation outcome is uncertain.', started: 'The run is active.', reset: 'The run was reset.', 'comparison-complete': 'The comparison completed.', 'theft-complete': 'The theft scene completed.', unavailable: 'The laboratory is unavailable.', 'operation-uncertain': 'The operation could not be confirmed.' };
+      const labels = { delivered: 'The protected resource was delivered.', refused: 'The gateway refused this request.', uncertain: 'The operation outcome is uncertain.', started: 'The run is active.', reset: 'The demo was stopped.', 'comparison-complete': 'The comparison completed.', 'theft-complete': 'The theft scene completed.', unavailable: 'The laboratory is unavailable.', 'operation-uncertain': 'The operation could not be confirmed.' };
       announce(result.message ?? labels[result.outcome] ?? 'The operation completed. Review the server state and evidence.');
       if (command.action === 'access' && status.revision === command.revision && result.authorizedAccess?.clientId === command.clientId && typeof result.authorizedAccess.text === 'string') {
         setText('resource-text', result.authorizedAccess.text);

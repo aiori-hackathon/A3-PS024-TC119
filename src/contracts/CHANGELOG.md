@@ -4,6 +4,8 @@
 
 The authenticated regional policy permits exactly two durations: 60 seconds for the automated comparison/holder scene, and 300 seconds for an operator-started manual demonstration. Node and Rust enforce the same allowlist. Duration remains inside the policy digest and the baseline 600-second epoch; quota, nonce lifetime, replay guard and fail-closed expiry are unchanged. Strict envelopes and independent framing/MAC fixtures use the new version, so mixed-version services refuse rather than reinterpret policies.
 
+Regional replay revision `regional-replay-2` applies that same duration allowlist inside all atomic Redis scripts, including initialization. The scripts' identities and stored regional revision change together. Key/argument ABI, ACL boundaries, and original baseline scripts are unchanged.
+
 Manual expiry fences the authorization generation and retains an expired presentation state. The portal/controller remains available. Only an explicit new-window action creates new keys and entitlements; browser refresh and elapsed time do not replenish quota.
 
 ## Holder gateway and regional ACL integration correction — 14 November 2026
